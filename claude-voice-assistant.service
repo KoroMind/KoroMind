@@ -1,0 +1,15 @@
+[Unit]
+Description=Claude Voice Assistant Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=dev
+WorkingDirectory=/home/dev/claude-voice-assistant
+ExecStart=/home/dev/claude-voice-assistant/.venv/bin/python /home/dev/claude-voice-assistant/bot.py
+Restart=always
+RestartSec=10
+Environment=PATH=/home/dev/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

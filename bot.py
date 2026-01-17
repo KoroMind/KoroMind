@@ -404,25 +404,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 state["sessions"].append(new_session_id)
             save_state()
 
-        # Format response with metadata
-        meta_line = ""
-        if metadata:
-            meta_line = f"\n\n[{metadata.get('num_turns', 1)} turns, ${metadata.get('cost', 0):.4f}]"
-
-        full_response = response + meta_line
-
         # Send text response (split if too long)
-        await send_long_message(update, processing_msg, full_response)
+        await send_long_message(update, processing_msg, response)
 
-        # Voice response: summarize if too long
-        if len(response) > MAX_VOICE_CHARS:
-            voice_text = f"Done. {metadata.get('num_turns', 1)} turns completed. Check the text response for details."
-            debug(f"Response too long ({len(response)} chars), using summary for voice")
-        else:
-            voice_text = response
-
-        # Generate and send voice
-        audio = await text_to_speech(voice_text)
+        # Generate and send full voice response
+        audio = await text_to_speech(response)
         if audio:
             await update.message.reply_voice(voice=audio)
 
@@ -455,15 +441,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 state["sessions"].append(new_session_id)
             save_state()
 
-        # Format response with metadata
-        meta_line = ""
-        if metadata:
-            meta_line = f"\n\n[{metadata.get('num_turns', 1)} turns, ${metadata.get('cost', 0):.4f}]"
-
-        full_response = response + meta_line
-
         # Split long responses into multiple messages
-        await send_long_message(update, processing_msg, full_response)
+        await send_long_message(update, processing_msg, response)
 
     except Exception as e:
         debug(f"Error in handle_text: {e}")

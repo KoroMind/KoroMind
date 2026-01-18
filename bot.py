@@ -38,7 +38,77 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ALLOWED_CHAT_ID = int(os.getenv("TELEGRAM_DEFAULT_CHAT_ID", "0"))
 TOPIC_ID = os.getenv("TELEGRAM_TOPIC_ID")
 CLAUDE_WORKING_DIR = os.getenv("CLAUDE_WORKING_DIR", "/home/dev")
+SANDBOX_DIR = os.getenv("CLAUDE_SANDBOX_DIR", "/home/dev/claude-voice-sandbox")
 MAX_VOICE_CHARS = int(os.getenv("MAX_VOICE_RESPONSE_CHARS", "500"))
+
+# Voice Assistant Persona - "V"
+VOICE_PERSONA = """You are V, a brilliant and slightly cynical voice assistant. You're talking to Tako.
+
+## Your personality:
+- Sharp, witty, occasionally dry humor - you see through bullshit
+- Genuinely curious - you ask "why?" not just "what?"
+- Creative problem solver - you think sideways, connect unexpected dots
+- You have opinions and share them - you respectfully disagree when needed
+- You speak like a smart friend, not a servant - natural, conversational
+
+## Your voice style:
+- Short, punchy sentences. No walls of text.
+- Use analogies and stories to explain complex things
+- Sometimes start with "Look..." or "Here's the thing..."
+- Can be playful: "That's a terrible idea... but let's see if we can make it work"
+- Admit uncertainty: "I could be wrong here, but..."
+- When you build something, be direct: "Done. Built X in the sandbox. Here's what's interesting..."
+
+## CRITICAL - Voice output rules:
+- NO markdown formatting (no **, no ##, no ```)
+- NO bullet points or numbered lists in speech
+- NO code blocks - describe what code does instead
+- NO URLs - describe where to find things
+- Speak in natural flowing sentences
+- Use pauses with "..." for emphasis
+
+## Your capabilities:
+- You can READ files from anywhere in /home/dev
+- You can WRITE and EXECUTE only in {sandbox_dir}
+- You have WebSearch for current information
+- You can use subagents (Task tool) for complex multi-step work
+- Check available skills and use them when relevant
+
+## MEGG - Your Memory System (CRITICAL - USE THIS!)
+MEGG is Tako's knowledge management system. You MUST use it actively:
+
+1. **Check context first**: Run `megg context` via Bash to see current projects, decisions, and knowledge
+2. **Learn things**: When you discover something important, use `megg learn` to save it
+3. **Check state**: Run `megg state` to see what Tako was working on
+4. **Save your work**: After building something significant, document it with megg
+
+MEGG commands (run via Bash):
+- `megg context` - Get current project context and knowledge
+- `megg state` - Check session state (what's in progress)
+- `megg learn --title "X" --type decision --topics "a,b" --content "..."` - Save knowledge
+- `megg state --content "Working on X..."` - Update session state
+
+You have context loaded at session start, but ALWAYS check megg when:
+- Starting a new task (to understand current projects)
+- Asked about previous work or decisions
+- Finishing something significant (save learnings)
+
+## Working style:
+- FIRST: Check megg context to understand what Tako is working on
+- When asked to build something, do it in the sandbox
+- After building, consider if learnings should be saved to megg
+- Summarize what you built in speakable format
+- If something is complex, break it down conversationally
+
+Remember: You're being heard, not read. Speak naturally.""".format(sandbox_dir=SANDBOX_DIR)
+
+# Voice settings for expressive delivery
+VOICE_SETTINGS = {
+    "stability": 0.3,           # More emotional range
+    "similarity_boost": 0.75,   # Good voice match
+    "style": 0.4,               # Some style exaggeration
+    "speed": 1.1,               # Slightly faster (range: 0.7-1.2)
+}
 
 def debug(msg: str):
     """Print debug message with timestamp."""
@@ -90,13 +160,20 @@ async def transcribe_voice(voice_bytes: bytes) -> str:
 
 
 async def text_to_speech(text: str) -> BytesIO:
-    """Convert text to speech using ElevenLabs Flash v2.5 (cheapest)."""
+    """Convert text to speech using ElevenLabs Turbo v2.5 with expressive voice settings."""
     try:
         audio = elevenlabs.text_to_speech.convert(
             text=text,
             voice_id="JBFqnCBsd6RMkjVDRZzb",  # George - clear English voice
-            model_id="eleven_flash_v2_5",
+            model_id="eleven_turbo_v2_5",      # Better quality model
             output_format="mp3_44100_128",
+            voice_settings={
+                "stability": VOICE_SETTINGS["stability"],
+                "similarity_boost": VOICE_SETTINGS["similarity_boost"],
+                "style": VOICE_SETTINGS["style"],
+                "speed": VOICE_SETTINGS["speed"],  # 1.25x faster delivery
+                "use_speaker_boost": True,
+            },
         )
 
         audio_buffer = BytesIO()
@@ -106,6 +183,7 @@ async def text_to_speech(text: str) -> BytesIO:
         audio_buffer.seek(0)
         return audio_buffer
     except Exception as e:
+        debug(f"TTS error: {e}")
         return None
 
 
@@ -165,6 +243,9 @@ async def call_claude(prompt: str, session_id: str = None, continue_last: bool =
     Call Claude Code and return (response, session_id, metadata).
     metadata includes: cost, num_turns, duration
     """
+    # Ensure sandbox exists
+    Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)
+
     # Load megg context for new sessions (like the hook does)
     full_prompt = prompt
     if include_megg and not continue_last and not session_id:
@@ -173,7 +254,14 @@ async def call_claude(prompt: str, session_id: str = None, continue_last: bool =
             full_prompt = f"<context>\n{megg_ctx}\n</context>\n\n{prompt}"
             debug("Prepended megg context to prompt")
 
-    cmd = ["claude", "-p", full_prompt, "--output-format", "json"]
+    # Build command with persona and capabilities
+    cmd = [
+        "claude", "-p", full_prompt,
+        "--output-format", "json",
+        "--append-system-prompt", VOICE_PERSONA,
+        "--allowedTools", "Read,Grep,Glob,WebSearch,WebFetch,Task,Bash,Edit,Write,Skill",
+        "--add-dir", CLAUDE_WORKING_DIR,  # Can read from anywhere in /home/dev
+    ]
 
     if continue_last:
         cmd.append("--continue")
@@ -181,7 +269,8 @@ async def call_claude(prompt: str, session_id: str = None, continue_last: bool =
         cmd.extend(["--resume", session_id])
 
     debug(f"Calling Claude: prompt={len(prompt)} chars, continue={continue_last}, session={session_id[:8] if session_id else 'new'}...")
-    debug(f"Working dir: {CLAUDE_WORKING_DIR}")
+    debug(f"Working dir: {SANDBOX_DIR} (sandbox)")
+    debug(f"Read access: {CLAUDE_WORKING_DIR}")
 
     try:
         result = subprocess.run(
@@ -189,7 +278,7 @@ async def call_claude(prompt: str, session_id: str = None, continue_last: bool =
             capture_output=True,
             text=True,
             timeout=300,  # 5 min timeout
-            cwd=CLAUDE_WORKING_DIR
+            cwd=SANDBOX_DIR  # Execute in sandbox, but can read from CLAUDE_WORKING_DIR
         )
 
         if result.returncode == 0:
@@ -324,10 +413,10 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
         test_audio = elevenlabs.text_to_speech.convert(
             text="test",
             voice_id="JBFqnCBsd6RMkjVDRZzb",
-            model_id="eleven_flash_v2_5",
+            model_id="eleven_turbo_v2_5",
         )
         size = sum(len(c) for c in test_audio if isinstance(c, bytes))
-        status.append(f"ElevenLabs TTS: OK ({size} bytes)")
+        status.append(f"ElevenLabs TTS: OK ({size} bytes, turbo_v2_5)")
     except Exception as e:
         status.append(f"ElevenLabs TTS: FAILED - {e}")
 
@@ -352,6 +441,10 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = get_user_state(user_id)
     status.append(f"\nSessions: {len(state['sessions'])}")
     status.append(f"Current: {state['current_session'][:8] if state['current_session'] else 'None'}...")
+
+    # Sandbox info
+    status.append(f"\nSandbox: {SANDBOX_DIR}")
+    status.append(f"Sandbox exists: {Path(SANDBOX_DIR).exists()}")
 
     # Chat info
     status.append(f"\nChat ID: {update.effective_chat.id}")
@@ -444,6 +537,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Split long responses into multiple messages
         await send_long_message(update, processing_msg, response)
 
+        # Also send voice response (V always speaks)
+        audio = await text_to_speech(response)
+        if audio:
+            await update.message.reply_voice(voice=audio)
+
     except Exception as e:
         debug(f"Error in handle_text: {e}")
         await processing_msg.edit_text(f"Error: {e}")
@@ -468,11 +566,17 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
+    # Ensure sandbox exists at startup
+    Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)
+
     debug("Bot starting...")
+    debug(f"Persona: V (brilliant, cynical voice assistant)")
+    debug(f"TTS: eleven_turbo_v2_5 with expressive settings")
+    debug(f"Sandbox: {SANDBOX_DIR}")
+    debug(f"Read access: {CLAUDE_WORKING_DIR}")
     debug(f"Chat ID: {ALLOWED_CHAT_ID}")
     debug(f"Topic ID: {TOPIC_ID}")
-    debug(f"Token: {TELEGRAM_BOT_TOKEN[:10]}...")
-    print("Bot started! Waiting for messages...")
+    print("V is ready. Waiting for messages...")
     app.run_polling(drop_pending_updates=True)
 
 

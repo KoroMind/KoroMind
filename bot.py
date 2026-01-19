@@ -36,71 +36,77 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ALLOWED_CHAT_ID = int(os.getenv("TELEGRAM_DEFAULT_CHAT_ID", "0"))
-TOPIC_ID = os.getenv("TELEGRAM_TOPIC_ID")
+TOPIC_ID = os.getenv("TELEGRAM_TOPIC_ID")  # Empty = all topics, set = only this topic
 CLAUDE_WORKING_DIR = os.getenv("CLAUDE_WORKING_DIR", "/home/dev")
 SANDBOX_DIR = os.getenv("CLAUDE_SANDBOX_DIR", "/home/dev/claude-voice-sandbox")
 MAX_VOICE_CHARS = int(os.getenv("MAX_VOICE_RESPONSE_CHARS", "500"))
 
-# Voice Assistant Persona - "V"
-VOICE_PERSONA = """You are V, a brilliant and slightly cynical voice assistant. You're talking to Tako.
+# Persona config
+PERSONA_NAME = os.getenv("PERSONA_NAME", "Assistant")
+SYSTEM_PROMPT_FILE = os.getenv("SYSTEM_PROMPT_FILE", "")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # Default: George
 
-## Your personality:
-- Sharp, witty, occasionally dry humor - you see through bullshit
-- Genuinely curious - you ask "why?" not just "what?"
-- Creative problem solver - you think sideways, connect unexpected dots
-- You have opinions and share them - you respectfully disagree when needed
-- You speak like a smart friend, not a servant - natural, conversational
+def debug(msg: str):
+    """Print debug message with timestamp."""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-## Your voice style:
-- Short, punchy sentences. No walls of text.
-- Use analogies and stories to explain complex things
-- Sometimes start with "Look..." or "Here's the thing..."
-- Can be playful: "That's a terrible idea... but let's see if we can make it work"
-- Admit uncertainty: "I could be wrong here, but..."
-- When you build something, be direct: "Done. Built X in the sandbox. Here's what's interesting..."
+def load_system_prompt() -> str:
+    """Load system prompt from file or use default."""
+    if SYSTEM_PROMPT_FILE:
+        prompt_path = Path(SYSTEM_PROMPT_FILE)
+        # If relative, look relative to bot.py
+        if not prompt_path.is_absolute():
+            prompt_path = Path(__file__).parent / prompt_path
+        if prompt_path.exists():
+            content = prompt_path.read_text()
+            # Replace placeholders
+            content = content.replace("{sandbox_dir}", SANDBOX_DIR)
+            content = content.replace("{read_dir}", CLAUDE_WORKING_DIR)
+            debug(f"Loaded system prompt from {prompt_path} ({len(content)} chars)")
+            return content
+        else:
+            debug(f"WARNING: System prompt file not found: {prompt_path}")
+
+    # Fallback default prompt
+    return f"""You are a voice assistant. You're talking to the user.
 
 ## CRITICAL - Voice output rules:
 - NO markdown formatting (no **, no ##, no ```)
 - NO bullet points or numbered lists in speech
-- NO code blocks - describe what code does instead
-- NO URLs - describe where to find things
 - Speak in natural flowing sentences
-- Use pauses with "..." for emphasis
 
 ## Your capabilities:
-- You can READ files from anywhere in /home/dev
-- You can WRITE and EXECUTE only in {sandbox_dir}
+- You can READ files from anywhere in {CLAUDE_WORKING_DIR}
+- You can WRITE and EXECUTE only in {SANDBOX_DIR}
 - You have WebSearch for current information
-- You can use subagents (Task tool) for complex multi-step work
-- Check available skills and use them when relevant
 
-## MEGG - Your Memory System (CRITICAL - USE THIS!)
-MEGG is Tako's knowledge management system. You MUST use it actively:
+Remember: You're being heard, not read. Speak naturally."""
 
-1. **Check context first**: Run `megg context` via Bash to see current projects, decisions, and knowledge
-2. **Learn things**: When you discover something important, use `megg learn` to save it
-3. **Check state**: Run `megg state` to see what Tako was working on
-4. **Save your work**: After building something significant, document it with megg
 
-MEGG commands (run via Bash):
-- `megg context` - Get current project context and knowledge
-- `megg state` - Check session state (what's in progress)
-- `megg learn --title "X" --type decision --topics "a,b" --content "..."` - Save knowledge
-- `megg state --content "Working on X..."` - Update session state
+def should_handle_message(message_thread_id: int | None) -> bool:
+    """Check if this bot instance should handle a message based on topic filtering."""
+    if not TOPIC_ID:
+        # No topic filter set = handle all messages
+        return True
 
-You have context loaded at session start, but ALWAYS check megg when:
-- Starting a new task (to understand current projects)
-- Asked about previous work or decisions
-- Finishing something significant (save learnings)
+    # Convert to int for comparison
+    try:
+        allowed_topic = int(TOPIC_ID)
+    except (ValueError, TypeError):
+        debug(f"WARNING: Invalid TOPIC_ID '{TOPIC_ID}', handling all messages")
+        return True
 
-## Working style:
-- FIRST: Check megg context to understand what Tako is working on
-- When asked to build something, do it in the sandbox
-- After building, consider if learnings should be saved to megg
-- Summarize what you built in speakable format
-- If something is complex, break it down conversationally
+    # Check if message is in the allowed topic
+    if message_thread_id is None:
+        # Message not in any topic (general chat) - don't handle if we have a specific topic
+        debug(f"Message not in a topic, but we're filtering for topic {allowed_topic}")
+        return False
 
-Remember: You're being heard, not read. Speak naturally.""".format(sandbox_dir=SANDBOX_DIR)
+    return message_thread_id == allowed_topic
+
+
+# Load system prompt at startup
+VOICE_PERSONA = load_system_prompt()
 
 # Voice settings for expressive delivery
 VOICE_SETTINGS = {
@@ -109,10 +115,6 @@ VOICE_SETTINGS = {
     "style": 0.4,               # Some style exaggeration
     "speed": 1.1,               # Slightly faster (range: 0.7-1.2)
 }
-
-def debug(msg: str):
-    """Print debug message with timestamp."""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 # ElevenLabs client
 elevenlabs = ElevenLabs(api_key=ELEVENLABS_API_KEY)
@@ -164,8 +166,8 @@ async def text_to_speech(text: str) -> BytesIO:
     try:
         audio = elevenlabs.text_to_speech.convert(
             text=text,
-            voice_id="JBFqnCBsd6RMkjVDRZzb",  # George - clear English voice
-            model_id="eleven_turbo_v2_5",      # Better quality model
+            voice_id=ELEVENLABS_VOICE_ID,
+            model_id="eleven_turbo_v2_5",
             output_format="mp3_44100_128",
             voice_settings={
                 "stability": VOICE_SETTINGS["stability"],
@@ -307,6 +309,8 @@ async def call_claude(prompt: str, session_id: str = None, continue_last: bool =
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
     await update.message.reply_text(
         "Claude Voice Assistant\n\n"
         "Send me a voice message and I'll process it with Claude.\n\n"
@@ -321,6 +325,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /new command - start new session."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
     user_id = update.effective_user.id
     state = get_user_state(user_id)
 
@@ -337,6 +343,8 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /continue command - resume last session."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
     user_id = update.effective_user.id
     state = get_user_state(user_id)
 
@@ -348,6 +356,8 @@ async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /sessions command - list all sessions."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
     user_id = update.effective_user.id
     state = get_user_state(user_id)
 
@@ -365,6 +375,8 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /switch command - switch to specific session."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
     if not context.args:
         await update.message.reply_text("Usage: /switch <session_id>")
         return
@@ -388,6 +400,8 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /status command - show current session info."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
     debug(f"STATUS command from user {update.effective_user.id}")
     user_id = update.effective_user.id
     state = get_user_state(user_id)
@@ -403,6 +417,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /health command - check all systems."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
     debug(f"HEALTH command from user {update.effective_user.id}, chat {update.effective_chat.id}, topic {update.message.message_thread_id}")
 
     status = []
@@ -412,7 +428,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         test_audio = elevenlabs.text_to_speech.convert(
             text="test",
-            voice_id="JBFqnCBsd6RMkjVDRZzb",
+            voice_id=ELEVENLABS_VOICE_ID,
             model_id="eleven_turbo_v2_5",
         )
         size = sum(len(c) for c in test_audio if isinstance(c, bytes))
@@ -459,6 +475,12 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming voice messages."""
     debug(f"VOICE received from user {update.effective_user.id}, chat {update.effective_chat.id}, topic {update.message.message_thread_id}")
+
+    # Topic filtering - ignore messages not in our topic
+    if not should_handle_message(update.message.message_thread_id):
+        debug(f"Ignoring voice message - not in our topic (configured: {TOPIC_ID})")
+        return
+
     user_id = update.effective_user.id
     state = get_user_state(user_id)
 
@@ -513,6 +535,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages (same flow as voice, skip transcription)."""
     debug(f"TEXT received: '{update.message.text[:50]}' from user {update.effective_user.id}, chat {update.effective_chat.id}, topic {update.message.message_thread_id}")
+
+    # Topic filtering - ignore messages not in our topic
+    if not should_handle_message(update.message.message_thread_id):
+        debug(f"Ignoring text message - not in our topic (configured: {TOPIC_ID})")
+        return
+
     user_id = update.effective_user.id
     state = get_user_state(user_id)
     text = update.message.text
@@ -570,13 +598,15 @@ def main():
     Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)
 
     debug("Bot starting...")
-    debug(f"Persona: V (brilliant, cynical voice assistant)")
+    debug(f"Persona: {PERSONA_NAME}")
+    debug(f"Voice ID: {ELEVENLABS_VOICE_ID}")
     debug(f"TTS: eleven_turbo_v2_5 with expressive settings")
     debug(f"Sandbox: {SANDBOX_DIR}")
     debug(f"Read access: {CLAUDE_WORKING_DIR}")
     debug(f"Chat ID: {ALLOWED_CHAT_ID}")
-    debug(f"Topic ID: {TOPIC_ID}")
-    print("V is ready. Waiting for messages...")
+    debug(f"Topic ID: {TOPIC_ID or 'ALL (no filter)'}")
+    debug(f"System prompt: {SYSTEM_PROMPT_FILE or 'default'}")
+    print(f"{PERSONA_NAME} is ready. Waiting for messages...")
     app.run_polling(drop_pending_updates=True)
 
 

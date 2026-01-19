@@ -14,15 +14,21 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from io import BytesIO
 
-# Set up test environment
+# Set up test environment BEFORE dotenv can load .env
 os.environ["TELEGRAM_BOT_TOKEN"] = "test_token"
 os.environ["ELEVENLABS_API_KEY"] = "test_api_key"
 os.environ["TELEGRAM_DEFAULT_CHAT_ID"] = "12345"
 os.environ["CLAUDE_WORKING_DIR"] = "/home/dev"
 os.environ["CLAUDE_SANDBOX_DIR"] = "/tmp/test-voice-sandbox"
+os.environ["TELEGRAM_TOPIC_ID"] = ""  # Disable topic filtering in tests
+os.environ["SYSTEM_PROMPT_FILE"] = ""  # Use default prompt in tests
+os.environ["PERSONA_NAME"] = "TestBot"
+os.environ["ELEVENLABS_VOICE_ID"] = "test_voice_id"
 
-# Import after setting env vars
-import bot
+# Prevent dotenv from loading .env file
+from unittest.mock import patch
+with patch('dotenv.load_dotenv'):
+    import bot
 
 
 class TestConfiguration:
@@ -52,48 +58,22 @@ class TestConfiguration:
 
 
 class TestPersona:
-    """Test the V persona configuration"""
+    """Test the persona configuration (default prompt when no file specified)"""
 
     def test_persona_exists(self):
         """Persona prompt should be defined"""
         assert hasattr(bot, 'VOICE_PERSONA')
-        assert len(bot.VOICE_PERSONA) > 100
-
-    def test_persona_has_name(self):
-        """Persona should identify as V"""
-        assert "V" in bot.VOICE_PERSONA
-
-    def test_persona_has_personality_traits(self):
-        """Persona should have key personality traits"""
-        persona = bot.VOICE_PERSONA.lower()
-        assert "cynical" in persona or "witty" in persona
-        assert "brilliant" in persona or "sharp" in persona
-        assert "curious" in persona
+        assert len(bot.VOICE_PERSONA) > 50
 
     def test_persona_has_voice_rules(self):
         """Persona should have voice output rules"""
         persona = bot.VOICE_PERSONA
         assert "NO markdown" in persona or "no markdown" in persona.lower()
         assert "NO bullet" in persona or "no bullet" in persona.lower()
-        assert "NO code block" in persona or "no code" in persona.lower()
 
     def test_persona_mentions_sandbox(self):
         """Persona should mention sandbox directory"""
-        assert "sandbox" in bot.VOICE_PERSONA.lower()
-        # Should contain a sandbox path (the actual SANDBOX_DIR value)
-        assert bot.SANDBOX_DIR in bot.VOICE_PERSONA or "sandbox" in bot.VOICE_PERSONA.lower()
-
-    def test_persona_mentions_megg(self):
-        """Persona should instruct to use megg"""
-        persona = bot.VOICE_PERSONA.lower()
-        assert "megg" in persona
-
-    def test_persona_has_megg_commands(self):
-        """Persona should include megg command instructions"""
-        persona = bot.VOICE_PERSONA
-        assert "megg context" in persona
-        assert "megg state" in persona
-        assert "megg learn" in persona
+        assert "sandbox" in bot.VOICE_PERSONA.lower() or bot.SANDBOX_DIR in bot.VOICE_PERSONA
 
     def test_persona_mentions_read_write_permissions(self):
         """Persona should explain read/write permissions"""
@@ -105,9 +85,75 @@ class TestPersona:
         """Persona should mention WebSearch capability"""
         assert "WebSearch" in bot.VOICE_PERSONA or "websearch" in bot.VOICE_PERSONA.lower()
 
-    def test_persona_mentions_skills(self):
-        """Persona should mention skills"""
-        assert "skill" in bot.VOICE_PERSONA.lower()
+
+class TestTopicFiltering:
+    """Test topic-based message filtering"""
+
+    def test_should_handle_message_no_filter(self):
+        """With empty TOPIC_ID, should handle all messages"""
+        with patch.object(bot, 'TOPIC_ID', ''):
+            assert bot.should_handle_message(None) == True
+            assert bot.should_handle_message(123) == True
+
+    def test_should_handle_message_with_filter(self):
+        """With TOPIC_ID set, should only handle that topic"""
+        with patch.object(bot, 'TOPIC_ID', '42'):
+            assert bot.should_handle_message(42) == True
+            assert bot.should_handle_message(123) == False
+            assert bot.should_handle_message(None) == False
+
+    def test_should_handle_message_invalid_topic_id(self):
+        """Invalid TOPIC_ID should fall back to handling all"""
+        with patch.object(bot, 'TOPIC_ID', 'not_a_number'):
+            assert bot.should_handle_message(None) == True
+            assert bot.should_handle_message(123) == True
+
+
+class TestPromptLoading:
+    """Test system prompt loading from file"""
+
+    def test_load_system_prompt_no_file(self):
+        """Without file, should return default prompt"""
+        with patch.object(bot, 'SYSTEM_PROMPT_FILE', ''):
+            prompt = bot.load_system_prompt()
+            assert "voice assistant" in prompt.lower()
+            assert len(prompt) > 50
+
+    def test_load_system_prompt_from_file(self):
+        """Should load prompt from file when specified"""
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("You are TestBot. {sandbox_dir} is your sandbox.")
+            temp_path = f.name
+
+        try:
+            with patch.object(bot, 'SYSTEM_PROMPT_FILE', temp_path):
+                prompt = bot.load_system_prompt()
+                assert "TestBot" in prompt
+                assert bot.SANDBOX_DIR in prompt  # Placeholder replaced
+        finally:
+            os.unlink(temp_path)
+
+    def test_load_system_prompt_missing_file(self):
+        """Missing file should return default prompt"""
+        with patch.object(bot, 'SYSTEM_PROMPT_FILE', '/nonexistent/file.md'):
+            prompt = bot.load_system_prompt()
+            assert "voice assistant" in prompt.lower()
+
+
+class TestConfigurableVoice:
+    """Test configurable voice ID"""
+
+    def test_voice_id_configurable(self):
+        """Voice ID should be configurable via env"""
+        assert hasattr(bot, 'ELEVENLABS_VOICE_ID')
+        # In tests, we set this to test_voice_id
+        assert bot.ELEVENLABS_VOICE_ID == "test_voice_id"
+
+    def test_persona_name_configurable(self):
+        """Persona name should be configurable via env"""
+        assert hasattr(bot, 'PERSONA_NAME')
+        assert bot.PERSONA_NAME == "TestBot"
 
 
 class TestTTSFunction:
@@ -155,15 +201,15 @@ class TestTTSFunction:
             assert voice_settings['speed'] == 1.1
 
     @pytest.mark.asyncio
-    async def test_tts_uses_george_voice(self):
-        """TTS should use George voice ID"""
+    async def test_tts_uses_configured_voice(self):
+        """TTS should use configured voice ID"""
         with patch.object(bot.elevenlabs.text_to_speech, 'convert') as mock_convert:
             mock_convert.return_value = iter([b'fake_audio_data'])
 
             await bot.text_to_speech("test text")
 
             call_kwargs = mock_convert.call_args[1]
-            assert call_kwargs['voice_id'] == 'JBFqnCBsd6RMkjVDRZzb'
+            assert call_kwargs['voice_id'] == bot.ELEVENLABS_VOICE_ID
 
     @pytest.mark.asyncio
     async def test_tts_returns_bytesio(self):

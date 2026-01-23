@@ -45,6 +45,7 @@ MAX_VOICE_CHARS = int(os.getenv("MAX_VOICE_RESPONSE_CHARS", "500"))
 PERSONA_NAME = os.getenv("PERSONA_NAME", "Assistant")
 SYSTEM_PROMPT_FILE = os.getenv("SYSTEM_PROMPT_FILE", "")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # Default: George
+CLAUDE_SETTINGS_FILE = os.getenv("CLAUDE_SETTINGS_FILE", "")  # Optional settings.json for permissions
 
 def debug(msg: str):
     """Print debug message with timestamp."""
@@ -264,6 +265,10 @@ async def call_claude(prompt: str, session_id: str = None, continue_last: bool =
         "--allowedTools", "Read,Grep,Glob,WebSearch,WebFetch,Task,Bash,Edit,Write,Skill",
         "--add-dir", CLAUDE_WORKING_DIR,  # Can read from anywhere in /home/dev
     ]
+
+    # Add settings file for permission restrictions (sandbox write-only)
+    if CLAUDE_SETTINGS_FILE:
+        cmd.extend(["--settings", CLAUDE_SETTINGS_FILE])
 
     if continue_last:
         cmd.append("--continue")

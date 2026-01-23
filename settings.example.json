@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(//home/dev/your-sandbox-path/**)",
+      "Write(//home/dev/your-sandbox-path/**)"
+    ]
+  }
+}

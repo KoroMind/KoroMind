@@ -1,9 +1,36 @@
+# Environment and secrets
 .env
+*.env
+
+# Python
 *.pyc
 __pycache__/
 .venv/
-node_modules/
-*.log
+*.egg-info/
 
+# Node (if using any JS tooling)
+node_modules/
+
+# Logs
+*.log
+bot.log
+
+# State files (user-specific, not for repo)
 sessions_state.json
+user_settings.json
+
+# Test artifacts
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Audio files
 *.mp3
+*.wav
+*.ogg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

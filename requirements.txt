@@ -1,3 +1,12 @@
-python-telegram-bot>=20.0
-elevenlabs>=1.0.0
-python-dotenv>=1.0.0
+# Core dependencies
+python-telegram-bot>=20.0,<22.0
+elevenlabs>=1.0.0,<2.0.0
+python-dotenv>=1.0.0,<2.0.0
+
+# Claude Agent SDK (official SDK for Claude Code)
+claude-agent-sdk>=0.1.0
+
+# Development dependencies (optional)
+# pytest>=8.0.0
+# pytest-asyncio>=0.23.0
+# pytest-cov>=4.0.0

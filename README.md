@@ -1,4 +1,4 @@
-# Claude Voice Assistant
+# TORIS Claude Voice Assistant
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
@@ -68,34 +68,120 @@ Telegram Voice Message
 
 ## Prerequisites
 
-- **Python 3.12+**
 - **Telegram Bot** - Create one via [@BotFather](https://t.me/botfather)
 - **ElevenLabs account** - API key from [elevenlabs.io](https://elevenlabs.io)
-- **Claude Code** - Install via `npm install -g @anthropic-ai/claude-code`
+- **Claude Access** - Choose one authentication method (see below)
 
-## Quick Start
+For Docker deployment:
+- **Docker** and **Docker Compose**
 
-1. Clone and setup:
+For non-Docker deployment:
+- **Python 3.12+**
+- **Node.js 20+** (for Claude Code CLI)
+
+### Claude Authentication
+
+Choose ONE of these methods:
+
+| Method | Best For | Setup |
+|--------|----------|-------|
+| **API Key** | Docker, CI/CD, teams | Set `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com) |
+| **Subscription** | Personal use, Pro/Max/Teams plans | Run `claude /login` once, mount credentials |
+
+**API Key Method:**
+- Uses pre-paid API credits
+- Set `ANTHROPIC_API_KEY` in your env file
+- Works immediately in Docker
+
+**Subscription Method (Pro/Max/Teams):**
+- Uses your Claude subscription
+- No API key needed
+- For Docker: login on host first, then mount credentials
+
+## Deployment Options
+
+This project supports two deployment modes:
+
+### Option 1: Docker (Recommended for Production)
+
+Best for production deployment with automatic restarts and isolation.
+
+**Quick Start:**
 ```bash
-git clone https://github.com/toruai/claude-voice-assistant.git
-cd claude-voice-assistant
+# Clone the repository
+git clone --recurse-submodules https://github.com/toruai/toris-claude-voice-assistant.git
+cd toris-claude-voice-assistant
+
+# Configure
+cp docker/toris.env.example docker/toris.env
+# Edit docker/toris.env with your settings
+
+# Choose authentication method:
+# Option A: Add ANTHROPIC_API_KEY to docker/toris.env
+# Option B: Login with subscription, then uncomment credentials mount in docker-compose.yml
+#           claude /login  # Run on host first
+
+# Start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f toris
+
+# Stop
+docker-compose down
+```
+
+**Benefits:**
+- Isolated sandbox for file operations
+- Automatic restarts on failure
+- No Python/Node installation needed
+- Persistent state across restarts
+- Toru agents and skills pre-installed (Garry, Bob, Sentinel, Scout, etc.)
+
+**Directory Structure:**
+```
+toris-claude-voice-assistant/
+├── Dockerfile
+├── docker-compose.yml
+├── docker/
+│   └── toris.env  # Your config (from example.env)
+└── prompts/           # Persona prompts
+```
+
+See [Docker Deployment Guide](#docker-deployment-guide) for details.
+
+### Option 2: Non-Docker (Systemd)
+
+Best for development or single-persona deployments on Linux.
+
+**Quick Start:**
+```bash
+# Clone and setup
+git clone --recurse-submodules https://github.com/toruai/toris-claude-voice-assistant.git
+cd toris-claude-voice-assistant
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-2. Configure:
-```bash
+# Install Claude Code CLI
+npm install -g @anthropic-ai/claude-code
+
+# Install Toru agents and skills (optional but recommended)
+cd .claude-settings && ./install.sh && cd ..
+
+# Configure
 cp .env.example .env
 # Edit .env with your values
-```
 
-3. Run:
-```bash
+# Run
 python bot.py
 ```
 
-4. Send a voice message to your Telegram bot.
+The agents install adds 7 specialized AI agents (Garry, Bob, Sentinel, Scout, etc.) and 14 skills like `/dev-cycle` and `/scout`. See [toru-claude-agents](https://github.com/ToruAI/toru-claude-agents) for details.
+
+See [Systemd Deployment Guide](#systemd-deployment-guide) for production setup.
+
+---
 
 ## Configuration
 
@@ -115,8 +201,8 @@ python bot.py
 | `SYSTEM_PROMPT_FILE` | - | Path to persona prompt file |
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | ElevenLabs voice (George) |
 | `TELEGRAM_TOPIC_ID` | - | Filter to specific forum topic |
-| `CLAUDE_WORKING_DIR` | `/home/dev` | Directory Claude can read from |
-| `CLAUDE_SANDBOX_DIR` | `/home/dev/claude-voice-sandbox` | Directory Claude can write to |
+| `CLAUDE_WORKING_DIR` | `/home/youruser` | Directory Claude can read from |
+| `CLAUDE_SANDBOX_DIR` | `/home/youruser/claude-voice-sandbox` | Directory Claude can write to |
 | `MAX_VOICE_RESPONSE_CHARS` | `500` | Max characters for TTS |
 
 ## User Settings
@@ -136,35 +222,167 @@ Run multiple AI personalities from the same codebase. Each gets its own:
 - Sandbox directory
 - Topic filter (for group chats)
 
-### Directory Structure
+### Docker Multi-Persona
 
+Duplicate the service in `docker-compose.yml` with different env files:
+
+```yaml
+services:
+  toris:
+    env_file: docker/toris.env
+    volumes:
+      - toris-state:/home/claude/state
+      - toris-sandbox:/home/claude/sandbox
+
+  assistant2:
+    env_file: docker/assistant2.env
+    volumes:
+      - assistant2-state:/home/claude/state
+      - assistant2-sandbox:/home/claude/sandbox
 ```
-/home/dev/voice-agents/
-├── v.env              # V persona config
-├── tc.env             # TC persona config
-└── sandboxes/
-    ├── v/             # V's isolated sandbox
-    └── tc/            # TC's isolated sandbox
-```
 
-### Example Persona Prompt
+### Persona Prompt
 
-See `prompts/v.md` for a full example. Key elements:
+See `prompts/toris.md` for the default TORIS persona. Key elements:
 
 ```markdown
-You are V, a brilliant and slightly cynical voice assistant.
+# TORIS - Your Second Brain
 
-## Your capabilities:
-- You can READ files from anywhere in {read_dir}
-- You can WRITE and EXECUTE only in {sandbox_dir}
-- You have WebSearch for current information
+You are TORIS, a voice-powered thinking partner built on Claude.
 
-## CRITICAL - Voice output rules:
+## Your Capabilities
+- READ files from {read_dir}
+- WRITE and EXECUTE in {sandbox_dir}
+- Web search, research, note-taking via MEGG
+
+## CRITICAL - Voice Output Rules
 - NO markdown formatting
 - Speak in natural flowing sentences
 ```
 
-### Systemd Service
+---
+
+## Docker Deployment Guide
+
+### Building and Running
+
+```bash
+# Build the image
+docker-compose build
+
+# Start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f toris
+
+# Restart
+docker-compose restart toris
+
+# Stop
+docker-compose down
+
+# Stop and remove volumes (WARNING: deletes session history)
+docker-compose down -v
+```
+
+### Configuration
+
+Copy and edit the example environment file:
+
+```bash
+cp docker/toris.env.example docker/toris.env
+```
+
+**Key environment variables:**
+- `TELEGRAM_BOT_TOKEN` - Bot token from @BotFather
+- `TELEGRAM_DEFAULT_CHAT_ID` - Your Telegram chat ID (security)
+- `ELEVENLABS_API_KEY` - ElevenLabs API key
+- `ANTHROPIC_API_KEY` - Anthropic API key (optional if using subscription)
+- `ELEVENLABS_VOICE_ID` - Voice selection
+- `PERSONA_NAME` - Display name in logs
+- `SYSTEM_PROMPT_FILE` - Path to persona prompt
+- `MAX_VOICE_RESPONSE_CHARS` - Max TTS characters (default: 2000)
+
+### Authentication
+
+**Option 1: API Key** (recommended)
+```bash
+# Add to docker/toris.env
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Option 2: Claude Subscription**
+```bash
+# 1. Login on host machine
+claude /login
+
+# 2. Uncomment in docker-compose.yml volumes:
+- ~/.claude/.credentials.json:/home/claude/.claude/.credentials.json:ro
+```
+
+### Data Persistence
+
+Docker volumes store persistent data:
+
+| Volume | Contents | Location |
+|--------|----------|----------|
+| `toris-state` | Session history & settings | `/home/claude/state` |
+| `toris-sandbox` | File operations sandbox | `/home/claude/sandbox` |
+| `toris-claude-config` | Claude credentials & settings | `/home/claude/.claude` |
+
+**Backup state:**
+```bash
+# Export session data
+docker cp toris-claude-voice-assistant:/home/claude/state ./backup-state
+
+# Import session data
+docker cp ./backup-state/. toris-claude-voice-assistant:/home/claude/state
+docker-compose restart toris
+```
+
+### Health Checks
+
+Docker monitors bot health automatically. Check status:
+
+```bash
+# Container health
+docker-compose ps
+
+# If unhealthy, check logs
+docker-compose logs v
+```
+
+---
+
+## Systemd Deployment Guide
+
+For non-Docker production deployments on Linux.
+
+### Setup
+
+```bash
+# Create deployment directory
+mkdir -p /opt/toris-claude-voice-assistant
+cd /opt/toris-claude-voice-assistant
+
+# Clone and install
+git clone --recurse-submodules https://github.com/toruai/toris-claude-voice-assistant.git .
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# Install Claude Code globally
+npm install -g @anthropic-ai/claude-code
+
+# Create config directory
+mkdir -p /etc/claude-voice
+cp .env.example /etc/claude-voice/v.env
+# Edit /etc/claude-voice/v.env with your values
+```
+
+### Service File
+
+Create `/etc/systemd/system/claude-voice-v.service`:
 
 ```ini
 [Unit]
@@ -173,15 +391,66 @@ After=network.target
 
 [Service]
 Type=simple
-User=dev
-WorkingDirectory=/path/to/claude-voice-assistant
-EnvironmentFile=/home/dev/voice-agents/v.env
-ExecStart=/path/to/claude-voice-assistant/.venv/bin/python bot.py
+User=claude
+Group=claude
+WorkingDirectory=/opt/toris-claude-voice-assistant
+EnvironmentFile=/etc/claude-voice/v.env
+ExecStart=/opt/toris-claude-voice-assistant/.venv/bin/python bot.py
 Restart=always
+RestartSec=10
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/claude-voice/v-sandbox /var/lib/claude-voice/v-state
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+### Create User and Directories
+
+```bash
+# Create service user
+useradd -r -s /bin/false claude
+
+# Create state and sandbox directories
+mkdir -p /var/lib/claude-voice/{v-state,v-sandbox}
+chown -R claude:claude /var/lib/claude-voice
+
+# Set sandbox path in env file
+echo "CLAUDE_SANDBOX_DIR=/var/lib/claude-voice/v-sandbox" >> /etc/claude-voice/v.env
+```
+
+### Manage Service
+
+```bash
+# Enable and start
+systemctl daemon-reload
+systemctl enable claude-voice-v
+systemctl start claude-voice-v
+
+# Check status
+systemctl status claude-voice-v
+
+# View logs
+journalctl -u claude-voice-v -f
+
+# Restart
+systemctl restart claude-voice-v
+```
+
+### Multiple Personas with Systemd
+
+Create separate service files and env files:
+- `/etc/systemd/system/claude-voice-v.service` + `/etc/claude-voice/v.env`
+- `/etc/systemd/system/claude-voice-tc.service` + `/etc/claude-voice/tc.env`
+
+Each persona needs its own sandbox and state directories.
+
+---
 
 ## Bot Commands
 

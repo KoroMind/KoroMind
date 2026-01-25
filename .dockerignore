@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+
+# Environment files with secrets
+.env
+.env.*
+!.env.example
+docker/*.env
+!docker/*.env.example
+
+# State and session files
+sessions_state.json
+user_settings.json
+state/
+*.db
+*.sqlite
+
+# Sandboxes and temporary files
+*sandbox*/
+*.log
+*.tmp
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (not needed in image)
+README.md
+LICENSE
+docs/
+
+# Testing
+test_*.py
+.pytest_cache/
+.coverage
+htmlcov/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore

@@ -6,8 +6,8 @@ Thanks for your interest in contributing! This document outlines how to get star
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/toruai/claude-voice-assistant.git
-cd claude-voice-assistant
+git clone https://github.com/toruai/toris-voice.git
+cd toris-voice
 ```
 
 2. Create a virtual environment:
@@ -78,7 +78,7 @@ pytest test_bot.py -v
 ## Project Structure
 
 ```
-claude-voice-assistant/
+toris-voice/
 ├── bot.py              # Main bot code
 ├── test_bot.py         # Test suite
 ├── prompts/            # Persona prompt files

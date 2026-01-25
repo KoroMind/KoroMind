@@ -16,7 +16,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (uid 1000 required by Claude CLI)
-RUN useradd -m -u 1000 -s /bin/bash claude && \
+# Delete existing node user first (it has UID 1000)
+RUN userdel -r node && \
+    useradd -m -u 1000 -s /bin/bash claude && \
     mkdir -p /home/claude/.claude && \
     chown -R claude:claude /home/claude
 

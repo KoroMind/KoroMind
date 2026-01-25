@@ -1,7 +1,7 @@
 # TORIS Claude Voice Assistant
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
 **A voice-first interface to Claude's full agentic capabilities.** Not another chatbot wrapper.
 
@@ -76,7 +76,7 @@ For Docker deployment:
 - **Docker** and **Docker Compose**
 
 For non-Docker deployment:
-- **Python 3.12+**
+- **Python 3.11+**
 - **Node.js 20+** (for Claude Code CLI)
 
 ### Claude Authentication
@@ -368,7 +368,7 @@ cd /opt/toris-claude-voice-assistant
 
 # Clone and install
 git clone --recurse-submodules https://github.com/toruai/toris-claude-voice-assistant.git .
-python3.12 -m venv .venv
+python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
 # Install Claude Code globally

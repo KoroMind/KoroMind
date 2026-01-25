@@ -6,10 +6,11 @@
 # ============================================================================
 FROM node:20-slim AS base
 
-# Install Python 3.12 and system dependencies
+# Install Python and system dependencies
+# Note: Debian bookworm has Python 3.11, which is compatible
 RUN apt-get update && apt-get install -y \
-    python3.12 \
-    python3.12-venv \
+    python3 \
+    python3-venv \
     python3-pip \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -35,7 +36,7 @@ WORKDIR /home/claude/app
 COPY --chown=claude:claude requirements.txt .
 
 # Create virtual environment and install dependencies
-RUN python3.12 -m venv .venv && \
+RUN python3 -m venv .venv && \
     .venv/bin/pip install --no-cache-dir --upgrade pip && \
     .venv/bin/pip install --no-cache-dir -r requirements.txt
 

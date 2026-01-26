@@ -35,3 +35,4 @@ htmlcov/
 *.swp
 *.swo
 credentials.json
+uv.lock

@@ -132,7 +132,7 @@ class TestCommandHandlers:
 
         update.message.reply_text.assert_called_once()
         call_text = update.message.reply_text.call_args[0][0]
-        assert "Voice Assistant" in call_text
+        assert "KoroMind" in call_text
 
     @pytest.mark.asyncio
     async def test_cmd_start_allows_all_when_chat_id_zero(self, monkeypatch):

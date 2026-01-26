@@ -1,0 +1,7 @@
+services:
+  koro:
+    volumes:
+      # Mount local code for quick dev iteration
+      - ./:/home/claude/app
+      # Keep prompts available (mounted above, but explicit is OK)
+      - ./prompts:/home/claude/app/prompts:ro

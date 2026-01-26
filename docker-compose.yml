@@ -17,7 +17,7 @@ services:
     build: .
     container_name: claude-voice-koro
     env_file:
-      - docker/koro.env
+      - .env
     volumes:
       # Persistent state (session history, user settings)
       - koro-state:/home/claude/state

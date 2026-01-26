@@ -34,3 +34,4 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+credentials.json

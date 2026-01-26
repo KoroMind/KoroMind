@@ -13,7 +13,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -41,6 +41,41 @@ from claude_agent_sdk.types import (
 )
 
 load_dotenv()
+
+
+def check_claude_auth() -> tuple[bool, str]:
+    """Check if Claude authentication is configured.
+
+    Returns:
+        (is_authenticated, auth_method) - auth_method is 'api_key', 'oauth', 'saved_token', or 'none'
+    """
+    # Method 1: API Key
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return True, "api_key"
+
+    # Method 2: Saved OAuth token (from /setup)
+    if os.getenv("CLAUDE_CODE_OAUTH_TOKEN"):
+        return True, "saved_token"
+
+    # Method 3: OAuth credentials file
+    credentials_path = Path.home() / ".claude" / ".credentials.json"
+    if credentials_path.exists():
+        try:
+            import time
+            creds = json.loads(credentials_path.read_text())
+            oauth = creds.get("claudeAiOauth", {})
+            if oauth.get("accessToken"):
+                # Check if not expired (with 5 min buffer)
+                expires_at = oauth.get("expiresAt", 0)
+                if expires_at > (time.time() * 1000 + 300000):
+                    return True, "oauth"
+                # Expired but has refresh token - Claude SDK will handle refresh
+                if oauth.get("refreshToken"):
+                    return True, "oauth"
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    return False, "none"
 
 
 def validate_environment():
@@ -73,6 +108,16 @@ def validate_environment():
         print("WARNING: TELEGRAM_DEFAULT_CHAT_ID is 0 - bot will accept all messages")
         print("         Set this to your chat ID to restrict access")
 
+    # Check Claude authentication (don't exit - can be configured via Telegram)
+    is_auth, auth_method = check_claude_auth()
+    if not is_auth:
+        print("WARNING: Claude authentication not configured - bot will start but Claude won't work")
+        print("         Use /setup in Telegram to configure, or set ANTHROPIC_API_KEY in env")
+    else:
+        print(f"Claude auth: {auth_method}")
+
+    return is_auth, auth_method
+
 
 # Setup logging with configurable level
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -87,8 +132,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ALLOWED_CHAT_ID = int(os.getenv("TELEGRAM_DEFAULT_CHAT_ID", "0"))
 TOPIC_ID = os.getenv("TELEGRAM_TOPIC_ID")  # Empty = all topics, set = only this topic
-CLAUDE_WORKING_DIR = os.getenv("CLAUDE_WORKING_DIR", "/home/dev")
-SANDBOX_DIR = os.getenv("CLAUDE_SANDBOX_DIR", "/home/dev/claude-voice-sandbox")
+CLAUDE_WORKING_DIR = os.getenv("CLAUDE_WORKING_DIR", os.path.expanduser("~"))
+SANDBOX_DIR = os.getenv("CLAUDE_SANDBOX_DIR", os.path.join(os.path.expanduser("~"), "claude-voice-sandbox"))
 MAX_VOICE_CHARS = int(os.getenv("MAX_VOICE_RESPONSE_CHARS", "500"))
 
 # Persona config
@@ -274,6 +319,44 @@ def save_settings():
     """Save user settings to file."""
     with open(SETTINGS_FILE, "w") as f:
         json.dump(user_settings, f, indent=2)
+
+
+# Credentials file for user-provided API keys
+CREDENTIALS_FILE = Path(__file__).parent / "credentials.json"
+
+
+def load_credentials() -> dict:
+    """Load saved credentials from file."""
+    if CREDENTIALS_FILE.exists():
+        try:
+            with open(CREDENTIALS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def save_credentials(creds: dict):
+    """Save credentials to file with secure permissions."""
+    with open(CREDENTIALS_FILE, "w") as f:
+        json.dump(creds, f, indent=2)
+    # Restrict file permissions (owner read/write only)
+    CREDENTIALS_FILE.chmod(0o600)
+
+
+def apply_saved_credentials():
+    """Apply saved credentials on startup."""
+    global elevenlabs, ELEVENLABS_API_KEY
+    creds = load_credentials()
+
+    if creds.get("claude_token"):
+        os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = creds["claude_token"]
+        debug("Applied saved Claude token")
+
+    if creds.get("elevenlabs_key"):
+        ELEVENLABS_API_KEY = creds["elevenlabs_key"]
+        elevenlabs = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+        debug("Applied saved ElevenLabs key")
 
 
 def get_user_state(user_id: int) -> dict:
@@ -619,6 +702,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Claude Voice Assistant\n\n"
         "Send me a voice message and I'll process it with Claude.\n\n"
         "Commands:\n"
+        "/setup - Configure API credentials\n"
         "/new [name] - Start new session\n"
         "/continue - Resume last session\n"
         "/sessions - List all sessions\n"
@@ -778,7 +862,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
             capture_output=True,
             text=True,
             timeout=30,
-            cwd="/home/dev"
+            cwd=CLAUDE_WORKING_DIR
         )
         if result.returncode == 0:
             status.append("Claude Code: OK")
@@ -850,6 +934,135 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(message, reply_markup=reply_markup)
+
+
+# ============ Token Configuration Commands ============
+
+async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /setup command - show API credentials status."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
+
+    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+        return
+
+    creds = load_credentials()
+
+    # Show current status
+    claude_status = "✓ Set" if creds.get("claude_token") else "✗ Not set"
+    elevenlabs_status = "✓ Set" if creds.get("elevenlabs_key") else "✗ Not set"
+
+    await update.message.reply_text(
+        f"**API Credentials Status**\n\n"
+        f"Claude Token: {claude_status}\n"
+        f"ElevenLabs Key: {elevenlabs_status}\n\n"
+        f"**To configure:**\n"
+        f"`/claude_token <token>` - Set Claude token\n"
+        f"`/elevenlabs_key <key>` - Set ElevenLabs key\n\n"
+        f"_Get Claude token by running `claude setup-token` in terminal._\n"
+        f"_Token messages are deleted for security._",
+        parse_mode="Markdown"
+    )
+
+
+async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /claude_token command - set Claude OAuth token."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
+
+    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+        return
+
+    # Delete the message immediately (contains sensitive token)
+    thread_id = update.message.message_thread_id
+    try:
+        await update.message.delete()
+    except Exception as e:
+        debug(f"Could not delete token message: {e}")
+
+    # Get token from args
+    if not context.args:
+        await update.effective_chat.send_message(
+            "Usage: `/claude_token <token>`\n\n"
+            "Get token by running `claude setup-token` in your terminal.",
+            message_thread_id=thread_id,
+            parse_mode="Markdown"
+        )
+        return
+
+    token = " ".join(context.args).strip()
+
+    if not token.startswith("sk-ant-"):
+        await update.effective_chat.send_message(
+            "❌ Invalid token format. Token should start with `sk-ant-`",
+            message_thread_id=thread_id,
+            parse_mode="Markdown"
+        )
+        return
+
+    # Save token
+    creds = load_credentials()
+    creds["claude_token"] = token
+    save_credentials(creds)
+
+    # Apply immediately
+    os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = token
+
+    await update.effective_chat.send_message(
+        "✓ Claude token saved and applied!",
+        message_thread_id=thread_id
+    )
+
+
+async def cmd_elevenlabs_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /elevenlabs_key command - set ElevenLabs API key."""
+    global elevenlabs, ELEVENLABS_API_KEY
+
+    if not should_handle_message(update.message.message_thread_id):
+        return
+
+    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+        return
+
+    # Delete the message immediately (contains sensitive key)
+    thread_id = update.message.message_thread_id
+    try:
+        await update.message.delete()
+    except Exception as e:
+        debug(f"Could not delete key message: {e}")
+
+    # Get key from args
+    if not context.args:
+        await update.effective_chat.send_message(
+            "Usage: `/elevenlabs_key <key>`\n\n"
+            "Get key from elevenlabs.io/app/settings/api-keys",
+            message_thread_id=thread_id,
+            parse_mode="Markdown"
+        )
+        return
+
+    key = " ".join(context.args).strip()
+
+    if len(key) < 20:
+        await update.effective_chat.send_message(
+            "❌ Invalid key format. Key seems too short.",
+            message_thread_id=thread_id
+        )
+        return
+
+    # Save key
+    creds = load_credentials()
+    creds["elevenlabs_key"] = key
+    save_credentials(creds)
+
+    # Apply immediately
+    ELEVENLABS_API_KEY = key
+    elevenlabs = ElevenLabs(api_key=key)
+
+    await update.effective_chat.send_message(
+        "✓ ElevenLabs API key saved and applied!",
+        message_thread_id=thread_id
+    )
 
 
 async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1120,6 +1333,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Main entry point."""
+    # Apply any saved credentials first (from previous /setup)
+    apply_saved_credentials()
+
+    # Now validate environment (will check if auth is configured)
     validate_environment()
     load_state()
     load_settings()
@@ -1137,6 +1354,9 @@ def main():
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("settings", cmd_settings))
+    app.add_handler(CommandHandler("setup", cmd_setup))
+    app.add_handler(CommandHandler("claude_token", cmd_claude_token))
+    app.add_handler(CommandHandler("elevenlabs_key", cmd_elevenlabs_key))
 
     # Callback handlers for inline keyboards
     app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^setting_"))

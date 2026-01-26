@@ -4,12 +4,12 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from ..config import ALLOWED_CHAT_ID, TOPIC_ID, SANDBOX_DIR
+from ..config import ALLOWED_CHAT_ID, SANDBOX_DIR
 from ..auth import load_credentials, save_credentials
 from ..state import get_state_manager
 from ..voice import get_voice_engine
 from ..claude import get_claude_client
-from .utils import should_handle_message, debug
+from .utils import should_handle_message
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -21,8 +21,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "Claude Voice Assistant\n\n"
-        "Send me a voice message and I'll process it with Claude.\n\n"
+        "KoroMind\n\n"
+        "Send me a voice message and I'll think with you.\n\n"
         "Commands:\n"
         "/setup - Configure API credentials\n"
         "/new [name] - Start new session\n"

@@ -2,7 +2,7 @@
 
 import pytest
 from io import BytesIO
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock
 
 from koro.voice import VoiceEngine
 

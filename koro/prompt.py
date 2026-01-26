@@ -20,16 +20,36 @@ def load_system_prompt(prompt_file: str = None) -> str:
 
     if file_path:
         prompt_path = Path(file_path)
+        was_relative = not prompt_path.is_absolute()
+
         # If relative, look relative to BASE_DIR
-        if not prompt_path.is_absolute():
+        if was_relative:
             prompt_path = BASE_DIR / prompt_path
 
-        if prompt_path.exists():
-            content = prompt_path.read_text()
-            # Replace placeholders
-            content = content.replace("{sandbox_dir}", SANDBOX_DIR)
-            content = content.replace("{read_dir}", CLAUDE_WORKING_DIR)
-            return content
+        try:
+            resolved_path = prompt_path.resolve()
+
+            # For relative paths, validate they stay within BASE_DIR
+            # This prevents path traversal attacks like "../../../etc/passwd"
+            if was_relative:
+                base_resolved = BASE_DIR.resolve()
+                if not str(resolved_path).startswith(str(base_resolved)):
+                    # Path traversal attempt - fall through to default prompt
+                    pass
+                elif resolved_path.exists():
+                    content = resolved_path.read_text()
+                    content = content.replace("{sandbox_dir}", SANDBOX_DIR)
+                    content = content.replace("{read_dir}", CLAUDE_WORKING_DIR)
+                    return content
+            elif resolved_path.exists():
+                # Absolute paths are trusted (admin-configured)
+                content = resolved_path.read_text()
+                content = content.replace("{sandbox_dir}", SANDBOX_DIR)
+                content = content.replace("{read_dir}", CLAUDE_WORKING_DIR)
+                return content
+        except (OSError, ValueError):
+            # Invalid path - fall through to default prompt
+            pass
 
     # Fallback default prompt
     return f"""You are a voice assistant. You're talking to the user.

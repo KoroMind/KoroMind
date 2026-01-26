@@ -1,8 +1,6 @@
 """Tests for koro.rate_limit module."""
 
 import time
-import pytest
-from unittest.mock import patch
 
 from koro.rate_limit import RateLimiter
 

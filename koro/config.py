@@ -108,15 +108,17 @@ def validate_environment() -> tuple[bool, str]:
     if missing:
         return False, "Missing required environment variables:\n" + "\n".join(missing)
 
-    # Validate TELEGRAM_DEFAULT_CHAT_ID is a valid integer
-    chat_id = get_env("TELEGRAM_DEFAULT_CHAT_ID", "0")
+    # Validate TELEGRAM_DEFAULT_CHAT_ID is set and valid
+    chat_id = get_env("TELEGRAM_DEFAULT_CHAT_ID", "")
+    if not chat_id:
+        return False, "Missing required environment variable:\n  - TELEGRAM_DEFAULT_CHAT_ID: Your Telegram chat ID (run /start to get it)"
+
     try:
-        int(chat_id)
+        chat_id_int = int(chat_id)
     except ValueError:
         return False, f"TELEGRAM_DEFAULT_CHAT_ID must be a number, got: {chat_id}"
 
-    warnings = []
-    if chat_id == "0":
-        warnings.append("TELEGRAM_DEFAULT_CHAT_ID is 0 - bot will accept all messages")
+    if chat_id_int == 0:
+        return False, "TELEGRAM_DEFAULT_CHAT_ID cannot be 0 (would accept messages from anyone). Set it to your chat ID."
 
-    return True, "\n".join(warnings) if warnings else ""
+    return True, ""

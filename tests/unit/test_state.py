@@ -1,8 +1,6 @@
 """Tests for koro.state module."""
 
 import json
-import pytest
-from pathlib import Path
 
 from koro.state import StateManager
 

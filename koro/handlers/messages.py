@@ -60,7 +60,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Show what was heard
         preview = text[:100] + '...' if len(text) > 100 else text
-        await processing_msg.edit_text(f"Heard: {preview}\n\nAsking Claude...")
+        await processing_msg.edit_text(f"Heard: {preview}\n\nAsking Koro...")
 
         # Call Claude
         response, new_session_id, metadata = await _call_claude_with_settings(
@@ -111,7 +111,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     settings = state_manager.get_user_settings(user_id)
     text = update.message.text
 
-    processing_msg = await update.message.reply_text("Asking Claude...")
+    processing_msg = await update.message.reply_text("Asking Koro...")
 
     try:
         response, new_session_id, metadata = await _call_claude_with_settings(

@@ -1,11 +1,8 @@
 """Tests for koro.prompt module."""
 
-import pytest
-from pathlib import Path
 from datetime import datetime
-from unittest.mock import patch
 
-from koro.prompt import load_system_prompt, build_dynamic_prompt, PromptManager
+from koro.prompt import build_dynamic_prompt, PromptManager
 
 
 class TestLoadSystemPrompt:
@@ -76,6 +73,35 @@ class TestLoadSystemPrompt:
 
         content = koro.prompt.load_system_prompt("prompts/test.md")
         assert content == "Relative prompt content"
+
+    def test_path_traversal_blocked(self, tmp_path, monkeypatch):
+        """load_system_prompt blocks path traversal attempts."""
+        # Create a file outside BASE_DIR
+        outside_dir = tmp_path / "outside"
+        outside_dir.mkdir()
+        secret_file = outside_dir / "secret.txt"
+        secret_file.write_text("SECRET DATA")
+
+        # Set BASE_DIR to a subdirectory
+        base_dir = tmp_path / "app"
+        base_dir.mkdir()
+
+        import koro.config
+        monkeypatch.setattr(koro.config, "BASE_DIR", base_dir)
+        monkeypatch.setattr(koro.config, "SYSTEM_PROMPT_FILE", "")
+        monkeypatch.setattr(koro.config, "SANDBOX_DIR", "/sandbox")
+        monkeypatch.setattr(koro.config, "CLAUDE_WORKING_DIR", "/working")
+
+        import importlib
+        import koro.prompt
+        importlib.reload(koro.prompt)
+
+        # Try to access file outside BASE_DIR via path traversal
+        content = koro.prompt.load_system_prompt("../outside/secret.txt")
+
+        # Should return default prompt, not the secret file
+        assert "SECRET DATA" not in content
+        assert "voice assistant" in content.lower()
 
 
 class TestBuildDynamicPrompt:

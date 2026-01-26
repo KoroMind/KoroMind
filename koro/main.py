@@ -110,7 +110,7 @@ def main():
     debug("Bot starting...")
     debug(f"Persona: {PERSONA_NAME}")
     debug(f"Voice ID: {ELEVENLABS_VOICE_ID}")
-    debug(f"TTS: eleven_turbo_v2_5 with expressive settings")
+    debug("TTS: eleven_turbo_v2_5 with expressive settings")
     debug(f"Sandbox: {SANDBOX_DIR}")
     debug(f"Read access: {CLAUDE_WORKING_DIR}")
     debug(f"Chat ID: {ALLOWED_CHAT_ID}")

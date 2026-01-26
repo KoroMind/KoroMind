@@ -1,7 +1,6 @@
 """Claude SDK wrapper for agent interactions."""
 
 import json
-import asyncio
 import subprocess
 from pathlib import Path
 from typing import Callable, Any
@@ -12,8 +11,6 @@ from claude_agent_sdk.types import (
     ResultMessage,
     TextBlock,
     ToolUseBlock,
-    PermissionResultAllow,
-    PermissionResultDeny,
 )
 
 from .config import SANDBOX_DIR, CLAUDE_WORKING_DIR

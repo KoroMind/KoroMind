@@ -1,7 +1,5 @@
 """Tests for koro.config module."""
 
-import os
-import pytest
 
 
 class TestEnvHelpers:
@@ -114,8 +112,8 @@ class TestValidateEnvironment:
         assert is_valid is False
         assert "must be a number" in message
 
-    def test_validate_success_with_warning(self, monkeypatch):
-        """Validation succeeds but warns when chat ID is 0."""
+    def test_validate_fails_with_zero_chat_id(self, monkeypatch):
+        """Validation fails when chat ID is 0 (security risk)."""
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
         monkeypatch.setenv("ELEVENLABS_API_KEY", "test_key")
         monkeypatch.setenv("TELEGRAM_DEFAULT_CHAT_ID", "0")
@@ -125,8 +123,27 @@ class TestValidateEnvironment:
         importlib.reload(koro.config)
 
         is_valid, message = koro.config.validate_environment()
-        assert is_valid is True
-        assert "accept all messages" in message
+        assert is_valid is False
+        assert "cannot be 0" in message
+
+    def test_validate_fails_with_missing_chat_id(self, monkeypatch):
+        """Validation fails when TELEGRAM_DEFAULT_CHAT_ID is not set."""
+        # Mock get_env to simulate missing chat ID
+        def mock_get_env(key, default=None):
+            if key == "TELEGRAM_BOT_TOKEN":
+                return "test_token"
+            if key == "ELEVENLABS_API_KEY":
+                return "test_key"
+            if key == "TELEGRAM_DEFAULT_CHAT_ID":
+                return default  # Returns None or empty string
+            return default
+
+        import koro.config
+        monkeypatch.setattr(koro.config, "get_env", mock_get_env)
+
+        is_valid, message = koro.config.validate_environment()
+        assert is_valid is False
+        assert "TELEGRAM_DEFAULT_CHAT_ID" in message
 
     def test_validate_full_success(self, monkeypatch):
         """Validation succeeds with all required vars."""

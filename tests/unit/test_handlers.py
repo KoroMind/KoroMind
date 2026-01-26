@@ -1,7 +1,7 @@
 """Tests for koro.handlers module."""
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 
 from koro.handlers.utils import should_handle_message, send_long_message
 
@@ -1014,3 +1014,235 @@ class TestCallbackHandlers:
         assert manager.settings["12345"]["voice_speed"] == 1.0
         # Error shown
         query.answer.assert_called_with("Invalid speed range")
+
+
+class TestMessageHandlersFullFlow:
+    """Tests for full message handler flow."""
+
+    @pytest.mark.asyncio
+    async def test_handle_text_full_flow(self, monkeypatch):
+        """handle_text processes text and calls Claude."""
+        from koro.state import StateManager
+        from koro.rate_limit import RateLimiter
+        from koro.voice import VoiceEngine
+        from koro.claude import ClaudeClient
+
+        manager = StateManager()
+        limiter = RateLimiter()
+        mock_voice = MagicMock(spec=VoiceEngine)
+        mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
+        mock_claude = MagicMock(spec=ClaudeClient)
+        mock_claude.query = AsyncMock(return_value=("Hello from Claude!", "sess123", {"cost": 0.01}))
+
+        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
+        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
+        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
+        monkeypatch.setattr("koro.handlers.messages.get_voice_engine", lambda: mock_voice)
+        monkeypatch.setattr("koro.handlers.messages.get_claude_client", lambda: mock_claude)
+
+        from koro.handlers.messages import handle_text
+
+        processing_msg = MagicMock()
+        processing_msg.edit_text = AsyncMock()
+
+        update = MagicMock()
+        update.effective_user.is_bot = False
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+        update.message.message_thread_id = None
+        update.message.text = "Hello Claude"
+        update.message.reply_text = AsyncMock(return_value=processing_msg)
+        update.message.reply_voice = AsyncMock()
+
+        context = MagicMock()
+
+        await handle_text(update, context)
+
+        # Claude should have been called
+        mock_claude.query.assert_called_once()
+        # Response should be sent
+        processing_msg.edit_text.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_text_no_audio_when_disabled(self, monkeypatch):
+        """handle_text skips audio when disabled."""
+        from koro.state import StateManager
+        from koro.rate_limit import RateLimiter
+        from koro.voice import VoiceEngine
+        from koro.claude import ClaudeClient
+
+        manager = StateManager()
+        manager.settings = {"12345": {"audio_enabled": False, "voice_speed": 1.0, "mode": "go_all", "watch_enabled": False}}
+        limiter = RateLimiter()
+        mock_voice = MagicMock(spec=VoiceEngine)
+        mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
+        mock_claude = MagicMock(spec=ClaudeClient)
+        mock_claude.query = AsyncMock(return_value=("Response", "sess123", {}))
+
+        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
+        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
+        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
+        monkeypatch.setattr("koro.handlers.messages.get_voice_engine", lambda: mock_voice)
+        monkeypatch.setattr("koro.handlers.messages.get_claude_client", lambda: mock_claude)
+
+        from koro.handlers.messages import handle_text
+
+        processing_msg = MagicMock()
+        processing_msg.edit_text = AsyncMock()
+
+        update = MagicMock()
+        update.effective_user.is_bot = False
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+        update.message.message_thread_id = None
+        update.message.text = "Hello"
+        update.message.reply_text = AsyncMock(return_value=processing_msg)
+        update.message.reply_voice = AsyncMock()
+
+        context = MagicMock()
+
+        await handle_text(update, context)
+
+        # TTS should not be called when audio is disabled
+        mock_voice.text_to_speech.assert_not_called()
+        update.message.reply_voice.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_voice_transcribes_and_calls_claude(self, monkeypatch):
+        """handle_voice transcribes voice and calls Claude."""
+        from koro.state import StateManager
+        from koro.rate_limit import RateLimiter
+        from koro.voice import VoiceEngine
+        from koro.claude import ClaudeClient
+
+        manager = StateManager()
+        limiter = RateLimiter()
+        mock_voice = MagicMock(spec=VoiceEngine)
+        mock_voice.transcribe = AsyncMock(return_value="Hello from voice")
+        mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
+        mock_claude = MagicMock(spec=ClaudeClient)
+        mock_claude.query = AsyncMock(return_value=("Hello back!", "sess123", {}))
+
+        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
+        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
+        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
+        monkeypatch.setattr("koro.handlers.messages.get_voice_engine", lambda: mock_voice)
+        monkeypatch.setattr("koro.handlers.messages.get_claude_client", lambda: mock_claude)
+
+        from koro.handlers.messages import handle_voice
+
+        processing_msg = MagicMock()
+        processing_msg.edit_text = AsyncMock()
+
+        voice_file = MagicMock()
+        voice_file.download_as_bytearray = AsyncMock(return_value=bytearray(b"voice_data"))
+
+        voice_obj = MagicMock()
+        voice_obj.get_file = AsyncMock(return_value=voice_file)
+
+        update = MagicMock()
+        update.effective_user.is_bot = False
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+        update.message.message_thread_id = None
+        update.message.voice = voice_obj
+        update.message.reply_text = AsyncMock(return_value=processing_msg)
+        update.message.reply_voice = AsyncMock()
+
+        context = MagicMock()
+
+        await handle_voice(update, context)
+
+        # Transcription should be called
+        mock_voice.transcribe.assert_called_once()
+        # Claude should be called
+        mock_claude.query.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_voice_error_on_transcription_failure(self, monkeypatch):
+        """handle_voice shows error on transcription failure."""
+        from koro.state import StateManager
+        from koro.rate_limit import RateLimiter
+        from koro.voice import VoiceEngine
+
+        manager = StateManager()
+        limiter = RateLimiter()
+        mock_voice = MagicMock(spec=VoiceEngine)
+        mock_voice.transcribe = AsyncMock(return_value="[Transcription error: API failed]")
+
+        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
+        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
+        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
+        monkeypatch.setattr("koro.handlers.messages.get_voice_engine", lambda: mock_voice)
+
+        from koro.handlers.messages import handle_voice
+
+        processing_msg = MagicMock()
+        processing_msg.edit_text = AsyncMock()
+
+        voice_file = MagicMock()
+        voice_file.download_as_bytearray = AsyncMock(return_value=bytearray(b"voice_data"))
+
+        voice_obj = MagicMock()
+        voice_obj.get_file = AsyncMock(return_value=voice_file)
+
+        update = MagicMock()
+        update.effective_user.is_bot = False
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+        update.message.message_thread_id = None
+        update.message.voice = voice_obj
+        update.message.reply_text = AsyncMock(return_value=processing_msg)
+
+        context = MagicMock()
+
+        await handle_voice(update, context)
+
+        # Error message should be shown
+        processing_msg.edit_text.assert_called()
+        call_text = processing_msg.edit_text.call_args[0][0]
+        assert "error" in call_text.lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_text_handles_exception(self, monkeypatch):
+        """handle_text handles exceptions gracefully."""
+        from koro.state import StateManager
+        from koro.rate_limit import RateLimiter
+        from koro.claude import ClaudeClient
+
+        manager = StateManager()
+        limiter = RateLimiter()
+        mock_claude = MagicMock(spec=ClaudeClient)
+        mock_claude.query = AsyncMock(side_effect=Exception("Connection failed"))
+
+        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
+        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
+        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
+        monkeypatch.setattr("koro.handlers.messages.get_claude_client", lambda: mock_claude)
+
+        from koro.handlers.messages import handle_text
+
+        processing_msg = MagicMock()
+        processing_msg.edit_text = AsyncMock()
+
+        update = MagicMock()
+        update.effective_user.is_bot = False
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+        update.message.message_thread_id = None
+        update.message.text = "Hello"
+        update.message.reply_text = AsyncMock(return_value=processing_msg)
+
+        context = MagicMock()
+
+        # Should not raise, should show error
+        await handle_text(update, context)
+
+        processing_msg.edit_text.assert_called()
+        call_text = processing_msg.edit_text.call_args[0][0]
+        assert "Error" in call_text

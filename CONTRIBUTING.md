@@ -6,8 +6,8 @@ Thanks for your interest in contributing! This document outlines how to get star
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/toruai/toris-voice.git
-cd toris-voice
+git clone https://github.com/KoroMind/KoroMind.git
+cd KoroMind
 ```
 
 2. Create a virtual environment:
@@ -78,12 +78,11 @@ pytest test_bot.py -v
 ## Project Structure
 
 ```
-toris-voice/
+KoroMind/
 ├── bot.py              # Main bot code
 ├── test_bot.py         # Test suite
 ├── prompts/            # Persona prompt files
-│   ├── v.md
-│   └── tc.md
+│   └── koro.md
 ├── .env.example        # Environment template
 ├── settings.example.json  # Permissions template
 └── requirements.txt    # Dependencies

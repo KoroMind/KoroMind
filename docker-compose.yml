@@ -1,32 +1,32 @@
-# TORIS Claude Voice Assistant - Docker Compose
+# KoroMind Claude Voice Assistant - Docker Compose
 #
 # Quick start:
-#   cp docker/toris.env.example docker/toris.env
-#   # Edit docker/toris.env with your API keys
+#   cp docker/koro.env.example docker/koro.env
+#   # Edit docker/koro.env with your API keys
 #   docker-compose up -d
 #
 # Logs:
-#   docker-compose logs -f toris
+#   docker-compose logs -f koro
 #
 # Authentication options:
-#   1. API Key: Set ANTHROPIC_API_KEY in docker/toris.env
+#   1. API Key: Set ANTHROPIC_API_KEY in docker/koro.env
 #   2. Subscription: Uncomment the credentials mount below after running 'claude /login' on host
 
 services:
-  toris:
+  koro:
     build: .
-    container_name: claude-voice-toris
+    container_name: claude-voice-koro
     env_file:
-      - docker/toris.env
+      - docker/koro.env
     volumes:
       # Persistent state (session history, user settings)
-      - toris-state:/home/claude/state
+      - koro-state:/home/claude/state
       # Sandbox for Claude file operations
-      - toris-sandbox:/home/claude/sandbox
+      - koro-sandbox:/home/claude/sandbox
       # Prompts directory (read-only)
       - ./prompts:/home/claude/app/prompts:ro
       # Claude credentials persistence
-      - toris-claude-config:/home/claude/.claude
+      - koro-claude-config:/home/claude/.claude
       # OPTIONAL: Mount host credentials for subscription users
       # Uncomment after running 'claude /login' on your host machine
       # - ~/.claude/.credentials.json:/home/claude/.claude/.credentials.json:ro
@@ -39,6 +39,6 @@ services:
       start_period: 40s
 
 volumes:
-  toris-state:
-  toris-sandbox:
-  toris-claude-config:
+  koro-state:
+  koro-sandbox:
+  koro-claude-config:

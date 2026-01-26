@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>Claude Voice Assistant</strong><br>
+  <strong>KoroMind</strong><br>
   <em>Voice-first interface to Claude's agentic capabilities</em>
 </p>
 
@@ -176,8 +176,8 @@ sessions_state.json          user_settings.json
 ### Setup
 
 ```bash
-git clone https://github.com/toruai/claude-voice-assistant.git
-cd claude-voice-assistant
+git clone https://github.com/KoroMind/KoroMind.git
+cd KoroMind
 
 python -m venv .venv
 source .venv/bin/activate
@@ -250,12 +250,11 @@ Run multiple AI personalities, each with their own bot, voice, and sandbox.
 
 | Persona | Purpose | Prompt |
 |---------|---------|--------|
-| V | General assistant with personality | `prompts/v.md` |
-| TC | TORIS Copilot - business-focused partner | `prompts/tc.md` |
+| Koro | Second brain thinking partner | `prompts/koro.md` |
 
 ### Running Multiple Instances
 
-Create separate environment files (see `docker/toris.env` as template):
+Create separate environment files (see `docker/koro.env` as template):
 
 Each persona gets:
 - Its own Telegram bot token
@@ -328,5 +327,5 @@ pytest test_bot.py --cov=bot --cov-report=term-missing
 ---
 
 <p align="center">
-  <strong>ToruAI</strong> | MIT License | 2026
+  <strong>KoroMind</strong> | MIT License | 2026
 </p>

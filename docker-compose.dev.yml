@@ -1,9 +1,0 @@
-services:
-  koro:
-    volumes:
-      # Mount local code for quick dev iteration
-      - ./:/home/claude/app
-      # Explicit bind-mount for package code
-      - ./koro:/home/claude/app/koro
-      # Keep prompts available (mounted above, but explicit is OK)
-      - ./prompts:/home/claude/app/prompts:ro

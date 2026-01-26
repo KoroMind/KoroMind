@@ -172,23 +172,15 @@ sessions_state.json          user_settings.json
 - Telegram bot token from [@BotFather](https://t.me/botfather)
 - ElevenLabs API key from [elevenlabs.io](https://elevenlabs.io)
 
-### Setup
+
+### Docker
 
 ```bash
-git clone https://github.com/KoroMind/KoroMind.git
-cd KoroMind
-
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-cp .env.example .env
-# Edit .env with your credentials
-
-python bot.py
+docker-compose up --build -d
 ```
 
 Send a voice message to your bot. That's it.
+
 
 ---
 

@@ -147,7 +147,6 @@ Claude wants tool → Send button to Telegram → Wait for click → Allow/Deny 
 | **Sessions** | Conversation context persists across messages and restarts |
 | **Watch Mode** | Real-time streaming of tool calls to Telegram |
 | **Approve Mode** | Human-in-the-loop for each tool execution |
-| **Multi-Persona** | Same codebase, different bot/voice/sandbox per personality |
 
 ### State Persistence
 
@@ -239,47 +238,6 @@ Access via `/settings`:
 - **Watch**: Stream tool calls to chat in real-time
 - **Audio**: Enable/disable voice responses
 - **Speed**: Voice playback speed (0.8x - 1.2x)
-
----
-
-## Multi-Persona Setup
-
-Run multiple AI personalities, each with their own bot, voice, and sandbox.
-
-### Example Personas
-
-| Persona | Purpose | Prompt |
-|---------|---------|--------|
-| Koro | Second brain thinking partner | `prompts/koro.md` |
-
-### Running Multiple Instances
-
-Create separate environment files (see `docker/koro.env` as template):
-
-Each persona gets:
-- Its own Telegram bot token
-- Unique voice ID
-- Isolated sandbox directory
-- Optional topic filter (for group chats)
-
-### Systemd Service Example
-
-```ini
-[Unit]
-Description=Claude Voice Assistant - V
-After=network.target
-
-[Service]
-Type=simple
-User=dev
-WorkingDirectory=/path/to/claude-voice-assistant
-EnvironmentFile=/home/dev/voice-agents/v.env
-ExecStart=/path/to/.venv/bin/python bot.py
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
 
 ---
 

@@ -1,4 +1,4 @@
-# Claude Voice Assistant - Production Docker Image
+# KoroMind - Production Docker Image
 # Multi-stage build for efficient image size
 
 # ============================================================================

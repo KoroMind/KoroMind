@@ -5,7 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from ..config import ALLOWED_CHAT_ID, SANDBOX_DIR
-from ..auth import load_credentials, save_credentials
+from ..auth import check_claude_auth, load_credentials, save_credentials
 from ..state import get_state_manager
 from ..voice import get_voice_engine
 from ..claude import get_claude_client
@@ -245,19 +245,52 @@ async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     creds = load_credentials()
+    claude_configured, claude_method = check_claude_auth()
 
-    claude_status = "Set" if creds.get("claude_token") else "Not set"
-    elevenlabs_status = "Set" if creds.get("elevenlabs_key") else "Not set"
+    if claude_configured:
+        if claude_method == "api_key":
+            claude_status = "✓ Set (env)"
+        elif claude_method == "saved_token":
+            claude_status = "✓ Set (saved)" if creds.get("claude_token") else "✓ Set (env)"
+        elif claude_method == "oauth":
+            claude_status = "✓ Set (oauth)"
+        else:
+            claude_status = "✓ Set"
+    else:
+        claude_status = "Not set"
+
+    elevenlabs_env = os.getenv("ELEVENLABS_API_KEY")
+    if elevenlabs_env:
+        elevenlabs_status = "✓ Set (env)"
+    elif creds.get("elevenlabs_key"):
+        elevenlabs_status = "✓ Set (saved)"
+    else:
+        elevenlabs_status = "Not set"
+
+    missing_claude = not claude_configured
+    missing_elevenlabs = not (elevenlabs_env or creds.get("elevenlabs_key"))
+
+    message_lines = [
+        "**API Credentials Status**",
+        "",
+        f"Claude Token: {claude_status}",
+        f"ElevenLabs Key: {elevenlabs_status}",
+    ]
+
+    if missing_claude or missing_elevenlabs:
+        message_lines.extend(["", "**To configure:**"])
+        if missing_claude:
+            message_lines.append("`/claude_token <token>` - Set Claude token")
+        if missing_elevenlabs:
+            message_lines.append("`/elevenlabs_key <key>` - Set ElevenLabs key")
+        if missing_claude:
+            message_lines.extend(["", "_Get Claude token by running `claude setup-token` in terminal._"])
+        message_lines.append("_Credential messages are deleted for security._")
+    else:
+        message_lines.extend(["", "Everything is ready to go."])
 
     await update.message.reply_text(
-        f"**API Credentials Status**\n\n"
-        f"Claude Token: {claude_status}\n"
-        f"ElevenLabs Key: {elevenlabs_status}\n\n"
-        f"**To configure:**\n"
-        f"`/claude_token <token>` - Set Claude token\n"
-        f"`/elevenlabs_key <key>` - Set ElevenLabs key\n\n"
-        f"_Get Claude token by running `claude setup-token` in terminal._\n"
-        f"_Token messages are deleted for security._",
+        "\n".join(message_lines),
         parse_mode="Markdown"
     )
 

@@ -44,6 +44,7 @@ RUN python3 -m venv .venv && \
 
 # Copy application code
 COPY --chown=claude:claude bot.py .
+COPY --chown=claude:claude koro/ ./koro/
 COPY --chown=claude:claude prompts/ ./prompts/
 
 # Copy Claude settings (agents, skills, config from toru-claude-settings submodule)

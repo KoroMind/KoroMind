@@ -1,4 +1,4 @@
-# Contributing to Claude Voice Assistant
+# Contributing to KoroMind
 
 Thanks for your interest in contributing! This document outlines how to get started.
 

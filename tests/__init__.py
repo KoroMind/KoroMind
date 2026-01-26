@@ -1,0 +1,1 @@
+"""KoroMind test suite."""

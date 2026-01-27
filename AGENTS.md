@@ -52,6 +52,11 @@ pre-commit run black --all-files # Just black
 pre-commit run ruff-check --all-files
 ```
 
+### PR Review (gh)
+```bash
+gh pr-review review view 9 -R KoroMind/KoroMind
+```
+
 ## Architecture
 
 ### Package Structure

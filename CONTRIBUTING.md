@@ -42,7 +42,7 @@ source .venv/bin/activate  # Linux/macOS
 
 3. Install dependencies with uv:
 ```bash
-uv sync --dev
+uv sync --extra dev
 ```
 
 4. Copy and configure environment:

@@ -1,160 +1,86 @@
-"""Main entry point for KoroMind bot."""
+"""Unified entry point for KoroMind.
 
-import logging
-from pathlib import Path
+This module provides a unified entry point that can start different interfaces:
+- Telegram bot (default)
+- REST API server
+- CLI interface (future)
+"""
 
-from telegram.ext import (
-    ApplicationBuilder,
-    CallbackQueryHandler,
-    CommandHandler,
-    MessageHandler,
-    filters,
-)
-
-from koro.auth import apply_saved_credentials, check_claude_auth
-from koro.config import (
-    ALLOWED_CHAT_ID,
-    CLAUDE_WORKING_DIR,
-    ELEVENLABS_VOICE_ID,
-    PERSONA_NAME,
-    SANDBOX_DIR,
-    SYSTEM_PROMPT_FILE,
-    TELEGRAM_BOT_TOKEN,
-    TOPIC_ID,
-    setup_logging,
-    validate_environment,
-)
-from koro.handlers import (
-    cmd_claude_token,
-    cmd_continue,
-    cmd_elevenlabs_key,
-    cmd_health,
-    cmd_new,
-    cmd_sessions,
-    cmd_settings,
-    cmd_setup,
-    cmd_start,
-    cmd_status,
-    cmd_switch,
-    handle_approval_callback,
-    handle_settings_callback,
-    handle_text,
-    handle_voice,
-)
-from koro.handlers.utils import debug
-from koro.state import get_state_manager
-from koro.voice import get_voice_engine
-
-logger = logging.getLogger(__name__)
-
-
-async def error_handler(update, context):
-    """
-    Handle errors in the telegram bot.
-
-    Args:
-        update: Telegram update that caused the error
-        context: Telegram context containing error info
-    """
-    logger.error(f"Exception while handling an update: {context.error}")
-    if update and update.effective_chat:
-        try:
-            await update.effective_chat.send_message(
-                "An error occurred while processing your request."
-            )
-        except Exception:
-            pass
+import argparse
+import sys
 
 
 def main():
-    """Main entry point."""
-    # Apply any saved credentials first
-    claude_token, elevenlabs_key = apply_saved_credentials()
-    if claude_token:
-        debug("Applied saved Claude token")
-    if elevenlabs_key:
-        voice_engine = get_voice_engine()
-        voice_engine.update_api_key(elevenlabs_key)
-        debug("Applied saved ElevenLabs key")
+    """Main entry point with interface selection."""
+    parser = argparse.ArgumentParser(
+        description="KoroMind - Your Personal AI Assistant",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Interfaces:
+  telegram    Start the Telegram bot (default)
+  api         Start the REST API server
+  cli         Start the CLI interface (coming soon)
 
-    # Validate environment
-    is_valid, message = validate_environment()
-    if not is_valid:
-        print(f"ERROR: {message}")
-        print("\nCopy .env.example to .env and fill in the values.")
-        exit(1)
-    if message:
-        print(f"WARNING: {message}")
+Examples:
+  python -m koro                    # Start Telegram bot
+  python -m koro telegram           # Start Telegram bot
+  python -m koro api                # Start API server
+  python -m koro api --port 8080    # Start API on custom port
+""",
+    )
 
-    # Check Claude auth
-    is_auth, auth_method = check_claude_auth()
-    if not is_auth:
-        print(
-            "WARNING: Claude authentication not configured - bot will start but Claude won't work"
+    parser.add_argument(
+        "interface",
+        nargs="?",
+        default="telegram",
+        choices=["telegram", "api", "cli"],
+        help="Which interface to start (default: telegram)",
+    )
+
+    parser.add_argument(
+        "--host",
+        default=None,
+        help="Host to bind API server to (default: 127.0.0.1)",
+    )
+
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port for API server (default: 8420)",
+    )
+
+    args = parser.parse_args()
+
+    if args.interface == "telegram":
+        from koro.interfaces.telegram.bot import run_telegram_bot
+
+        run_telegram_bot()
+
+    elif args.interface == "api":
+        import uvicorn
+
+        from koro.core.config import KOROMIND_HOST, KOROMIND_PORT
+
+        host = args.host or KOROMIND_HOST
+        port = args.port or KOROMIND_PORT
+
+        print(f"Starting KoroMind API server on {host}:{port}")
+        uvicorn.run(
+            "koro.api.app:app",
+            host=host,
+            port=port,
+            reload=False,
         )
-        print(
-            "         Use /setup in Telegram to configure, or set ANTHROPIC_API_KEY in env"
-        )
-    else:
-        print(f"Claude auth: {auth_method}")
 
-    # Initialize state
-    state_manager = get_state_manager()
-    state_manager.load()
+    elif args.interface == "cli":
+        try:
+            from koro.interfaces.cli.app import run_cli
 
-    # Setup logging
-    setup_logging()
-
-    # Build application with concurrent updates for approve mode
-    app = (
-        ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
-    )
-
-    # Register command handlers
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("new", cmd_new))
-    app.add_handler(CommandHandler("continue", cmd_continue))
-    app.add_handler(CommandHandler("sessions", cmd_sessions))
-    app.add_handler(CommandHandler("switch", cmd_switch))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("health", cmd_health))
-    app.add_handler(CommandHandler("settings", cmd_settings))
-    app.add_handler(CommandHandler("setup", cmd_setup))
-    app.add_handler(CommandHandler("claude_token", cmd_claude_token))
-    app.add_handler(CommandHandler("elevenlabs_key", cmd_elevenlabs_key))
-
-    # Register callback handlers
-    app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^setting_"))
-    app.add_handler(
-        CallbackQueryHandler(handle_approval_callback, pattern="^(approve_|reject_)")
-    )
-
-    # Register message handlers
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    # Register error handler
-    app.add_error_handler(error_handler)
-
-    # Ensure sandbox exists
-    Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)
-
-    # Startup info
-    debug("Bot starting...")
-    debug(f"Persona: {PERSONA_NAME}")
-    debug(f"Voice ID: {ELEVENLABS_VOICE_ID}")
-    debug("TTS: eleven_turbo_v2_5 with expressive settings")
-    debug(f"Sandbox: {SANDBOX_DIR}")
-    debug(f"Read access: {CLAUDE_WORKING_DIR}")
-    debug(f"Chat ID: {ALLOWED_CHAT_ID}")
-    debug(f"Topic ID: {TOPIC_ID or 'ALL (no filter)'}")
-    debug(f"System prompt: {SYSTEM_PROMPT_FILE or 'default'}")
-    print(f"{PERSONA_NAME} is ready. Waiting for messages...")
-
-    # Run bot
-    app.run_polling(
-        drop_pending_updates=True, allowed_updates=["message", "callback_query"]
-    )
+            run_cli()
+        except ImportError:
+            print("CLI interface not yet available. Use 'telegram' or 'api'.")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

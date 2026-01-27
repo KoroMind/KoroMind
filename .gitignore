@@ -36,3 +36,6 @@ htmlcov/
 *.swo
 credentials.json
 uv.lock
+
+# Claude
+.claude/settings.local.json

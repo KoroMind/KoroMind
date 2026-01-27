@@ -55,7 +55,7 @@ KoroMind/
 │
 ├── bot.py                  # Kept as thin wrapper → imports koro.main
 ├── pyproject.toml          # Add pytest config
-└── requirements-dev.txt    # pytest, pytest-asyncio, pytest-cov
+└── uv.lock                 # Locked dependencies
 ```
 
 ---
@@ -152,9 +152,7 @@ if __name__ == "__main__":
 ## Dev Dependencies Added
 
 ```
-pytest>=8.0
-pytest-asyncio>=0.23
-pytest-cov>=4.0
+pytest>=9.0.2
 ```
 
 ---
@@ -164,7 +162,7 @@ pytest-cov>=4.0
 1. `koro/` package with all components
 2. `tests/unit/` with 70%+ coverage
 3. `tests/integration/` with live API tests
-4. Updated `requirements-dev.txt`
+4. Updated `pyproject.toml` dev extras
 5. `pyproject.toml` with pytest config
 6. Thin `bot.py` wrapper (backwards compatible)
 7. All commits on `feat/componentize-with-tests` branch

@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing! This document outlines how to get started.
 
-## Development Setup
+## Development Setup (Docker)
 
 1. Clone the repository:
 ```bash
@@ -10,17 +10,39 @@ git clone https://github.com/KoroMind/KoroMind.git
 cd KoroMind
 ```
 
+2. Copy and configure environment:
+```bash
+cp .env.example .env
+# Edit .env with your test credentials
+```
+
+3. Build and start the container:
+```bash
+docker compose up -d --build
+```
+
+4. View logs:
+```bash
+docker compose logs -f koro
+```
+
+## Development Setup (Local)
+
+1. Install uv:
+```bash
+pip install uv
+```
+
 2. Create a virtual environment:
 ```bash
-python -m venv .venv
+uv venv -p python3.11
 source .venv/bin/activate  # Linux/macOS
 # or: .venv\Scripts\activate  # Windows
 ```
 
-3. Install dependencies:
+3. Install dependencies with uv:
 ```bash
-pip install -r requirements.txt
-pip install pytest pytest-asyncio pytest-cov
+uv sync --dev
 ```
 
 4. Copy and configure environment:
@@ -44,7 +66,7 @@ pytest test_bot.py::test_transcribe_voice -v
 
 ## Code Style
 
-- Use Python 3.12+ features where appropriate
+- Use Python 3.11+ features where appropriate
 - Follow PEP 8 guidelines
 - Add type hints for function signatures
 - Keep functions focused and under 50 lines where possible
@@ -85,7 +107,7 @@ KoroMind/
 │   └── koro.md
 ├── .env.example        # Environment template
 ├── settings.example.json  # Permissions template
-└── requirements.txt    # Dependencies
+└── pyproject.toml      # Dependencies and tool config
 ```
 
 ## Key Areas for Contribution

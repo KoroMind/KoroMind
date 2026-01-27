@@ -253,6 +253,14 @@ class StateManager:
                 (now, user_id, session_id),
             )
 
+    async def clear_current_session(self, user_id: str) -> None:
+        """Clear the current session for a user (for /new command)."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE sessions SET is_current = 0 WHERE user_id = ?",
+                (user_id,),
+            )
+
     async def update_session(self, user_id: str, session_id: str) -> None:
         """
         Update or create a session as current.

@@ -5,9 +5,15 @@ New code should import directly from koro.core.config.
 """
 
 # Re-export everything from core config
-from koro.core.config import (
+from koro.core.config import (  # noqa: F401
+    CLAUDE_WORKING_DIR,
+    ELEVENLABS_VOICE_ID,
+    PERSONA_NAME,
+    SANDBOX_DIR,
+    SYSTEM_PROMPT_FILE,
     get_env,
     get_env_int,
+    setup_logging,
 )
 
 # Telegram-specific settings (not in core)

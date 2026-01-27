@@ -120,7 +120,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         # Update session
-        state_manager.update_session(user_id, new_session_id)
+        await state_manager.update_session(str(user_id), new_session_id)
 
         # Send response
         await send_long_message(update, processing_msg, response)
@@ -173,7 +173,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         # Update session
-        state_manager.update_session(user_id, new_session_id)
+        await state_manager.update_session(str(user_id), new_session_id)
 
         # Send response
         await send_long_message(update, processing_msg, response)

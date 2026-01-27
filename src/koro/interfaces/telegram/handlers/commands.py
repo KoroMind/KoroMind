@@ -45,10 +45,9 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
 
     session_name = " ".join(context.args) if context.args else None
-    state["current_session"] = None
+    await state_manager.clear_current_session(str(user_id))
 
     if session_name:
         await update.message.reply_text(f"New session started: {session_name}")
@@ -124,7 +123,7 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matches = [s for s in state["sessions"] if s.startswith(session_id)]
 
     if len(matches) == 1:
-        state_manager.update_setting(user_id, "current_session", matches[0])
+        await state_manager.update_session(str(user_id), matches[0])
         await update.message.reply_text(f"Switched to session: {matches[0][:8]}...")
     elif len(matches) > 1:
         await update.message.reply_text("Multiple matches. Be more specific.")

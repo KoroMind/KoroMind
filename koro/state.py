@@ -1,10 +1,14 @@
 """Session and settings state management."""
 
+import fcntl
 import json
 from pathlib import Path
 from typing import Any
 
-from .config import STATE_FILE, SETTINGS_FILE, VOICE_SETTINGS
+from .config import SETTINGS_FILE, STATE_FILE, VOICE_SETTINGS
+
+# Maximum number of sessions to keep per user (FIFO eviction)
+MAX_SESSIONS = 100
 
 
 class StateManager:
@@ -38,9 +42,13 @@ class StateManager:
                 self.sessions = {}
 
     def save_sessions(self) -> None:
-        """Save session state to file."""
+        """Save session state to file with file locking."""
         with open(self.state_file, "w") as f:
-            json.dump(self.sessions, f, indent=2)
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                json.dump(self.sessions, f, indent=2)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     def load_settings(self) -> None:
         """Load user settings from file."""
@@ -52,9 +60,13 @@ class StateManager:
                 self.settings = {}
 
     def save_settings(self) -> None:
-        """Save user settings to file."""
+        """Save user settings to file with file locking."""
         with open(self.settings_file, "w") as f:
-            json.dump(self.settings, f, indent=2)
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                json.dump(self.settings, f, indent=2)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     def get_user_state(self, user_id: int) -> dict:
         """
@@ -113,6 +125,9 @@ class StateManager:
             state["current_session"] = session_id
             if session_id not in state["sessions"]:
                 state["sessions"].append(session_id)
+                # FIFO eviction: remove oldest sessions if exceeding limit
+                while len(state["sessions"]) > MAX_SESSIONS:
+                    state["sessions"].pop(0)
             self.save_sessions()
 
     def update_setting(self, user_id: int, key: str, value: Any) -> None:

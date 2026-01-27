@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from koro.state import StateManager
 
 
@@ -22,7 +24,7 @@ class TestStateManager:
         """load_sessions returns empty dict when file missing."""
         manager = StateManager(
             state_file=tmp_path / "missing.json",
-            settings_file=tmp_path / "settings.json"
+            settings_file=tmp_path / "settings.json",
         )
         manager.load_sessions()
 
@@ -34,8 +36,7 @@ class TestStateManager:
         state_file.write_text(json.dumps(sample_state))
 
         manager = StateManager(
-            state_file=state_file,
-            settings_file=tmp_path / "settings.json"
+            state_file=state_file, settings_file=tmp_path / "settings.json"
         )
         manager.load_sessions()
 
@@ -46,8 +47,7 @@ class TestStateManager:
         state_file = tmp_path / "state.json"
 
         manager = StateManager(
-            state_file=state_file,
-            settings_file=tmp_path / "settings.json"
+            state_file=state_file, settings_file=tmp_path / "settings.json"
         )
         manager.sessions = {"user1": {"current_session": "abc", "sessions": ["abc"]}}
         manager.save_sessions()
@@ -59,8 +59,7 @@ class TestStateManager:
     def test_load_settings_empty_when_missing(self, tmp_path):
         """load_settings returns empty dict when file missing."""
         manager = StateManager(
-            state_file=tmp_path / "state.json",
-            settings_file=tmp_path / "missing.json"
+            state_file=tmp_path / "state.json", settings_file=tmp_path / "missing.json"
         )
         manager.load_settings()
 
@@ -72,8 +71,7 @@ class TestStateManager:
         settings_file.write_text(json.dumps(sample_settings))
 
         manager = StateManager(
-            state_file=tmp_path / "state.json",
-            settings_file=settings_file
+            state_file=tmp_path / "state.json", settings_file=settings_file
         )
         manager.load_settings()
 
@@ -82,8 +80,7 @@ class TestStateManager:
     def test_get_user_state_creates_default(self, tmp_path):
         """get_user_state creates default state for new user."""
         manager = StateManager(
-            state_file=tmp_path / "state.json",
-            settings_file=tmp_path / "settings.json"
+            state_file=tmp_path / "state.json", settings_file=tmp_path / "settings.json"
         )
 
         state = manager.get_user_state(99999)
@@ -94,8 +91,7 @@ class TestStateManager:
     def test_get_user_state_returns_existing(self, tmp_path, sample_state):
         """get_user_state returns existing state."""
         manager = StateManager(
-            state_file=tmp_path / "state.json",
-            settings_file=tmp_path / "settings.json"
+            state_file=tmp_path / "state.json", settings_file=tmp_path / "settings.json"
         )
         manager.sessions = sample_state
 
@@ -107,8 +103,7 @@ class TestStateManager:
     def test_get_user_settings_creates_defaults(self, tmp_path):
         """get_user_settings creates default settings for new user."""
         manager = StateManager(
-            state_file=tmp_path / "state.json",
-            settings_file=tmp_path / "settings.json"
+            state_file=tmp_path / "state.json", settings_file=tmp_path / "settings.json"
         )
 
         settings = manager.get_user_settings(99999)
@@ -121,8 +116,7 @@ class TestStateManager:
     def test_get_user_settings_adds_missing_keys(self, tmp_path):
         """get_user_settings adds missing keys to existing settings."""
         manager = StateManager(
-            state_file=tmp_path / "state.json",
-            settings_file=tmp_path / "settings.json"
+            state_file=tmp_path / "state.json", settings_file=tmp_path / "settings.json"
         )
         # Old settings without new keys
         manager.settings = {"12345": {"audio_enabled": False, "voice_speed": 0.9}}
@@ -140,8 +134,7 @@ class TestStateManager:
         """update_session sets current session and adds to list."""
         state_file = tmp_path / "state.json"
         manager = StateManager(
-            state_file=state_file,
-            settings_file=tmp_path / "settings.json"
+            state_file=state_file, settings_file=tmp_path / "settings.json"
         )
 
         manager.update_session(12345, "new_session_xyz")
@@ -155,8 +148,7 @@ class TestStateManager:
     def test_update_session_no_duplicate(self, tmp_path):
         """update_session doesn't add duplicate session IDs."""
         manager = StateManager(
-            state_file=tmp_path / "state.json",
-            settings_file=tmp_path / "settings.json"
+            state_file=tmp_path / "state.json", settings_file=tmp_path / "settings.json"
         )
         manager.sessions = {"12345": {"current_session": "abc", "sessions": ["abc"]}}
 
@@ -169,8 +161,7 @@ class TestStateManager:
         """update_setting updates and saves settings."""
         settings_file = tmp_path / "settings.json"
         manager = StateManager(
-            state_file=tmp_path / "state.json",
-            settings_file=settings_file
+            state_file=tmp_path / "state.json", settings_file=settings_file
         )
 
         manager.update_setting(12345, "audio_enabled", False)
@@ -192,3 +183,51 @@ class TestStateManager:
 
         assert manager.sessions == sample_state
         assert manager.settings == sample_settings
+
+
+class TestStateManagerConcurrency:
+    """Tests for StateManager thread safety."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_session_updates_no_corruption(self, tmp_path):
+        """Concurrent updates should not corrupt state file."""
+        import asyncio
+
+        state_file = tmp_path / "state.json"
+        settings_file = tmp_path / "settings.json"
+        manager = StateManager(state_file=state_file, settings_file=settings_file)
+
+        async def update_session(user_id, session_id):
+            manager.update_session(user_id, session_id)
+
+        # Run 50 concurrent updates
+        tasks = [update_session(i, f"session_{i}") for i in range(50)]
+        await asyncio.gather(*tasks)
+
+        # Verify file is valid JSON and all sessions exist
+        data = json.loads(state_file.read_text())
+        assert len(data) == 50
+        for i in range(50):
+            assert str(i) in data
+
+
+class TestSessionListLimits:
+    """Tests for session list size limits."""
+
+    def test_session_list_pruned_at_limit(self, tmp_path):
+        """Session list should be pruned when exceeding MAX_SESSIONS."""
+        from koro.state import MAX_SESSIONS
+
+        manager = StateManager(
+            state_file=tmp_path / "state.json", settings_file=tmp_path / "settings.json"
+        )
+
+        # Add more sessions than the limit
+        for i in range(MAX_SESSIONS + 20):
+            manager.update_session(12345, f"session_{i}")
+
+        state = manager.get_user_state(12345)
+        assert len(state["sessions"]) == MAX_SESSIONS
+        # Oldest sessions should be removed (FIFO)
+        assert "session_0" not in state["sessions"]
+        assert f"session_{MAX_SESSIONS + 19}" in state["sessions"]

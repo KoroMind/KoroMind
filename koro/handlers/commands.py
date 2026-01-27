@@ -1,15 +1,16 @@
 """Telegram command handlers."""
 
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from ..config import ALLOWED_CHAT_ID, SANDBOX_DIR
 from ..auth import check_claude_auth, load_credentials, save_credentials
+from ..claude import get_claude_client
+from ..config import ALLOWED_CHAT_ID, SANDBOX_DIR
 from ..state import get_state_manager
 from ..voice import get_voice_engine
-from ..claude import get_claude_client
-from .utils import should_handle_message
+from .utils import debug, should_handle_message
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -52,7 +53,9 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if session_name:
         await update.message.reply_text(f"New session started: {session_name}")
     else:
-        await update.message.reply_text("New session started. Send a voice message to begin.")
+        await update.message.reply_text(
+            "New session started. Send a voice message to begin."
+        )
 
     state_manager.save_sessions()
 
@@ -70,9 +73,13 @@ async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = state_manager.get_user_state(user_id)
 
     if state["current_session"]:
-        await update.message.reply_text(f"Continuing session: {state['current_session'][:8]}...")
+        await update.message.reply_text(
+            f"Continuing session: {state['current_session'][:8]}..."
+        )
     else:
-        await update.message.reply_text("No previous session. Send a voice message to start.")
+        await update.message.reply_text(
+            "No previous session. Send a voice message to start."
+        )
 
 
 async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -146,7 +153,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Total sessions: {len(state['sessions'])}"
         )
     else:
-        await update.message.reply_text("No active session. Send a voice message or /new to start.")
+        await update.message.reply_text(
+            "No active session. Send a voice message or /new to start."
+        )
 
 
 async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,7 +186,9 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state_manager = get_state_manager()
     state = state_manager.get_user_state(user_id)
     status.append(f"\nSessions: {len(state['sessions'])}")
-    status.append(f"Current: {state['current_session'][:8] if state['current_session'] else 'None'}...")
+    status.append(
+        f"Current: {state['current_session'][:8] if state['current_session'] else 'None'}..."
+    )
 
     # Sandbox info
     status.append(f"\nSandbox: {SANDBOX_DIR}")
@@ -219,10 +230,18 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [
-            InlineKeyboardButton(f"Mode: {mode_display}", callback_data="setting_mode_toggle"),
-            InlineKeyboardButton(f"Watch: {watch_status}", callback_data="setting_watch_toggle"),
+            InlineKeyboardButton(
+                f"Mode: {mode_display}", callback_data="setting_mode_toggle"
+            ),
+            InlineKeyboardButton(
+                f"Watch: {watch_status}", callback_data="setting_watch_toggle"
+            ),
         ],
-        [InlineKeyboardButton(f"Audio: {audio_status}", callback_data="setting_audio_toggle")],
+        [
+            InlineKeyboardButton(
+                f"Audio: {audio_status}", callback_data="setting_audio_toggle"
+            )
+        ],
         [
             InlineKeyboardButton("0.8x", callback_data="setting_speed_0.8"),
             InlineKeyboardButton("0.9x", callback_data="setting_speed_0.9"),
@@ -251,7 +270,9 @@ async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if claude_method == "api_key":
             claude_status = "✓ Set (env)"
         elif claude_method == "saved_token":
-            claude_status = "✓ Set (saved)" if creds.get("claude_token") else "✓ Set (env)"
+            claude_status = (
+                "✓ Set (saved)" if creds.get("claude_token") else "✓ Set (env)"
+            )
         elif claude_method == "oauth":
             claude_status = "✓ Set (oauth)"
         else:
@@ -284,15 +305,14 @@ async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if missing_elevenlabs:
             message_lines.append("`/elevenlabs_key <key>` - Set ElevenLabs key")
         if missing_claude:
-            message_lines.extend(["", "_Get Claude token by running `claude setup-token` in terminal._"])
+            message_lines.extend(
+                ["", "_Get Claude token by running `claude setup-token` in terminal._"]
+            )
         message_lines.append("_Credential messages are deleted for security._")
     else:
         message_lines.extend(["", "Everything is ready to go."])
 
-    await update.message.reply_text(
-        "\n".join(message_lines),
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("\n".join(message_lines), parse_mode="Markdown")
 
 
 async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -306,15 +326,15 @@ async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thread_id = update.message.message_thread_id
     try:
         await update.message.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        debug(f"Failed to delete message in cmd_claude_token: {e}")
 
     if not context.args:
         await update.effective_chat.send_message(
             "Usage: `/claude_token <token>`\n\n"
             "Get token by running `claude setup-token` in your terminal.",
             message_thread_id=thread_id,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return
 
@@ -324,7 +344,7 @@ async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_chat.send_message(
             "Invalid token format. Token should start with `sk-ant-`",
             message_thread_id=thread_id,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return
 
@@ -335,8 +355,7 @@ async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = token
 
     await update.effective_chat.send_message(
-        "Claude token saved and applied!",
-        message_thread_id=thread_id
+        "Claude token saved and applied!", message_thread_id=thread_id
     )
 
 
@@ -351,15 +370,15 @@ async def cmd_elevenlabs_key(update: Update, context: ContextTypes.DEFAULT_TYPE)
     thread_id = update.message.message_thread_id
     try:
         await update.message.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        debug(f"Failed to delete message in cmd_elevenlabs_key: {e}")
 
     if not context.args:
         await update.effective_chat.send_message(
             "Usage: `/elevenlabs_key <key>`\n\n"
             "Get key from elevenlabs.io/app/settings/api-keys",
             message_thread_id=thread_id,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return
 
@@ -367,8 +386,7 @@ async def cmd_elevenlabs_key(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if len(key) < 20:
         await update.effective_chat.send_message(
-            "Invalid key format. Key seems too short.",
-            message_thread_id=thread_id
+            "Invalid key format. Key seems too short.", message_thread_id=thread_id
         )
         return
 
@@ -381,6 +399,5 @@ async def cmd_elevenlabs_key(update: Update, context: ContextTypes.DEFAULT_TYPE)
     voice_engine.update_api_key(key)
 
     await update.effective_chat.send_message(
-        "ElevenLabs API key saved and applied!",
-        message_thread_id=thread_id
+        "ElevenLabs API key saved and applied!", message_thread_id=thread_id
     )

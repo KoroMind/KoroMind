@@ -1,6 +1,8 @@
 """Voice processing with ElevenLabs TTS and STT."""
 
+import asyncio
 from io import BytesIO
+
 from elevenlabs.client import ElevenLabs
 
 from .config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
@@ -39,12 +41,15 @@ class VoiceEngine:
         if not self.client:
             return "[Error: ElevenLabs not configured]"
 
-        try:
-            transcription = self.client.speech_to_text.convert(
+        def _transcribe_sync():
+            return self.client.speech_to_text.convert(
                 file=BytesIO(voice_bytes),
                 model_id="scribe_v1",
                 language_code="en",
             )
+
+        try:
+            transcription = await asyncio.to_thread(_transcribe_sync)
             return transcription.text
         except Exception as e:
             return f"[Transcription error: {e}]"
@@ -63,10 +68,10 @@ class VoiceEngine:
         if not self.client:
             return None
 
-        try:
-            actual_speed = speed if speed is not None else VOICE_SETTINGS["speed"]
+        actual_speed = speed if speed is not None else VOICE_SETTINGS["speed"]
 
-            audio = self.client.text_to_speech.convert(
+        def _tts_sync():
+            return self.client.text_to_speech.convert(
                 text=text,
                 voice_id=self.voice_id,
                 model_id="eleven_turbo_v2_5",
@@ -79,6 +84,9 @@ class VoiceEngine:
                     "use_speaker_boost": True,
                 },
             )
+
+        try:
+            audio = await asyncio.to_thread(_tts_sync)
 
             audio_buffer = BytesIO()
             for chunk in audio:

@@ -1,7 +1,7 @@
 """Tests for koro.auth module."""
 
-import os
 import json
+import os
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -16,6 +16,7 @@ class TestCheckClaudeAuth:
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
 
         from koro.auth import check_claude_auth
+
         is_auth, method = check_claude_auth()
 
         assert is_auth is True
@@ -27,6 +28,7 @@ class TestCheckClaudeAuth:
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "saved_token_123")
 
         from koro.auth import check_claude_auth
+
         is_auth, method = check_claude_auth()
 
         assert is_auth is True
@@ -44,16 +46,21 @@ class TestCheckClaudeAuth:
 
         # Token expires in 1 hour
         expires_at = (time.time() + 3600) * 1000
-        creds_file.write_text(json.dumps({
-            "claudeAiOauth": {
-                "accessToken": "access_token_123",
-                "refreshToken": "refresh_token_456",
-                "expiresAt": expires_at
-            }
-        }))
+        creds_file.write_text(
+            json.dumps(
+                {
+                    "claudeAiOauth": {
+                        "accessToken": "access_token_123",
+                        "refreshToken": "refresh_token_456",
+                        "expiresAt": expires_at,
+                    }
+                }
+            )
+        )
 
         with patch.object(Path, "home", return_value=tmp_path):
             from koro.auth import check_claude_auth
+
             is_auth, method = check_claude_auth()
 
         assert is_auth is True
@@ -70,16 +77,21 @@ class TestCheckClaudeAuth:
 
         # Token expired 1 hour ago
         expires_at = (time.time() - 3600) * 1000
-        creds_file.write_text(json.dumps({
-            "claudeAiOauth": {
-                "accessToken": "access_token_123",
-                "refreshToken": "refresh_token_456",
-                "expiresAt": expires_at
-            }
-        }))
+        creds_file.write_text(
+            json.dumps(
+                {
+                    "claudeAiOauth": {
+                        "accessToken": "access_token_123",
+                        "refreshToken": "refresh_token_456",
+                        "expiresAt": expires_at,
+                    }
+                }
+            )
+        )
 
         with patch.object(Path, "home", return_value=tmp_path):
             from koro.auth import check_claude_auth
+
             is_auth, method = check_claude_auth()
 
         assert is_auth is True
@@ -92,6 +104,7 @@ class TestCheckClaudeAuth:
 
         with patch.object(Path, "home", return_value=tmp_path):
             from koro.auth import check_claude_auth
+
             is_auth, method = check_claude_auth()
 
         assert is_auth is False
@@ -104,31 +117,38 @@ class TestCredentials:
     def test_load_credentials_empty_when_missing(self, tmp_path, monkeypatch):
         """load_credentials returns empty dict when file missing."""
         import koro.config
+
         monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", tmp_path / "missing.json")
 
         import importlib
+
         import koro.auth
+
         importlib.reload(koro.auth)
 
         from koro.auth import load_credentials
+
         assert load_credentials() == {}
 
     def test_load_credentials_from_file(self, tmp_path, monkeypatch):
         """load_credentials reads existing file."""
         creds_file = tmp_path / "credentials.json"
-        creds_file.write_text(json.dumps({
-            "claude_token": "token123",
-            "elevenlabs_key": "key456"
-        }))
+        creds_file.write_text(
+            json.dumps({"claude_token": "token123", "elevenlabs_key": "key456"})
+        )
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
 
         import importlib
+
         import koro.auth
+
         importlib.reload(koro.auth)
 
         from koro.auth import load_credentials
+
         creds = load_credentials()
 
         assert creds["claude_token"] == "token123"
@@ -140,13 +160,17 @@ class TestCredentials:
         creds_file.write_text("not valid json {{{")
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
 
         import importlib
+
         import koro.auth
+
         importlib.reload(koro.auth)
 
         from koro.auth import load_credentials
+
         assert load_credentials() == {}
 
     def test_save_credentials_creates_file(self, tmp_path, monkeypatch):
@@ -154,13 +178,17 @@ class TestCredentials:
         creds_file = tmp_path / "credentials.json"
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
 
         import importlib
+
         import koro.auth
+
         importlib.reload(koro.auth)
 
         from koro.auth import save_credentials
+
         save_credentials({"test": "value"})
 
         assert creds_file.exists()
@@ -171,21 +199,85 @@ class TestCredentials:
     def test_apply_saved_credentials(self, tmp_path, monkeypatch):
         """apply_saved_credentials sets environment variables."""
         creds_file = tmp_path / "credentials.json"
-        creds_file.write_text(json.dumps({
-            "claude_token": "applied_token",
-            "elevenlabs_key": "applied_key"
-        }))
+        creds_file.write_text(
+            json.dumps(
+                {"claude_token": "applied_token", "elevenlabs_key": "applied_key"}
+            )
+        )
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
 
         import importlib
+
         import koro.auth
+
         importlib.reload(koro.auth)
 
         from koro.auth import apply_saved_credentials
+
         claude_token, elevenlabs_key = apply_saved_credentials()
 
         assert claude_token == "applied_token"
         assert elevenlabs_key == "applied_key"
         assert os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") == "applied_token"
+
+
+class TestCredentialPermissions:
+    """Tests for secure credential file permissions."""
+
+    def test_save_credentials_atomic_permissions(self, tmp_path, monkeypatch):
+        """Credentials file should never be world-readable, even briefly."""
+
+        creds_file = tmp_path / "credentials.json"
+
+        import koro.config
+
+        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
+
+        import importlib
+
+        import koro.auth
+
+        importlib.reload(koro.auth)
+
+        from koro.auth import save_credentials
+
+        save_credentials({"token": "secret"})
+
+        # Check file permissions
+        mode = os.stat(creds_file).st_mode
+        # Should be owner read/write only (0o600)
+        assert mode & 0o077 == 0, f"File has insecure permissions: {oct(mode)}"
+
+    def test_save_credentials_file_created_with_correct_permissions(
+        self, tmp_path, monkeypatch
+    ):
+        """New credentials file should be created with restricted permissions."""
+
+        creds_file = tmp_path / "new_creds.json"
+
+        import koro.config
+
+        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
+
+        import importlib
+
+        import koro.auth
+
+        importlib.reload(koro.auth)
+
+        # Track permission at creation time using stat
+        from koro.auth import save_credentials
+
+        # File shouldn't exist yet
+        assert not creds_file.exists()
+
+        save_credentials({"token": "secret"})
+
+        # File should exist now with secure permissions
+        assert creds_file.exists()
+        mode = os.stat(creds_file).st_mode & 0o777
+        # File should be created with restricted permissions from the start
+        assert mode == 0o600, f"File has insecure permissions: {oct(mode)}"

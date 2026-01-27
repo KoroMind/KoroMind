@@ -1,47 +1,69 @@
 """Main entry point for KoroMind bot."""
 
+import logging
 from pathlib import Path
+
 from telegram.ext import (
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     filters,
 )
 
+from .auth import apply_saved_credentials, check_claude_auth
 from .config import (
-    TELEGRAM_BOT_TOKEN,
-    SANDBOX_DIR,
-    PERSONA_NAME,
-    ELEVENLABS_VOICE_ID,
-    SYSTEM_PROMPT_FILE,
     ALLOWED_CHAT_ID,
-    TOPIC_ID,
     CLAUDE_WORKING_DIR,
-    validate_environment,
+    ELEVENLABS_VOICE_ID,
+    PERSONA_NAME,
+    SANDBOX_DIR,
+    SYSTEM_PROMPT_FILE,
+    TELEGRAM_BOT_TOKEN,
+    TOPIC_ID,
     setup_logging,
+    validate_environment,
 )
-from .auth import check_claude_auth, apply_saved_credentials
-from .state import get_state_manager
-from .voice import get_voice_engine
 from .handlers import (
-    cmd_start,
-    cmd_new,
+    cmd_claude_token,
     cmd_continue,
-    cmd_sessions,
-    cmd_switch,
-    cmd_status,
+    cmd_elevenlabs_key,
     cmd_health,
+    cmd_new,
+    cmd_sessions,
     cmd_settings,
     cmd_setup,
-    cmd_claude_token,
-    cmd_elevenlabs_key,
-    handle_voice,
-    handle_text,
-    handle_settings_callback,
+    cmd_start,
+    cmd_status,
+    cmd_switch,
     handle_approval_callback,
+    handle_settings_callback,
+    handle_text,
+    handle_voice,
 )
 from .handlers.utils import debug
+from .state import get_state_manager
+from .voice import get_voice_engine
+
+logger = logging.getLogger(__name__)
+
+
+async def error_handler(update, context):
+    """
+    Handle errors in the telegram bot.
+
+    Args:
+        update: Telegram update that caused the error
+        context: Telegram context containing error info
+    """
+    logger.error(f"Exception while handling an update: {context.error}")
+    if update and update.effective_chat:
+        try:
+            await update.effective_chat.send_message(
+                "An error occurred while processing your request."
+            )
+        except Exception:
+            pass
 
 
 def main():
@@ -67,8 +89,12 @@ def main():
     # Check Claude auth
     is_auth, auth_method = check_claude_auth()
     if not is_auth:
-        print("WARNING: Claude authentication not configured - bot will start but Claude won't work")
-        print("         Use /setup in Telegram to configure, or set ANTHROPIC_API_KEY in env")
+        print(
+            "WARNING: Claude authentication not configured - bot will start but Claude won't work"
+        )
+        print(
+            "         Use /setup in Telegram to configure, or set ANTHROPIC_API_KEY in env"
+        )
     else:
         print(f"Claude auth: {auth_method}")
 
@@ -80,7 +106,9 @@ def main():
     setup_logging()
 
     # Build application with concurrent updates for approve mode
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
+    app = (
+        ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
+    )
 
     # Register command handlers
     app.add_handler(CommandHandler("start", cmd_start))
@@ -97,11 +125,16 @@ def main():
 
     # Register callback handlers
     app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^setting_"))
-    app.add_handler(CallbackQueryHandler(handle_approval_callback, pattern="^(approve_|reject_)"))
+    app.add_handler(
+        CallbackQueryHandler(handle_approval_callback, pattern="^(approve_|reject_)")
+    )
 
     # Register message handlers
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    # Register error handler
+    app.add_error_handler(error_handler)
 
     # Ensure sandbox exists
     Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)
@@ -120,8 +153,7 @@ def main():
 
     # Run bot
     app.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=["message", "callback_query"]
+        drop_pending_updates=True, allowed_updates=["message", "callback_query"]
     )
 
 

@@ -1,7 +1,7 @@
 """Authentication management for Claude and credentials."""
 
-import os
 import json
+import os
 import time
 from pathlib import Path
 
@@ -55,11 +55,15 @@ def load_credentials() -> dict:
 
 
 def save_credentials(creds: dict) -> None:
-    """Save credentials to file with secure permissions."""
-    with open(CREDENTIALS_FILE, "w") as f:
-        json.dump(creds, f, indent=2)
-    # Restrict file permissions (owner read/write only)
-    CREDENTIALS_FILE.chmod(0o600)
+    """Save credentials to file with secure permissions from creation."""
+    # Use os.open to create file with correct permissions atomically
+    fd = os.open(CREDENTIALS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(creds, f, indent=2)
+    except Exception:
+        os.close(fd)
+        raise
 
 
 def apply_saved_credentials() -> tuple[str | None, str | None]:

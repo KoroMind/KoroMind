@@ -1,9 +1,11 @@
 """Tests for koro.handlers module."""
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+import time
+from unittest.mock import AsyncMock, MagicMock
 
-from koro.handlers.utils import should_handle_message, send_long_message
+import pytest
+
+from koro.handlers.utils import send_long_message, should_handle_message
 
 
 class TestShouldHandleMessage:
@@ -97,7 +99,9 @@ class TestCommandHandlers:
     async def test_cmd_start_ignores_wrong_chat(self, monkeypatch):
         """cmd_start ignores unauthorized chats."""
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 12345)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_start
 
@@ -117,7 +121,9 @@ class TestCommandHandlers:
     async def test_cmd_start_responds_to_correct_chat(self, monkeypatch):
         """cmd_start responds to authorized chat."""
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 12345)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_start
 
@@ -138,7 +144,9 @@ class TestCommandHandlers:
     async def test_cmd_start_allows_all_when_chat_id_zero(self, monkeypatch):
         """cmd_start allows all chats when ALLOWED_CHAT_ID is 0."""
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_start
 
@@ -163,10 +171,14 @@ class TestMoreCommandHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.sessions = {"12345": {"current_session": "old_session", "sessions": ["old_session"]}}
+        manager.sessions = {
+            "12345": {"current_session": "old_session", "sessions": ["old_session"]}
+        }
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_new
 
@@ -192,7 +204,9 @@ class TestMoreCommandHandlers:
         manager = StateManager()
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_new
 
@@ -216,10 +230,14 @@ class TestMoreCommandHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.sessions = {"12345": {"current_session": "abc12345", "sessions": ["abc12345"]}}
+        manager.sessions = {
+            "12345": {"current_session": "abc12345", "sessions": ["abc12345"]}
+        }
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_continue
 
@@ -244,7 +262,9 @@ class TestMoreCommandHandlers:
         manager = StateManager()
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_continue
 
@@ -269,7 +289,9 @@ class TestMoreCommandHandlers:
         manager = StateManager()
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_sessions
 
@@ -292,10 +314,14 @@ class TestMoreCommandHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.sessions = {"12345": {"current_session": "sess2", "sessions": ["sess1", "sess2"]}}
+        manager.sessions = {
+            "12345": {"current_session": "sess2", "sessions": ["sess1", "sess2"]}
+        }
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_sessions
 
@@ -316,7 +342,9 @@ class TestMoreCommandHandlers:
     async def test_cmd_switch_no_args(self, monkeypatch):
         """cmd_switch shows usage without args."""
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_switch
 
@@ -339,10 +367,14 @@ class TestMoreCommandHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.sessions = {"12345": {"current_session": None, "sessions": ["abc123456789"]}}
+        manager.sessions = {
+            "12345": {"current_session": None, "sessions": ["abc123456789"]}
+        }
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_switch
 
@@ -368,7 +400,9 @@ class TestMoreCommandHandlers:
         manager.sessions = {"12345": {"current_session": None, "sessions": ["abc123"]}}
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_switch
 
@@ -392,10 +426,14 @@ class TestMoreCommandHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.sessions = {"12345": {"current_session": "abc12345", "sessions": ["abc12345"]}}
+        manager.sessions = {
+            "12345": {"current_session": "abc12345", "sessions": ["abc12345"]}
+        }
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_status
 
@@ -420,7 +458,9 @@ class TestMoreCommandHandlers:
         manager = StateManager()
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_status
 
@@ -442,7 +482,9 @@ class TestMoreCommandHandlers:
         """cmd_setup shows credentials status."""
         monkeypatch.setattr("koro.handlers.commands.load_credentials", lambda: {})
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_setup
 
@@ -462,9 +504,9 @@ class TestMoreCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_health_checks_systems(self, monkeypatch):
         """cmd_health checks all systems."""
+        from koro.claude import ClaudeClient
         from koro.state import StateManager
         from koro.voice import VoiceEngine
-        from koro.claude import ClaudeClient
 
         manager = StateManager()
         mock_voice = MagicMock(spec=VoiceEngine)
@@ -473,10 +515,16 @@ class TestMoreCommandHandlers:
         mock_claude.health_check.return_value = (True, "OK")
 
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.get_voice_engine", lambda: mock_voice)
-        monkeypatch.setattr("koro.handlers.commands.get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(
+            "koro.handlers.commands.get_voice_engine", lambda: mock_voice
+        )
+        monkeypatch.setattr(
+            "koro.handlers.commands.get_claude_client", lambda: mock_claude
+        )
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.commands.SANDBOX_DIR", "/tmp/sandbox")
 
         from koro.handlers.commands import cmd_health
@@ -504,7 +552,9 @@ class TestMoreCommandHandlers:
         manager = StateManager()
         monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_settings
 
@@ -528,7 +578,9 @@ class TestMoreCommandHandlers:
     async def test_cmd_claude_token_no_args(self, monkeypatch):
         """cmd_claude_token shows usage without args."""
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_claude_token
 
@@ -550,7 +602,9 @@ class TestMoreCommandHandlers:
     async def test_cmd_claude_token_invalid_format(self, monkeypatch):
         """cmd_claude_token rejects invalid token format."""
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_claude_token
 
@@ -573,9 +627,13 @@ class TestMoreCommandHandlers:
         """cmd_claude_token saves valid token."""
         creds = {}
         monkeypatch.setattr("koro.handlers.commands.load_credentials", lambda: creds)
-        monkeypatch.setattr("koro.handlers.commands.save_credentials", lambda c: creds.update(c))
+        monkeypatch.setattr(
+            "koro.handlers.commands.save_credentials", lambda c: creds.update(c)
+        )
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_claude_token
 
@@ -598,7 +656,9 @@ class TestMoreCommandHandlers:
     async def test_cmd_elevenlabs_key_no_args(self, monkeypatch):
         """cmd_elevenlabs_key shows usage without args."""
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_elevenlabs_key
 
@@ -620,7 +680,9 @@ class TestMoreCommandHandlers:
     async def test_cmd_elevenlabs_key_too_short(self, monkeypatch):
         """cmd_elevenlabs_key rejects short key."""
         monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.commands.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
 
         from koro.handlers.commands import cmd_elevenlabs_key
 
@@ -646,6 +708,7 @@ class TestApprovalCallbackHandlers:
     async def test_approval_callback_approves(self, monkeypatch):
         """Approval callback approves tool use."""
         import asyncio
+
         from koro.handlers.messages import pending_approvals
 
         approval_event = asyncio.Event()
@@ -672,13 +735,17 @@ class TestApprovalCallbackHandlers:
 
         await handle_approval_callback(update, context)
 
-        assert pending_approvals.get("test123") is None or pending_approvals["test123"].get("approved") is True
+        assert (
+            pending_approvals.get("test123") is None
+            or pending_approvals["test123"].get("approved") is True
+        )
         query.edit_message_text.assert_called()
 
     @pytest.mark.asyncio
     async def test_approval_callback_rejects(self, monkeypatch):
         """Approval callback rejects tool use."""
         import asyncio
+
         from koro.handlers.messages import pending_approvals
 
         approval_event = asyncio.Event()
@@ -767,7 +834,9 @@ class TestMessageHandlers:
     @pytest.mark.asyncio
     async def test_handle_voice_ignores_wrong_topic(self, monkeypatch):
         """handle_voice ignores wrong topic."""
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: False)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: False
+        )
 
         from koro.handlers.messages import handle_voice
 
@@ -784,7 +853,9 @@ class TestMessageHandlers:
     @pytest.mark.asyncio
     async def test_handle_text_ignores_wrong_topic(self, monkeypatch):
         """handle_text ignores wrong topic."""
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: False)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: False
+        )
 
         from koro.handlers.messages import handle_text
 
@@ -801,7 +872,9 @@ class TestMessageHandlers:
     @pytest.mark.asyncio
     async def test_handle_voice_ignores_wrong_chat(self, monkeypatch):
         """handle_voice ignores unauthorized chat."""
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 12345)
 
         from koro.handlers.messages import handle_voice
@@ -820,7 +893,9 @@ class TestMessageHandlers:
     @pytest.mark.asyncio
     async def test_handle_text_ignores_wrong_chat(self, monkeypatch):
         """handle_text ignores unauthorized chat."""
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 12345)
 
         from koro.handlers.messages import handle_text
@@ -848,7 +923,9 @@ class TestMessageHandlers:
             "minute_start": 9999999999,
         }
 
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
 
@@ -882,7 +959,9 @@ class TestMessageHandlers:
             "minute_start": 9999999999,
         }
 
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
 
@@ -914,8 +993,17 @@ class TestCallbackHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.settings = {"12345": {"audio_enabled": True, "voice_speed": 1.0, "mode": "go_all", "watch_enabled": False}}
-        monkeypatch.setattr("koro.handlers.callbacks.get_state_manager", lambda: manager)
+        manager.settings = {
+            "12345": {
+                "audio_enabled": True,
+                "voice_speed": 1.0,
+                "mode": "go_all",
+                "watch_enabled": False,
+            }
+        }
+        monkeypatch.setattr(
+            "koro.handlers.callbacks.get_state_manager", lambda: manager
+        )
 
         from koro.handlers.callbacks import handle_settings_callback
 
@@ -941,8 +1029,17 @@ class TestCallbackHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.settings = {"12345": {"audio_enabled": True, "voice_speed": 1.0, "mode": "go_all", "watch_enabled": False}}
-        monkeypatch.setattr("koro.handlers.callbacks.get_state_manager", lambda: manager)
+        manager.settings = {
+            "12345": {
+                "audio_enabled": True,
+                "voice_speed": 1.0,
+                "mode": "go_all",
+                "watch_enabled": False,
+            }
+        }
+        monkeypatch.setattr(
+            "koro.handlers.callbacks.get_state_manager", lambda: manager
+        )
 
         from koro.handlers.callbacks import handle_settings_callback
 
@@ -967,8 +1064,17 @@ class TestCallbackHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.settings = {"12345": {"audio_enabled": True, "voice_speed": 1.0, "mode": "go_all", "watch_enabled": False}}
-        monkeypatch.setattr("koro.handlers.callbacks.get_state_manager", lambda: manager)
+        manager.settings = {
+            "12345": {
+                "audio_enabled": True,
+                "voice_speed": 1.0,
+                "mode": "go_all",
+                "watch_enabled": False,
+            }
+        }
+        monkeypatch.setattr(
+            "koro.handlers.callbacks.get_state_manager", lambda: manager
+        )
 
         from koro.handlers.callbacks import handle_settings_callback
 
@@ -993,8 +1099,17 @@ class TestCallbackHandlers:
         from koro.state import StateManager
 
         manager = StateManager()
-        manager.settings = {"12345": {"audio_enabled": True, "voice_speed": 1.0, "mode": "go_all", "watch_enabled": False}}
-        monkeypatch.setattr("koro.handlers.callbacks.get_state_manager", lambda: manager)
+        manager.settings = {
+            "12345": {
+                "audio_enabled": True,
+                "voice_speed": 1.0,
+                "mode": "go_all",
+                "watch_enabled": False,
+            }
+        }
+        monkeypatch.setattr(
+            "koro.handlers.callbacks.get_state_manager", lambda: manager
+        )
 
         from koro.handlers.callbacks import handle_settings_callback
 
@@ -1022,24 +1137,32 @@ class TestMessageHandlersFullFlow:
     @pytest.mark.asyncio
     async def test_handle_text_full_flow(self, monkeypatch):
         """handle_text processes text and calls Claude."""
-        from koro.state import StateManager
-        from koro.rate_limit import RateLimiter
-        from koro.voice import VoiceEngine
         from koro.claude import ClaudeClient
+        from koro.rate_limit import RateLimiter
+        from koro.state import StateManager
+        from koro.voice import VoiceEngine
 
         manager = StateManager()
         limiter = RateLimiter()
         mock_voice = MagicMock(spec=VoiceEngine)
         mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
         mock_claude = MagicMock(spec=ClaudeClient)
-        mock_claude.query = AsyncMock(return_value=("Hello from Claude!", "sess123", {"cost": 0.01}))
+        mock_claude.query = AsyncMock(
+            return_value=("Hello from Claude!", "sess123", {"cost": 0.01})
+        )
 
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr("koro.handlers.messages.get_voice_engine", lambda: mock_voice)
-        monkeypatch.setattr("koro.handlers.messages.get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(
+            "koro.handlers.messages.get_voice_engine", lambda: mock_voice
+        )
+        monkeypatch.setattr(
+            "koro.handlers.messages.get_claude_client", lambda: mock_claude
+        )
 
         from koro.handlers.messages import handle_text
 
@@ -1067,25 +1190,38 @@ class TestMessageHandlersFullFlow:
     @pytest.mark.asyncio
     async def test_handle_text_no_audio_when_disabled(self, monkeypatch):
         """handle_text skips audio when disabled."""
-        from koro.state import StateManager
-        from koro.rate_limit import RateLimiter
-        from koro.voice import VoiceEngine
         from koro.claude import ClaudeClient
+        from koro.rate_limit import RateLimiter
+        from koro.state import StateManager
+        from koro.voice import VoiceEngine
 
         manager = StateManager()
-        manager.settings = {"12345": {"audio_enabled": False, "voice_speed": 1.0, "mode": "go_all", "watch_enabled": False}}
+        manager.settings = {
+            "12345": {
+                "audio_enabled": False,
+                "voice_speed": 1.0,
+                "mode": "go_all",
+                "watch_enabled": False,
+            }
+        }
         limiter = RateLimiter()
         mock_voice = MagicMock(spec=VoiceEngine)
         mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
         mock_claude = MagicMock(spec=ClaudeClient)
         mock_claude.query = AsyncMock(return_value=("Response", "sess123", {}))
 
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr("koro.handlers.messages.get_voice_engine", lambda: mock_voice)
-        monkeypatch.setattr("koro.handlers.messages.get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(
+            "koro.handlers.messages.get_voice_engine", lambda: mock_voice
+        )
+        monkeypatch.setattr(
+            "koro.handlers.messages.get_claude_client", lambda: mock_claude
+        )
 
         from koro.handlers.messages import handle_text
 
@@ -1112,10 +1248,10 @@ class TestMessageHandlersFullFlow:
     @pytest.mark.asyncio
     async def test_handle_voice_transcribes_and_calls_claude(self, monkeypatch):
         """handle_voice transcribes voice and calls Claude."""
-        from koro.state import StateManager
-        from koro.rate_limit import RateLimiter
-        from koro.voice import VoiceEngine
         from koro.claude import ClaudeClient
+        from koro.rate_limit import RateLimiter
+        from koro.state import StateManager
+        from koro.voice import VoiceEngine
 
         manager = StateManager()
         limiter = RateLimiter()
@@ -1125,12 +1261,18 @@ class TestMessageHandlersFullFlow:
         mock_claude = MagicMock(spec=ClaudeClient)
         mock_claude.query = AsyncMock(return_value=("Hello back!", "sess123", {}))
 
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr("koro.handlers.messages.get_voice_engine", lambda: mock_voice)
-        monkeypatch.setattr("koro.handlers.messages.get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(
+            "koro.handlers.messages.get_voice_engine", lambda: mock_voice
+        )
+        monkeypatch.setattr(
+            "koro.handlers.messages.get_claude_client", lambda: mock_claude
+        )
 
         from koro.handlers.messages import handle_voice
 
@@ -1138,7 +1280,9 @@ class TestMessageHandlersFullFlow:
         processing_msg.edit_text = AsyncMock()
 
         voice_file = MagicMock()
-        voice_file.download_as_bytearray = AsyncMock(return_value=bytearray(b"voice_data"))
+        voice_file.download_as_bytearray = AsyncMock(
+            return_value=bytearray(b"voice_data")
+        )
 
         voice_obj = MagicMock()
         voice_obj.get_file = AsyncMock(return_value=voice_file)
@@ -1164,20 +1308,26 @@ class TestMessageHandlersFullFlow:
     @pytest.mark.asyncio
     async def test_handle_voice_error_on_transcription_failure(self, monkeypatch):
         """handle_voice shows error on transcription failure."""
-        from koro.state import StateManager
         from koro.rate_limit import RateLimiter
+        from koro.state import StateManager
         from koro.voice import VoiceEngine
 
         manager = StateManager()
         limiter = RateLimiter()
         mock_voice = MagicMock(spec=VoiceEngine)
-        mock_voice.transcribe = AsyncMock(return_value="[Transcription error: API failed]")
+        mock_voice.transcribe = AsyncMock(
+            return_value="[Transcription error: API failed]"
+        )
 
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr("koro.handlers.messages.get_voice_engine", lambda: mock_voice)
+        monkeypatch.setattr(
+            "koro.handlers.messages.get_voice_engine", lambda: mock_voice
+        )
 
         from koro.handlers.messages import handle_voice
 
@@ -1185,7 +1335,9 @@ class TestMessageHandlersFullFlow:
         processing_msg.edit_text = AsyncMock()
 
         voice_file = MagicMock()
-        voice_file.download_as_bytearray = AsyncMock(return_value=bytearray(b"voice_data"))
+        voice_file.download_as_bytearray = AsyncMock(
+            return_value=bytearray(b"voice_data")
+        )
 
         voice_obj = MagicMock()
         voice_obj.get_file = AsyncMock(return_value=voice_file)
@@ -1210,20 +1362,24 @@ class TestMessageHandlersFullFlow:
     @pytest.mark.asyncio
     async def test_handle_text_handles_exception(self, monkeypatch):
         """handle_text handles exceptions gracefully."""
-        from koro.state import StateManager
-        from koro.rate_limit import RateLimiter
         from koro.claude import ClaudeClient
+        from koro.rate_limit import RateLimiter
+        from koro.state import StateManager
 
         manager = StateManager()
         limiter = RateLimiter()
         mock_claude = MagicMock(spec=ClaudeClient)
         mock_claude.query = AsyncMock(side_effect=Exception("Connection failed"))
 
-        monkeypatch.setattr("koro.handlers.messages.should_handle_message", lambda x: True)
+        monkeypatch.setattr(
+            "koro.handlers.messages.should_handle_message", lambda x: True
+        )
         monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
         monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr("koro.handlers.messages.get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(
+            "koro.handlers.messages.get_claude_client", lambda: mock_claude
+        )
 
         from koro.handlers.messages import handle_text
 
@@ -1246,3 +1402,73 @@ class TestMessageHandlersFullFlow:
         processing_msg.edit_text.assert_called()
         call_text = processing_msg.edit_text.call_args[0][0]
         assert "Error" in call_text
+
+
+class TestPendingApprovalsCleanup:
+    """Tests for pending_approvals memory management."""
+
+    def test_pending_approvals_cleaned_on_timeout(self):
+        """pending_approvals entries should be removed after timeout."""
+        from koro.handlers.messages import cleanup_stale_approvals, pending_approvals
+
+        # Clear any existing entries
+        pending_approvals.clear()
+
+        # Add stale entry (created 10 minutes ago)
+        approval_id = "test123"
+        pending_approvals[approval_id] = {
+            "created_at": time.time() - 600,  # 10 min ago
+            "user_id": 12345,
+            "tool_name": "Bash",
+        }
+
+        cleanup_stale_approvals(max_age_seconds=300)
+
+        assert approval_id not in pending_approvals
+
+    def test_pending_approvals_max_size_enforced(self):
+        """pending_approvals should not exceed max size."""
+        from koro.handlers.messages import (
+            MAX_PENDING_APPROVALS,
+            add_pending_approval,
+            pending_approvals,
+        )
+
+        # Clear any existing entries
+        pending_approvals.clear()
+
+        # This test expects implementation to enforce limit
+        for i in range(MAX_PENDING_APPROVALS + 10):
+            add_pending_approval(f"id_{i}", {"user_id": i, "created_at": time.time()})
+
+        assert len(pending_approvals) <= MAX_PENDING_APPROVALS
+
+
+class TestExceptionLogging:
+    """Tests for proper exception logging instead of silent swallowing."""
+
+    @pytest.mark.asyncio
+    async def test_message_delete_failure_logged(self, capsys, monkeypatch):
+        """Failed message deletion should be logged."""
+        # Setup mock that raises on delete
+        update = MagicMock()
+        update.message.delete = AsyncMock(side_effect=Exception("Cannot delete"))
+        update.message.message_thread_id = None
+        update.effective_chat.id = 12345
+        update.effective_chat.send_message = AsyncMock()
+
+        context = MagicMock()
+        context.args = []
+
+        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 12345)
+        monkeypatch.setattr(
+            "koro.handlers.commands.should_handle_message", lambda x: True
+        )
+
+        from koro.handlers.commands import cmd_claude_token
+
+        await cmd_claude_token(update, context)
+
+        # Should log the exception (debug function prints to stdout)
+        captured = capsys.readouterr()
+        assert "delete" in captured.out.lower()

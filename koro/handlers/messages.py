@@ -1,19 +1,67 @@
 """Voice and text message handlers."""
 
 import asyncio
+import time
 import uuid
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from ..claude import format_tool_call, get_claude_client
 from ..config import ALLOWED_CHAT_ID
+from ..rate_limit import get_rate_limiter
 from ..state import get_state_manager
 from ..voice import get_voice_engine
-from ..claude import get_claude_client, format_tool_call
-from ..rate_limit import get_rate_limiter
-from .utils import should_handle_message, send_long_message, debug
+from .utils import debug, send_long_message, should_handle_message
 
 # Pending tool approvals for approve mode
 pending_approvals: dict = {}
+
+# Maximum number of pending approvals to prevent memory leaks
+MAX_PENDING_APPROVALS = 100
+
+
+def add_pending_approval(approval_id: str, data: dict) -> None:
+    """
+    Add a pending approval with automatic cleanup of old entries.
+
+    Args:
+        approval_id: Unique approval ID
+        data: Approval data (should include created_at)
+    """
+    # Ensure created_at is present
+    if "created_at" not in data:
+        data["created_at"] = time.time()
+
+    # Clean up stale approvals before adding new one
+    cleanup_stale_approvals()
+
+    # Enforce max size limit (FIFO eviction)
+    while len(pending_approvals) >= MAX_PENDING_APPROVALS:
+        oldest_id = min(
+            pending_approvals.keys(),
+            key=lambda k: pending_approvals[k].get("created_at", 0),
+        )
+        del pending_approvals[oldest_id]
+
+    pending_approvals[approval_id] = data
+
+
+def cleanup_stale_approvals(max_age_seconds: int = 300) -> None:
+    """
+    Remove pending approvals that have exceeded the max age.
+
+    Args:
+        max_age_seconds: Maximum age in seconds (default 5 minutes)
+    """
+    current_time = time.time()
+    stale_ids = [
+        approval_id
+        for approval_id, data in pending_approvals.items()
+        if current_time - data.get("created_at", 0) > max_age_seconds
+    ]
+    for approval_id in stale_ids:
+        del pending_approvals[approval_id]
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,7 +107,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Show what was heard
-        preview = text[:100] + '...' if len(text) > 100 else text
+        preview = text[:100] + "..." if len(text) > 100 else text
         await processing_msg.edit_text(f"Heard: {preview}\n\nAsking Koro...")
 
         # Call Claude
@@ -75,7 +123,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Voice response if enabled
         if settings["audio_enabled"]:
-            audio = await voice_engine.text_to_speech(response, speed=settings["voice_speed"])
+            audio = await voice_engine.text_to_speech(
+                response, speed=settings["voice_speed"]
+            )
             if audio:
                 await update.message.reply_voice(voice=audio)
 
@@ -127,7 +177,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Voice response if enabled
         if settings["audio_enabled"]:
             voice_engine = get_voice_engine()
-            audio = await voice_engine.text_to_speech(response, speed=settings["voice_speed"])
+            audio = await voice_engine.text_to_speech(
+                response, speed=settings["voice_speed"]
+            )
             if audio:
                 await update.message.reply_voice(voice=audio)
 
@@ -179,13 +231,17 @@ async def _call_claude_with_settings(
         approval_id = str(uuid.uuid4())[:8]
         approval_event = asyncio.Event()
 
-        pending_approvals[approval_id] = {
-            "user_id": update.effective_user.id,
-            "event": approval_event,
-            "approved": None,
-            "tool_name": tool_name,
-            "input": tool_input,
-        }
+        add_pending_approval(
+            approval_id,
+            {
+                "created_at": time.time(),
+                "user_id": update.effective_user.id,
+                "event": approval_event,
+                "approved": None,
+                "tool_name": tool_name,
+                "input": tool_input,
+            },
+        )
 
         keyboard = [
             [
@@ -196,7 +252,9 @@ async def _call_claude_with_settings(
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         message_text = f"Tool Request:\n{format_tool_call(tool_name, tool_input)}"
-        await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode="Markdown")
+        await update.message.reply_text(
+            message_text, reply_markup=reply_markup, parse_mode="Markdown"
+        )
 
         try:
             await asyncio.wait_for(approval_event.wait(), timeout=300)

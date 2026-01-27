@@ -1,8 +1,9 @@
 """Tests for koro.voice module."""
 
-import pytest
 from io import BytesIO
 from unittest.mock import MagicMock
+
+import pytest
 
 from koro.voice import VoiceEngine
 
@@ -152,6 +153,7 @@ class TestVoiceEngineDefaults:
         monkeypatch.setattr("koro.voice.ELEVENLABS_API_KEY", "test_key")
 
         import koro.voice
+
         koro.voice._voice_engine = None
 
         engine = koro.voice.get_voice_engine()
@@ -164,6 +166,7 @@ class TestVoiceEngineDefaults:
         monkeypatch.setattr("koro.voice.ELEVENLABS_API_KEY", "test_key")
 
         import koro.voice
+
         koro.voice._voice_engine = None
 
         engine1 = koro.voice.get_voice_engine()
@@ -179,3 +182,50 @@ class TestVoiceEngineDefaults:
         koro.voice.set_voice_engine(custom)
 
         assert koro.voice.get_voice_engine() is custom
+
+
+class TestVoiceEngineAsyncBlocking:
+    """Tests for ensuring VoiceEngine doesn't block the event loop."""
+
+    @pytest.mark.asyncio
+    async def test_transcribe_does_not_block_event_loop(self, monkeypatch):
+        """transcribe() should not block the event loop."""
+        import threading
+
+        call_was_in_thread = False
+
+        def mock_convert(*args, **kwargs):
+            nonlocal call_was_in_thread
+            # Check if we're in a thread (not main thread)
+            call_was_in_thread = threading.current_thread() != threading.main_thread()
+            result = MagicMock()
+            result.text = "test"
+            return result
+
+        engine = VoiceEngine(api_key="test", voice_id="test")
+        engine.client = MagicMock()
+        engine.client.speech_to_text.convert = mock_convert
+
+        await engine.transcribe(b"audio_data")
+
+        assert call_was_in_thread, "Blocking call should run in thread"
+
+    @pytest.mark.asyncio
+    async def test_text_to_speech_does_not_block_event_loop(self, monkeypatch):
+        """text_to_speech() should not block the event loop."""
+        import threading
+
+        call_was_in_thread = False
+
+        def mock_convert(*args, **kwargs):
+            nonlocal call_was_in_thread
+            call_was_in_thread = threading.current_thread() != threading.main_thread()
+            return [b"audio"]
+
+        engine = VoiceEngine(api_key="test", voice_id="test")
+        engine.client = MagicMock()
+        engine.client.text_to_speech.convert = mock_convert
+
+        await engine.text_to_speech("hello")
+
+        assert call_was_in_thread, "Blocking call should run in thread"

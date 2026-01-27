@@ -2,7 +2,18 @@
 name = "koromind"
 version = "1.0.0"
 description = "Voice-first interface to Claude's agentic capabilities"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
+dependencies = [
+    "python-telegram-bot>=20.0,<22.0",
+    "elevenlabs>=1.0.0,<2.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+    "claude-agent-sdk>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

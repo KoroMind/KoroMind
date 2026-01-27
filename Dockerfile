@@ -34,13 +34,13 @@ RUN npm install -g @anthropic-ai/claude-code
 USER claude
 WORKDIR /home/claude/app
 
-# Copy requirements first for better caching
-COPY --chown=claude:claude requirements.txt .
+# Copy dependency manifests first for better caching
+COPY --chown=claude:claude pyproject.toml uv.lock ./
 
-# Create virtual environment and install dependencies
+# Create virtual environment and install dependencies via uv
 RUN python3 -m venv .venv && \
-    .venv/bin/pip install --no-cache-dir --upgrade pip && \
-    .venv/bin/pip install --no-cache-dir -r requirements.txt
+    .venv/bin/pip install --no-cache-dir --upgrade pip uv && \
+    .venv/bin/uv sync --frozen --no-dev
 
 # Copy application code
 COPY --chown=claude:claude bot.py .

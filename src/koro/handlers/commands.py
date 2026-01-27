@@ -5,12 +5,12 @@ import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from ..auth import check_claude_auth, load_credentials, save_credentials
-from ..claude import get_claude_client
-from ..config import ALLOWED_CHAT_ID, SANDBOX_DIR
-from ..state import get_state_manager
-from ..voice import get_voice_engine
-from .utils import debug, should_handle_message
+from koro.auth import check_claude_auth, load_credentials, save_credentials
+from koro.claude import get_claude_client
+from koro.config import ALLOWED_CHAT_ID, SANDBOX_DIR
+from koro.handlers.utils import debug, should_handle_message
+from koro.state import get_state_manager
+from koro.voice import get_voice_engine
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):

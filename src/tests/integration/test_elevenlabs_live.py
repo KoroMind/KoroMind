@@ -1,8 +1,9 @@
 """Live integration tests for ElevenLabs API."""
 
 import os
-import pytest
 from io import BytesIO
+
+import pytest
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -10,8 +11,7 @@ load_dotenv()
 
 # Skip all tests in this module if no API key
 pytestmark = pytest.mark.skipif(
-    not os.getenv("ELEVENLABS_API_KEY"),
-    reason="ELEVENLABS_API_KEY not set"
+    not os.getenv("ELEVENLABS_API_KEY"), reason="ELEVENLABS_API_KEY not set"
 )
 
 
@@ -19,6 +19,7 @@ pytestmark = pytest.mark.skipif(
 def voice_engine():
     """Create voice engine with real API key."""
     from koro.voice import VoiceEngine
+
     return VoiceEngine()
 
 
@@ -80,8 +81,11 @@ class TestElevenLabsRoundTrip:
         transcription = await voice_engine.transcribe(audio.getvalue())
 
         # Should preserve key words
-        words_found = sum(1 for word in ["hello", "world", "testing", "one", "two", "three"]
-                        if word in transcription.lower())
+        words_found = sum(
+            1
+            for word in ["hello", "world", "testing", "one", "two", "three"]
+            if word in transcription.lower()
+        )
         assert words_found >= 3  # At least half the words
 
 

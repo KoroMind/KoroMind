@@ -1,12 +1,14 @@
 """End-to-end integration tests."""
 
 import os
-import pytest
 from pathlib import Path
+
+import pytest
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
 
 def _has_claude_auth():
     if os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_CODE_OAUTH_TOKEN"):
@@ -14,10 +16,11 @@ def _has_claude_auth():
     creds_path = Path.home() / ".claude" / ".credentials.json"
     return creds_path.exists()
 
+
 # Skip if missing any required API
 pytestmark = pytest.mark.skipif(
     not os.getenv("ELEVENLABS_API_KEY") or not _has_claude_auth(),
-    reason="Missing API keys for E2E test"
+    reason="Missing API keys for E2E test",
 )
 
 
@@ -28,13 +31,12 @@ class TestFullPipeline:
     @pytest.mark.asyncio
     async def test_voice_to_voice_flow(self, tmp_path):
         """Complete flow: TTS -> STT -> Claude -> TTS."""
-        from koro.voice import VoiceEngine
         from koro.claude import ClaudeClient
+        from koro.voice import VoiceEngine
 
         voice = VoiceEngine()
         claude = ClaudeClient(
-            sandbox_dir=str(tmp_path / "sandbox"),
-            working_dir=str(tmp_path)
+            sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
         (tmp_path / "sandbox").mkdir()
 
@@ -49,8 +51,7 @@ class TestFullPipeline:
 
         # 3. Send to Claude
         response, session_id, metadata = await claude.query(
-            transcription,
-            include_megg=False
+            transcription, include_megg=False
         )
         assert len(response) > 0
 
@@ -65,23 +66,19 @@ class TestFullPipeline:
         from koro.claude import ClaudeClient
 
         claude = ClaudeClient(
-            sandbox_dir=str(tmp_path / "sandbox"),
-            working_dir=str(tmp_path)
+            sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
         (tmp_path / "sandbox").mkdir()
 
         # First interaction
         _, session_id, _ = await claude.query(
-            "My favorite color is purple. Remember this.",
-            include_megg=False
+            "My favorite color is purple. Remember this.", include_megg=False
         )
         assert session_id
 
         # Second interaction using same session
         response, _, _ = await claude.query(
-            "What is my favorite color?",
-            session_id=session_id,
-            include_megg=False
+            "What is my favorite color?", session_id=session_id, include_megg=False
         )
 
         assert "purple" in response.lower()
@@ -94,10 +91,7 @@ class TestFullPipeline:
         sandbox = tmp_path / "sandbox"
         sandbox.mkdir()
 
-        claude = ClaudeClient(
-            sandbox_dir=str(sandbox),
-            working_dir=str(tmp_path)
-        )
+        claude = ClaudeClient(sandbox_dir=str(sandbox), working_dir=str(tmp_path))
 
         # Create a file for Claude to read
         test_file = tmp_path / "data.txt"
@@ -105,7 +99,7 @@ class TestFullPipeline:
 
         response, _, metadata = await claude.query(
             f"Read the file at {test_file} and tell me the secret code.",
-            include_megg=False
+            include_megg=False,
         )
 
         assert "ALPHA123" in response
@@ -135,15 +129,14 @@ class TestErrorHandling:
         from koro.voice import VoiceEngine
 
         claude = ClaudeClient(
-            sandbox_dir=str(tmp_path / "sandbox"),
-            working_dir=str(tmp_path)
+            sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
         (tmp_path / "sandbox").mkdir()
 
         # Ask for a longer response
         response, _, _ = await claude.query(
             "List the first 10 prime numbers with a brief explanation of each.",
-            include_megg=False
+            include_megg=False,
         )
 
         # Should handle the response

@@ -11,7 +11,7 @@ feat/componentize-with-tests
 
 | Metric | Value |
 |--------|-------|
-| `bot.py` | 1389 lines, monolithic |
+| `src/bot.py` | 1389 lines, monolithic |
 | Test coverage | 0% (no pytest tests) |
 | Existing tests | 2 manual scripts |
 
@@ -21,7 +21,7 @@ feat/componentize-with-tests
 
 ```
 KoroMind/
-├── koro/
+├── src/koro/
 │   ├── __init__.py
 │   ├── config.py           # Env vars, validation, constants
 │   ├── auth.py             # Claude auth, credentials management
@@ -37,7 +37,7 @@ KoroMind/
 │   │   └── callbacks.py    # Inline keyboard callbacks
 │   └── main.py             # Entry point, wires everything
 │
-├── tests/
+├── src/tests/
 │   ├── conftest.py         # Shared fixtures, mocks
 │   ├── unit/
 │   │   ├── test_config.py
@@ -53,7 +53,7 @@ KoroMind/
 │       ├── test_claude_live.py
 │       └── test_e2e.py
 │
-├── bot.py                  # Kept as thin wrapper → imports koro.main
+├── src/bot.py                  # Kept as thin wrapper → imports koro.main
 ├── pyproject.toml          # Add pytest config
 └── uv.lock                 # Locked dependencies
 ```
@@ -93,7 +93,7 @@ KoroMind/
 | `test_prompt.py` | File loading, placeholder replacement |
 | `test_handlers.py` | Auth checks, routing, response formatting |
 
-**Run:** `pytest tests/unit/ -v`
+**Run:** `pytest src/tests/unit/ -v`
 **Target:** 70%+ line coverage
 
 ### Tier 2: Integration Tests (Live APIs)
@@ -104,7 +104,7 @@ KoroMind/
 | `test_claude_live.py` | Real query, session creation/resume |
 | `test_e2e.py` | Full: audio → transcribe → Claude → TTS |
 
-**Run:** `pytest tests/integration/ -v --live`
+**Run:** `pytest src/tests/integration/ -v --live`
 **Requires:** Real API keys in `.env`
 
 ---
@@ -113,21 +113,21 @@ KoroMind/
 
 | Check | Command | Pass |
 |-------|---------|------|
-| Unit tests | `pytest tests/unit/ -v` | 0 failures |
-| Coverage | `pytest tests/unit/ --cov=koro --cov-fail-under=70` | ≥70% |
-| Live ElevenLabs | `pytest tests/integration/test_elevenlabs_live.py -v` | Pass |
-| Live Claude | `pytest tests/integration/test_claude_live.py -v` | Pass |
-| Full E2E | `pytest tests/integration/test_e2e.py -v` | Pass |
-| Bot starts | `python bot.py` (ctrl+c after startup) | No crash |
+| Unit tests | `pytest src/tests/unit/ -v` | 0 failures |
+| Coverage | `pytest src/tests/unit/ --cov=koro --cov-fail-under=70` | ≥70% |
+| Live ElevenLabs | `pytest src/tests/integration/test_elevenlabs_live.py -v` | Pass |
+| Live Claude | `pytest src/tests/integration/test_claude_live.py -v` | Pass |
+| Full E2E | `pytest src/tests/integration/test_e2e.py -v` | Pass |
+| Bot starts | `python src/bot.py` (ctrl+c after startup) | No crash |
 | Imports clean | `python -c "import koro"` | No errors |
 
 ---
 
 ## What Changes for Users
 
-**Nothing.** Same `python bot.py`, same commands, same behavior.
+**Nothing.** Same `python src/bot.py`, same commands, same behavior.
 
-The `bot.py` file becomes:
+The `src/bot.py` file becomes:
 ```python
 #!/usr/bin/env python3
 """KoroMind - Voice-first interface to Claude's agentic capabilities"""
@@ -145,7 +145,7 @@ if __name__ == "__main__":
 - No behavior changes
 - No new runtime dependencies
 - Docker setup unchanged
-- prompts/ and docker/ configs untouched
+- src/prompts/ and docker/ configs untouched
 
 ---
 
@@ -159,12 +159,12 @@ pytest>=9.0.2
 
 ## Deliverables
 
-1. `koro/` package with all components
-2. `tests/unit/` with 70%+ coverage
-3. `tests/integration/` with live API tests
+1. `src/koro/` package with all components
+2. `src/tests/unit/` with 70%+ coverage
+3. `src/tests/integration/` with live API tests
 4. Updated `pyproject.toml` dev extras
 5. `pyproject.toml` with pytest config
-6. Thin `bot.py` wrapper (backwards compatible)
+6. Thin `src/bot.py` wrapper (backwards compatible)
 7. All commits on `feat/componentize-with-tests` branch
 
 ---
@@ -173,12 +173,12 @@ pytest>=9.0.2
 
 ```bash
 # 1. Fast validation (no keys needed)
-pytest tests/unit/ -v --cov=koro --cov-fail-under=70
+pytest src/tests/unit/ -v --cov=koro --cov-fail-under=70
 
 # 2. Live validation (needs real keys)
-pytest tests/integration/ -v
+pytest src/tests/integration/ -v
 
 # 3. Manual smoke test
-python bot.py
+python src/bot.py
 # Send voice message, verify response
 ```

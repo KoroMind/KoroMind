@@ -1,20 +1,20 @@
 """Telegram message and command handlers."""
 
-from .commands import (
-    cmd_start,
-    cmd_new,
+from koro.handlers.callbacks import handle_approval_callback, handle_settings_callback
+from koro.handlers.commands import (
+    cmd_claude_token,
     cmd_continue,
-    cmd_sessions,
-    cmd_switch,
-    cmd_status,
+    cmd_elevenlabs_key,
     cmd_health,
+    cmd_new,
+    cmd_sessions,
     cmd_settings,
     cmd_setup,
-    cmd_claude_token,
-    cmd_elevenlabs_key,
+    cmd_start,
+    cmd_status,
+    cmd_switch,
 )
-from .messages import handle_voice, handle_text
-from .callbacks import handle_settings_callback, handle_approval_callback
+from koro.handlers.messages import handle_text, handle_voice
 
 __all__ = [
     "cmd_start",

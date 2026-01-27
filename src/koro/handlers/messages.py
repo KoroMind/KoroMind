@@ -7,12 +7,12 @@ import uuid
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from ..claude import format_tool_call, get_claude_client
-from ..config import ALLOWED_CHAT_ID
-from ..rate_limit import get_rate_limiter
-from ..state import get_state_manager
-from ..voice import get_voice_engine
-from .utils import debug, send_long_message, should_handle_message
+from koro.claude import format_tool_call, get_claude_client
+from koro.config import ALLOWED_CHAT_ID
+from koro.handlers.utils import debug, send_long_message, should_handle_message
+from koro.rate_limit import get_rate_limiter
+from koro.state import get_state_manager
+from koro.voice import get_voice_engine
 
 # Pending tool approvals for approve mode
 pending_approvals: dict = {}

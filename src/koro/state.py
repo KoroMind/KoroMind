@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .config import SETTINGS_FILE, STATE_FILE, VOICE_SETTINGS
+from koro.config import SETTINGS_FILE, STATE_FILE, VOICE_SETTINGS
 
 # Maximum number of sessions to keep per user (FIFO eviction)
 MAX_SESSIONS = 100

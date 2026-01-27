@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from .config import SYSTEM_PROMPT_FILE, SANDBOX_DIR, CLAUDE_WORKING_DIR, BASE_DIR
+from koro.config import BASE_DIR, CLAUDE_WORKING_DIR, SANDBOX_DIR, SYSTEM_PROMPT_FILE
 
 
 def load_system_prompt(prompt_file: str = None) -> str:
@@ -85,13 +85,17 @@ def build_dynamic_prompt(
 
     # Inject current date and time
     now = datetime.now()
-    timestamp_info = f"\n\nCurrent date and time: {now.strftime('%Y-%m-%d %H:%M:%S %A')}"
+    timestamp_info = (
+        f"\n\nCurrent date and time: {now.strftime('%Y-%m-%d %H:%M:%S %A')}"
+    )
     prompt = prompt + timestamp_info
 
     # Optionally inject user settings summary
     if user_settings:
         if not user_settings.get("audio_enabled", True):
-            prompt = prompt + "\n\nUser settings:\n- Audio responses disabled (text only)"
+            prompt = (
+                prompt + "\n\nUser settings:\n- Audio responses disabled (text only)"
+            )
 
     return prompt
 

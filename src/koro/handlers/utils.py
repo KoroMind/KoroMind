@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from ..config import TOPIC_ID
+from koro.config import TOPIC_ID
 
 
 def debug(msg: str) -> None:
@@ -56,9 +56,9 @@ async def send_long_message(update, first_msg, text: str, chunk_size: int = 4000
         if len(remaining) <= chunk_size:
             chunks.append(remaining)
             break
-        break_point = remaining.rfind('\n', 0, chunk_size)
+        break_point = remaining.rfind("\n", 0, chunk_size)
         if break_point == -1:
-            break_point = remaining.rfind(' ', 0, chunk_size)
+            break_point = remaining.rfind(" ", 0, chunk_size)
         if break_point == -1:
             break_point = chunk_size
         chunks.append(remaining[:break_point])

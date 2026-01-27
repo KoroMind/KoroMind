@@ -3,7 +3,7 @@
 import json
 import subprocess
 from pathlib import Path
-from typing import Callable, Any
+from typing import Any, Callable
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import (
@@ -13,8 +13,8 @@ from claude_agent_sdk.types import (
     ToolUseBlock,
 )
 
-from .config import SANDBOX_DIR, CLAUDE_WORKING_DIR
-from .prompt import get_prompt_manager
+from koro.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
+from koro.prompt import get_prompt_manager
 
 
 def load_megg_context(working_dir: str = None) -> str:
@@ -30,11 +30,7 @@ def load_megg_context(working_dir: str = None) -> str:
     cwd = working_dir or CLAUDE_WORKING_DIR
     try:
         result = subprocess.run(
-            ["megg", "context"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=cwd
+            ["megg", "context"], capture_output=True, text=True, timeout=10, cwd=cwd
         )
         if result.returncode == 0:
             return result.stdout
@@ -159,8 +155,16 @@ class ClaudeClient:
             options = ClaudeAgentOptions(
                 system_prompt=system_prompt,
                 allowed_tools=[
-                    "Read", "Grep", "Glob", "WebSearch", "WebFetch",
-                    "Task", "Bash", "Edit", "Write", "Skill"
+                    "Read",
+                    "Grep",
+                    "Glob",
+                    "WebSearch",
+                    "WebFetch",
+                    "Task",
+                    "Bash",
+                    "Edit",
+                    "Write",
+                    "Skill",
                 ],
                 cwd=self.sandbox_dir,
                 add_dirs=[self.working_dir],
@@ -223,7 +227,7 @@ class ClaudeClient:
                 capture_output=True,
                 text=True,
                 timeout=30,
-                cwd=self.working_dir
+                cwd=self.working_dir,
             )
             if result.returncode == 0:
                 return True, "OK"

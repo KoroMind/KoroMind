@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from koro.prompt import build_dynamic_prompt, PromptManager
+from koro.prompt import PromptManager, build_dynamic_prompt
 
 
 class TestLoadSystemPrompt:
@@ -14,10 +14,13 @@ class TestLoadSystemPrompt:
         prompt_file.write_text("You are a test assistant.")
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "SYSTEM_PROMPT_FILE", str(prompt_file))
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         content = koro.prompt.load_system_prompt(str(prompt_file))
@@ -29,12 +32,15 @@ class TestLoadSystemPrompt:
         prompt_file.write_text("Sandbox: {sandbox_dir}, Read: {read_dir}")
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "SANDBOX_DIR", "/test/sandbox")
         monkeypatch.setattr(koro.config, "CLAUDE_WORKING_DIR", "/test/working")
         monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         content = koro.prompt.load_system_prompt(str(prompt_file))
@@ -44,12 +50,15 @@ class TestLoadSystemPrompt:
     def test_fallback_default_when_missing(self, tmp_path, monkeypatch):
         """load_system_prompt returns default when file missing."""
         import koro.config
+
         monkeypatch.setattr(koro.config, "SYSTEM_PROMPT_FILE", "")
         monkeypatch.setattr(koro.config, "SANDBOX_DIR", "/sandbox")
         monkeypatch.setattr(koro.config, "CLAUDE_WORKING_DIR", "/working")
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         content = koro.prompt.load_system_prompt()
@@ -65,10 +74,13 @@ class TestLoadSystemPrompt:
         prompt_file.write_text("Relative prompt content")
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         content = koro.prompt.load_system_prompt("prompts/test.md")
@@ -87,13 +99,16 @@ class TestLoadSystemPrompt:
         base_dir.mkdir()
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "BASE_DIR", base_dir)
         monkeypatch.setattr(koro.config, "SYSTEM_PROMPT_FILE", "")
         monkeypatch.setattr(koro.config, "SANDBOX_DIR", "/sandbox")
         monkeypatch.setattr(koro.config, "CLAUDE_WORKING_DIR", "/working")
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         # Try to access file outside BASE_DIR via path traversal
@@ -161,10 +176,13 @@ class TestPromptManager:
         prompt_file.write_text("Lazy loaded prompt")
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         manager = PromptManager(str(prompt_file))
@@ -183,10 +201,13 @@ class TestPromptManager:
         prompt_file.write_text("Original content")
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         manager = PromptManager(str(prompt_file))
@@ -206,10 +227,13 @@ class TestPromptManager:
         prompt_file.write_text("Original")
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         manager = PromptManager(str(prompt_file))
@@ -227,10 +251,13 @@ class TestPromptManager:
         prompt_file.write_text("Base content")
 
         import koro.config
+
         monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
 
         import importlib
+
         import koro.prompt
+
         importlib.reload(koro.prompt)
 
         manager = PromptManager(str(prompt_file))

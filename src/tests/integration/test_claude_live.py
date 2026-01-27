@@ -1,11 +1,13 @@
 """Live integration tests for Claude SDK."""
 
 import os
+
 import pytest
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
 
 # Check for Claude auth - also check credentials file
 def _has_claude_auth():
@@ -13,13 +15,14 @@ def _has_claude_auth():
         return True
     # Check credentials file
     from pathlib import Path
+
     creds_path = Path.home() / ".claude" / ".credentials.json"
     return creds_path.exists()
 
+
 # Skip if no Claude auth
 pytestmark = pytest.mark.skipif(
-    not _has_claude_auth(),
-    reason="No Claude authentication configured"
+    not _has_claude_auth(), reason="No Claude authentication configured"
 )
 
 
@@ -27,6 +30,7 @@ pytestmark = pytest.mark.skipif(
 def claude_client(tmp_path):
     """Create Claude client with temp sandbox."""
     from koro.claude import ClaudeClient
+
     sandbox = tmp_path / "sandbox"
     sandbox.mkdir()
     return ClaudeClient(sandbox_dir=str(sandbox), working_dir=str(tmp_path))
@@ -52,8 +56,7 @@ class TestClaudeQuery:
     async def test_simple_query(self, claude_client):
         """Simple query returns response."""
         response, session_id, metadata = await claude_client.query(
-            "Say exactly: 'Hello test'",
-            include_megg=False
+            "Say exactly: 'Hello test'", include_megg=False
         )
 
         assert response
@@ -63,8 +66,7 @@ class TestClaudeQuery:
     async def test_query_returns_session_id(self, claude_client):
         """Query returns session ID for continuation."""
         response, session_id, metadata = await claude_client.query(
-            "Remember this number: 42",
-            include_megg=False
+            "Remember this number: 42", include_megg=False
         )
 
         assert session_id is not None
@@ -75,15 +77,14 @@ class TestClaudeQuery:
         """Session continuation preserves context."""
         # First message
         _, session_id, _ = await claude_client.query(
-            "Remember this secret word: banana",
-            include_megg=False
+            "Remember this secret word: banana", include_megg=False
         )
 
         # Continue session
         response, _, _ = await claude_client.query(
             "What was the secret word I told you?",
             session_id=session_id,
-            include_megg=False
+            include_megg=False,
         )
 
         assert "banana" in response.lower()
@@ -102,7 +103,7 @@ class TestClaudeToolUse:
 
         response, _, metadata = await claude_client.query(
             f"Read the file at {test_file} and tell me what number is in it.",
-            include_megg=False
+            include_megg=False,
         )
 
         assert "12345" in response
@@ -119,9 +120,7 @@ class TestClaudeToolUse:
             tools_called.append(name)
 
         await claude_client.query(
-            f"Read {test_file}",
-            include_megg=False,
-            on_tool_call=on_tool
+            f"Read {test_file}", include_megg=False, on_tool_call=on_tool
         )
 
         assert "Read" in tools_called

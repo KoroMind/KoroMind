@@ -1,13 +1,14 @@
 """Tests for koro.claude module."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 
 from koro.claude import (
-    load_megg_context,
+    ClaudeClient,
     format_tool_call,
     get_tool_detail,
-    ClaudeClient,
+    load_megg_context,
 )
 
 
@@ -18,8 +19,7 @@ class TestLoadMeggContext:
         """load_megg_context returns stdout on success."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="megg context content"
+                returncode=0, stdout="megg context content"
             )
 
             result = load_megg_context("/test/dir")
@@ -30,10 +30,7 @@ class TestLoadMeggContext:
     def test_returns_empty_on_failure(self):
         """load_megg_context returns empty string on failure."""
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1,
-                stderr="error"
-            )
+            mock_run.return_value = MagicMock(returncode=1, stderr="error")
 
             result = load_megg_context()
 
@@ -131,8 +128,7 @@ class TestClaudeClient:
     def test_init_with_custom_dirs(self):
         """ClaudeClient accepts custom directories."""
         client = ClaudeClient(
-            sandbox_dir="/custom/sandbox",
-            working_dir="/custom/working"
+            sandbox_dir="/custom/sandbox", working_dir="/custom/working"
         )
 
         assert client.sandbox_dir == "/custom/sandbox"
@@ -155,10 +151,7 @@ class TestClaudeClient:
         client = ClaudeClient()
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1,
-                stderr="auth error"
-            )
+            mock_run.return_value = MagicMock(returncode=1, stderr="auth error")
 
             success, message = client.health_check()
 
@@ -187,6 +180,7 @@ class TestClaudeClientDefaults:
         monkeypatch.setattr("koro.claude.CLAUDE_WORKING_DIR", "/test/working")
 
         import koro.claude
+
         koro.claude._claude_client = None
 
         client = koro.claude.get_claude_client()
@@ -200,6 +194,7 @@ class TestClaudeClientDefaults:
         monkeypatch.setattr("koro.claude.CLAUDE_WORKING_DIR", "/test/working")
 
         import koro.claude
+
         koro.claude._claude_client = None
 
         client1 = koro.claude.get_claude_client()
@@ -240,17 +235,20 @@ class TestClaudeClientQuery:
 
         with patch("koro.claude.ClaudeSDKClient", return_value=mock_sdk_client):
             client = ClaudeClient(
-                sandbox_dir=str(sandbox_dir),
-                working_dir=str(tmp_path)
+                sandbox_dir=str(sandbox_dir), working_dir=str(tmp_path)
             )
             await client.query("Hello")
 
         assert sandbox_dir.exists()
 
     @pytest.mark.asyncio
-    async def test_query_includes_megg_context_for_new_session(self, tmp_path, monkeypatch):
+    async def test_query_includes_megg_context_for_new_session(
+        self, tmp_path, monkeypatch
+    ):
         """query includes megg context for new sessions."""
-        monkeypatch.setattr("koro.claude.load_megg_context", lambda x: "Megg context here")
+        monkeypatch.setattr(
+            "koro.claude.load_megg_context", lambda x: "Megg context here"
+        )
 
         mock_sdk_client = MagicMock()
         mock_sdk_client.__aenter__ = AsyncMock(return_value=mock_sdk_client)
@@ -271,8 +269,7 @@ class TestClaudeClientQuery:
 
         with patch("koro.claude.ClaudeSDKClient", return_value=mock_sdk_client):
             client = ClaudeClient(
-                sandbox_dir=str(tmp_path / "sandbox"),
-                working_dir=str(tmp_path)
+                sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
             )
             await client.query("Hello", include_megg=True)
 
@@ -304,8 +301,7 @@ class TestClaudeClientQuery:
 
         with patch("koro.claude.ClaudeSDKClient", return_value=mock_sdk_client):
             client = ClaudeClient(
-                sandbox_dir=str(tmp_path / "sandbox"),
-                working_dir=str(tmp_path)
+                sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
             )
             await client.query("Hello", continue_last=True)
 
@@ -322,8 +318,7 @@ class TestClaudeClientQuery:
 
         with patch("koro.claude.ClaudeSDKClient", return_value=mock_sdk_client):
             client = ClaudeClient(
-                sandbox_dir=str(tmp_path / "sandbox"),
-                working_dir=str(tmp_path)
+                sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
             )
             result, session_id, metadata = await client.query("Hello")
 
@@ -338,6 +333,7 @@ class TestClaudeClientQuery:
             mock_run.return_value = MagicMock(returncode=0, stdout="context")
 
             from koro.claude import load_megg_context
+
             load_megg_context()
 
             call_kwargs = mock_run.call_args[1]
@@ -353,6 +349,7 @@ class TestSubprocessShellFalse:
             mock_run.return_value = MagicMock(returncode=0, stdout="")
 
             from koro.claude import load_megg_context
+
             load_megg_context("/test")
 
             call_args = mock_run.call_args[0][0]

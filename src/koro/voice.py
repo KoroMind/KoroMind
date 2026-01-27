@@ -5,7 +5,7 @@ from io import BytesIO
 
 from elevenlabs.client import ElevenLabs
 
-from .config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
+from koro.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
 
 class VoiceEngine:

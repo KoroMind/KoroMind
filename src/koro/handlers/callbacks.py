@@ -1,11 +1,11 @@
 """Callback query handlers for inline keyboards."""
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from ..state import get_state_manager
-from .messages import pending_approvals
-from .utils import debug
+from koro.handlers.messages import pending_approvals
+from koro.handlers.utils import debug
+from koro.state import get_state_manager
 
 
 async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -55,10 +55,18 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
 
     keyboard = [
         [
-            InlineKeyboardButton(f"Mode: {mode_display}", callback_data="setting_mode_toggle"),
-            InlineKeyboardButton(f"Watch: {watch_status}", callback_data="setting_watch_toggle"),
+            InlineKeyboardButton(
+                f"Mode: {mode_display}", callback_data="setting_mode_toggle"
+            ),
+            InlineKeyboardButton(
+                f"Watch: {watch_status}", callback_data="setting_watch_toggle"
+            ),
         ],
-        [InlineKeyboardButton(f"Audio: {audio_status}", callback_data="setting_audio_toggle")],
+        [
+            InlineKeyboardButton(
+                f"Audio: {audio_status}", callback_data="setting_audio_toggle"
+            )
+        ],
         [
             InlineKeyboardButton("0.8x", callback_data="setting_speed_0.8"),
             InlineKeyboardButton("0.9x", callback_data="setting_speed_0.9"),
@@ -89,7 +97,9 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
     if callback_data.startswith("approve_"):
         approval_id = callback_data.replace("approve_", "")
         if approval_id in pending_approvals:
-            if update.effective_user.id != pending_approvals[approval_id].get("user_id"):
+            if update.effective_user.id != pending_approvals[approval_id].get(
+                "user_id"
+            ):
                 await query.answer("Only the requester can approve this")
                 return
 
@@ -103,7 +113,9 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
     elif callback_data.startswith("reject_"):
         approval_id = callback_data.replace("reject_", "")
         if approval_id in pending_approvals:
-            if update.effective_user.id != pending_approvals[approval_id].get("user_id"):
+            if update.effective_user.id != pending_approvals[approval_id].get(
+                "user_id"
+            ):
                 await query.answer("Only the requester can reject this")
                 return
 

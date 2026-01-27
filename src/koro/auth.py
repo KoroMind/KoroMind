@@ -5,7 +5,7 @@ import os
 import time
 from pathlib import Path
 
-from .config import CREDENTIALS_FILE
+from koro.config import CREDENTIALS_FILE
 
 
 def check_claude_auth() -> tuple[bool, str]:

@@ -11,8 +11,8 @@ from telegram.ext import (
     filters,
 )
 
-from .auth import apply_saved_credentials, check_claude_auth
-from .config import (
+from koro.auth import apply_saved_credentials, check_claude_auth
+from koro.config import (
     ALLOWED_CHAT_ID,
     CLAUDE_WORKING_DIR,
     ELEVENLABS_VOICE_ID,
@@ -24,7 +24,7 @@ from .config import (
     setup_logging,
     validate_environment,
 )
-from .handlers import (
+from koro.handlers import (
     cmd_claude_token,
     cmd_continue,
     cmd_elevenlabs_key,
@@ -41,9 +41,9 @@ from .handlers import (
     handle_text,
     handle_voice,
 )
-from .handlers.utils import debug
-from .state import get_state_manager
-from .voice import get_voice_engine
+from koro.handlers.utils import debug
+from koro.state import get_state_manager
+from koro.voice import get_voice_engine
 
 logger = logging.getLogger(__name__)
 

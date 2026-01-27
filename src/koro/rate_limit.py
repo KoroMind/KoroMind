@@ -2,7 +2,7 @@
 
 import time
 
-from .config import RATE_LIMIT_SECONDS, RATE_LIMIT_PER_MINUTE
+from koro.config import RATE_LIMIT_PER_MINUTE, RATE_LIMIT_SECONDS
 
 
 class RateLimiter:
@@ -50,7 +50,10 @@ class RateLimiter:
         time_since_last = now - limits["last_message"]
         if time_since_last < self.cooldown_seconds:
             wait_time = self.cooldown_seconds - time_since_last
-            return False, f"Please wait {wait_time:.1f}s before sending another message."
+            return (
+                False,
+                f"Please wait {wait_time:.1f}s before sending another message.",
+            )
 
         # Check per-minute limit
         if now - limits["minute_start"] > 60:
@@ -59,7 +62,10 @@ class RateLimiter:
             limits["minute_count"] = 0
 
         if limits["minute_count"] >= self.per_minute_limit:
-            return False, f"Rate limit reached ({self.per_minute_limit}/min). Please wait."
+            return (
+                False,
+                f"Rate limit reached ({self.per_minute_limit}/min). Please wait.",
+            )
 
         # Update limits
         limits["last_message"] = now

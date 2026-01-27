@@ -1,7 +1,8 @@
 """Shared test fixtures and configuration."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
 
 
 @pytest.fixture
@@ -54,7 +55,7 @@ def sample_state():
     return {
         "12345": {
             "current_session": "session_abc123",
-            "sessions": ["session_abc123", "session_def456"]
+            "sessions": ["session_abc123", "session_def456"],
         }
     }
 
@@ -67,7 +68,7 @@ def sample_settings():
             "audio_enabled": True,
             "voice_speed": 1.1,
             "mode": "go_all",
-            "watch_enabled": False
+            "watch_enabled": False,
         }
     }
 
@@ -125,5 +126,5 @@ def mock_claude_response():
         "session_id": "new_session_xyz789",
         "total_cost_usd": 0.001,
         "num_turns": 1,
-        "duration_ms": 500
+        "duration_ms": 500,
     }

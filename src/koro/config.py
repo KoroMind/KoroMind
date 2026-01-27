@@ -1,8 +1,9 @@
 """Configuration management for KoroMind."""
 
-import os
 import logging
+import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -44,8 +45,7 @@ TOPIC_ID = get_env("TELEGRAM_TOPIC_ID")
 # Directories
 CLAUDE_WORKING_DIR = get_env("CLAUDE_WORKING_DIR", os.path.expanduser("~"))
 SANDBOX_DIR = get_env(
-    "CLAUDE_SANDBOX_DIR",
-    os.path.join(os.path.expanduser("~"), "claude-voice-sandbox")
+    "CLAUDE_SANDBOX_DIR", os.path.join(os.path.expanduser("~"), "claude-voice-sandbox")
 )
 
 # Voice settings
@@ -73,7 +73,8 @@ RATE_LIMIT_SECONDS = 2
 RATE_LIMIT_PER_MINUTE = 10
 
 # Paths
-BASE_DIR = Path(__file__).parent.parent
+# In src layout, repo root is two levels above this file: src/koro/config.py
+BASE_DIR = Path(__file__).resolve().parents[2]
 STATE_FILE = BASE_DIR / "sessions_state.json"
 SETTINGS_FILE = BASE_DIR / "user_settings.json"
 CREDENTIALS_FILE = BASE_DIR / "credentials.json"
@@ -82,8 +83,8 @@ CREDENTIALS_FILE = BASE_DIR / "credentials.json"
 def setup_logging() -> logging.Logger:
     """Configure and return logger."""
     logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=getattr(logging, LOG_LEVEL.upper(), logging.INFO)
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
     )
     return logging.getLogger(__name__)
 
@@ -111,7 +112,10 @@ def validate_environment() -> tuple[bool, str]:
     # Validate TELEGRAM_DEFAULT_CHAT_ID is set and valid
     chat_id = get_env("TELEGRAM_DEFAULT_CHAT_ID", "")
     if not chat_id:
-        return False, "Missing required environment variable:\n  - TELEGRAM_DEFAULT_CHAT_ID: Your Telegram chat ID (run /start to get it)"
+        return (
+            False,
+            "Missing required environment variable:\n  - TELEGRAM_DEFAULT_CHAT_ID: Your Telegram chat ID (run /start to get it)",
+        )
 
     try:
         chat_id_int = int(chat_id)
@@ -119,6 +123,9 @@ def validate_environment() -> tuple[bool, str]:
         return False, f"TELEGRAM_DEFAULT_CHAT_ID must be a number, got: {chat_id}"
 
     if chat_id_int == 0:
-        return False, "TELEGRAM_DEFAULT_CHAT_ID cannot be 0 (would accept messages from anyone). Set it to your chat ID."
+        return (
+            False,
+            "TELEGRAM_DEFAULT_CHAT_ID cannot be 0 (would accept messages from anyone). Set it to your chat ID.",
+        )
 
     return True, ""

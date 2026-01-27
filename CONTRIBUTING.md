@@ -101,10 +101,12 @@ pytest test_bot.py -v
 
 ```
 KoroMind/
-├── bot.py              # Main bot code
-├── test_bot.py         # Test suite
-├── prompts/            # Persona prompt files
-│   └── koro.md
+├── src/
+│   ├── bot.py          # Main bot code
+│   ├── koro/           # Main package
+│   ├── tests/          # Test suite
+│   └── prompts/        # Persona prompt files
+│       └── koro.md
 ├── .env.example        # Environment template
 ├── settings.example.json  # Permissions template
 └── pyproject.toml      # Dependencies and tool config

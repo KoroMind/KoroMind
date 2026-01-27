@@ -10,15 +10,29 @@ dependencies = [
     "claude-agent-sdk>=0.1.0",
 ]
 
+[build-system]
+requires = ["setuptools>=69.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["koro*"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pre-commit>=4.5.1",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["tests"]
+testpaths = ["src/tests"]
+pythonpath = ["src"]
 markers = [
     "live: marks tests as requiring live API keys (deselect with '-m \"not live\"')",
 ]
@@ -26,9 +40,21 @@ filterwarnings = [
     "ignore::DeprecationWarning",
 ]
 
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
 [tool.coverage.run]
 source = ["koro"]
-omit = ["tests/*"]
+omit = ["src/tests/*"]
 
 [tool.coverage.report]
 exclude_lines = [

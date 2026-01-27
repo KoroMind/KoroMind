@@ -199,7 +199,7 @@ Send a voice message to your bot. That's it.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PERSONA_NAME` | `Assistant` | Display name in logs |
-| `SYSTEM_PROMPT_FILE` | - | Path to persona prompt (e.g., `prompts/v.md`) |
+| `SYSTEM_PROMPT_FILE` | - | Path to persona prompt (e.g., `src/prompts/koro.md`) |
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | ElevenLabs voice ID |
 | `TELEGRAM_TOPIC_ID` | - | Filter to specific forum topic |
 | `CLAUDE_WORKING_DIR` | `/home/dev` | Directory Claude can read |
@@ -260,8 +260,8 @@ Access via `/settings`:
 ```bash
 pip install pytest pytest-asyncio pytest-cov
 
-pytest test_bot.py -v
-pytest test_bot.py --cov=bot --cov-report=term-missing
+pytest src/tests/unit -v
+pytest src/tests/unit --cov=koro --cov-report=term-missing
 ```
 
 ---

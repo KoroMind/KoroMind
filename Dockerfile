@@ -43,9 +43,7 @@ RUN python3 -m venv .venv && \
     .venv/bin/uv sync --frozen --no-dev
 
 # Copy application code
-COPY --chown=claude:claude bot.py .
-COPY --chown=claude:claude koro/ ./koro/
-COPY --chown=claude:claude prompts/ ./prompts/
+COPY --chown=claude:claude src/ ./src/
 
 # Copy Claude settings (agents, skills, config from toru-claude-settings submodule)
 COPY --chown=claude:claude .claude-settings/ /home/claude/.claude/
@@ -68,4 +66,4 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/home/claude/app/.venv/bin:$PATH"
 
 # Default command
-CMD ["python", "bot.py"]
+CMD ["python", "src/bot.py"]

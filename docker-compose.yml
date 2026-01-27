@@ -24,7 +24,7 @@ services:
       # Sandbox for Claude file operations
       - koro-sandbox:/home/claude/sandbox
       # Prompts directory (read-only)
-      - ./prompts:/home/claude/app/prompts:ro
+      - ./src/prompts:/home/claude/app/src/prompts:ro
       # Claude credentials persistence
       - koro-claude-config:/home/claude/.claude
       # OPTIONAL: Mount host credentials for subscription users

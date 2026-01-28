@@ -1,6 +1,7 @@
 """SQLite-backed state persistence for KoroMind."""
 
 import json
+import logging
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -13,6 +14,8 @@ from koro.core.types import Mode, Session, UserSettings
 
 # Maximum number of sessions to keep per user (FIFO eviction)
 MAX_SESSIONS = 100
+
+logger = logging.getLogger(__name__)
 
 
 class StateManager:
@@ -96,6 +99,8 @@ class StateManager:
             if result:
                 return
 
+            migration_failed = False
+
             # Migrate sessions from JSON
             if STATE_FILE.exists():
                 try:
@@ -116,7 +121,12 @@ class StateManager:
                                 (session_id, user_id, now, now, is_current),
                             )
                 except (json.JSONDecodeError, IOError):
-                    pass
+                    logger.warning(
+                        "Failed to migrate sessions from %s",
+                        STATE_FILE,
+                        exc_info=True,
+                    )
+                    migration_failed = True
 
             # Migrate settings from JSON
             if SETTINGS_FILE.exists():
@@ -141,7 +151,15 @@ class StateManager:
                             ),
                         )
                 except (json.JSONDecodeError, IOError):
-                    pass
+                    logger.warning(
+                        "Failed to migrate settings from %s",
+                        SETTINGS_FILE,
+                        exc_info=True,
+                    )
+                    migration_failed = True
+
+            if migration_failed:
+                return
 
             # Mark migration as complete
             conn.execute(

@@ -43,31 +43,33 @@ Full agentic loop. Voice in, action, voice out.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        INTERFACES                                │
-│   ┌──────────┐     ┌─────────┐     ┌───────────────────────┐   │
-│   │ Telegram │     │   CLI   │     │  Future: SMS, Mobile  │   │
-│   └────┬─────┘     └────┬────┘     └───────────┬───────────┘   │
-└────────┼────────────────┼──────────────────────┼────────────────┘
-         │                │                      │
-         └────────────────┴──────────────────────┘
-                          │
-                   ┌──────┴──────┐
-                   │  REST API   │  ← FastAPI service
-                   │ (koro.api)  │
-                   └──────┬──────┘
-                          │
-                   ┌──────┴──────┐
-                   │ Brain Engine│  ← Core library
-                   │ (koro.core) │
-                   └──────┬──────┘
-                          │
-      ┌───────────────────┼───────────────────┐
-      │                   │                   │
-┌─────┴─────┐     ┌───────┴───────┐    ┌─────┴─────┐
-│  Claude   │     │    Voice      │    │   State   │
-│  Agent    │     │   (STT/TTS)   │    │  (SQLite) │
-└───────────┘     └───────────────┘    └───────────┘
+│                        INTERFACES                               │
+│ ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────────┐│
+│ │ Telegram   │  │    CLI     │  │  REST API  │  │ Future: App  ││
+│ │   App      │  │            │  │            │  │   / SMS      ││
+│ └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  └──────┬───────┘│
+└───────┼──────────────┼───────────────┼───────────────┼─────────┘
+        │              │               │               │
+┌───────▼───────┐  ┌────▼──────────┐  ┌─▼────────────┐   │
+│ Telegram Bot │  │ CLI Interface │  │  REST API    │   │
+│ (koro.interfaces.telegram)      │  │  (koro.api)  │   │
+└───────┬───────┘  └────┬──────────┘  └─┬────────────┘   │
+        └──────────────┴───────────────┴────────────────┘
+                         │
+                  ┌──────▼──────┐
+                  │ Brain Engine│
+                  │ (koro.core) │
+                  └──────┬──────┘
+                         │
+      ┌──────────────────┼───────────────────┐
+      │                  │                   │
+┌─────▼─────┐    ┌──────▼───────┐     ┌─────▼─────┐
+│  Claude   │    │    Voice     │     │   State   │
+│  Agent    │    │   (STT/TTS)  │     │  (SQLite) │
+└───────────┘    └──────────────┘     └───────────┘
 ```
+
+Telegram and CLI call the core library directly; the REST API is just another interface.
 
 ### Package Structure
 
@@ -101,7 +103,7 @@ src/koro/
 ### Prerequisites
 
 - Python 3.11+
-- [Claude Code](https://claude.ai/code) installed
+- [Claude Code](https://claude.ai/code) installed (optional, used by health check)
 - Telegram bot token from [@BotFather](https://t.me/botfather) (for Telegram interface)
 - ElevenLabs API key from [elevenlabs.io](https://elevenlabs.io) (for voice)
 
@@ -109,8 +111,8 @@ src/koro/
 
 ```bash
 # Clone and setup
-git clone https://github.com/yourusername/koromind.git
-cd koromind
+git clone https://github.com/KoroMind/KoroMind.git
+cd KoroMind
 
 # Install with uv (recommended)
 pip install uv
@@ -166,7 +168,12 @@ Send voice or text messages to your bot. Full agentic capabilities with voice re
 | `/new [name]` | Start new session |
 | `/continue` | Resume last session |
 | `/sessions` | List all sessions |
-| `/settings` | Configure mode, audio, voice speed |
+| `/switch <id>` | Switch session |
+| `/status` | Bot + environment status |
+| `/settings` | Configure mode, watch, audio, voice speed |
+| `/setup` | Setup tokens/keys |
+| `/claude_token` | Set Claude token |
+| `/elevenlabs_key` | Set ElevenLabs key |
 | `/health` | System health check |
 
 **Settings Menu:**
@@ -188,8 +195,12 @@ python -m koro cli
 **Commands:**
 - `/new` - Start new session
 - `/sessions` - List sessions
+- `/switch <id>` - Switch session
 - `/settings` - View settings
+- `/audio on|off` - Toggle audio
+- `/mode go_all|approve` - Set mode (approve not supported in CLI)
 - `/health` - Check system health
+- `/help` - Show help
 - `/quit` - Exit
 
 ### REST API

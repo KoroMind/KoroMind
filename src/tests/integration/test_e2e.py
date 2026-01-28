@@ -34,7 +34,7 @@ class TestFullPipeline:
         from koro.claude import ClaudeClient
         from koro.voice import VoiceEngine
 
-        voice = VoiceEngine()
+        voice = VoiceEngine(api_key=os.getenv("ELEVENLABS_API_KEY"))
         claude = ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
@@ -114,7 +114,7 @@ class TestErrorHandling:
         """Pipeline handles empty/failed transcription gracefully."""
         from koro.voice import VoiceEngine
 
-        voice = VoiceEngine()
+        voice = VoiceEngine(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
         # Try to transcribe invalid audio
         result = await voice.transcribe(b"not valid audio data")
@@ -143,6 +143,6 @@ class TestErrorHandling:
         assert len(response) > 100
 
         # TTS should handle truncation if needed
-        voice = VoiceEngine()
+        voice = VoiceEngine(api_key=os.getenv("ELEVENLABS_API_KEY"))
         audio = await voice.text_to_speech(response[:500])
         assert audio is not None

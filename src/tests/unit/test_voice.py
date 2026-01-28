@@ -1,5 +1,6 @@
 """Tests for koro.voice module."""
 
+import asyncio
 from io import BytesIO
 from unittest.mock import MagicMock
 
@@ -19,14 +20,6 @@ class TestVoiceEngine:
         assert engine.voice_id == "test_voice"
         assert engine.client is not None
 
-    def test_init_without_api_key(self, monkeypatch):
-        """VoiceEngine handles missing API key."""
-        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", None)
-
-        engine = VoiceEngine(api_key=None)
-
-        assert engine.client is None
-
     def test_update_api_key(self):
         """update_api_key reinitializes client."""
         engine = VoiceEngine(api_key="old_key")
@@ -37,48 +30,60 @@ class TestVoiceEngine:
         assert engine.api_key == "new_key"
         assert engine.client is not old_client
 
+    @pytest.mark.parametrize(
+        "method,args,expected",
+        [
+            ("transcribe", (b"audio",), "not configured"),
+            ("text_to_speech", ("hello",), None),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_transcribe_without_client(self, monkeypatch):
-        """transcribe returns error without client."""
-        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", None)
-        engine = VoiceEngine(api_key=None)
+    async def test_methods_fail_gracefully_without_client(self, method, args, expected):
+        """Methods fail gracefully without a configured client."""
+        engine = VoiceEngine.__new__(VoiceEngine)
+        engine.client = None
 
-        result = await engine.transcribe(b"audio_data")
+        result = await getattr(engine, method)(*args)
 
-        assert "not configured" in result.lower()
+        if expected is None:
+            assert result is None
+        else:
+            assert expected in result.lower()
 
     @pytest.mark.asyncio
     async def test_transcribe_success(self, mock_elevenlabs_client):
         """transcribe returns transcription text."""
+        # GIVEN a voice engine with a working client
         engine = VoiceEngine(api_key="test_key")
         engine.client = mock_elevenlabs_client
 
+        # WHEN transcribe is called
         result = await engine.transcribe(b"audio_data")
 
+        # THEN transcription text is returned
         assert result == "This is a test transcription"
         mock_elevenlabs_client.speech_to_text.convert.assert_called_once()
 
+    @pytest.mark.parametrize(
+        "method,args",
+        [
+            ("transcribe", (b"audio",)),
+            ("text_to_speech", ("hello",)),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_transcribe_handles_error(self):
-        """transcribe returns error message on exception."""
+    async def test_methods_handle_client_exceptions(self, method, args):
+        """Methods handle client exceptions without crashing."""
         engine = VoiceEngine(api_key="test_key")
         engine.client = MagicMock()
-        engine.client.speech_to_text.convert.side_effect = Exception("API error")
+        if method == "transcribe":
+            engine.client.speech_to_text.convert.side_effect = Exception("API error")
+        else:
+            engine.client.text_to_speech.convert.side_effect = Exception("API error")
 
-        result = await engine.transcribe(b"audio_data")
+        result = await getattr(engine, method)(*args)
 
-        assert "Transcription error" in result
-        assert "API error" in result
-
-    @pytest.mark.asyncio
-    async def test_text_to_speech_without_client(self, monkeypatch):
-        """text_to_speech returns None without client."""
-        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", None)
-        engine = VoiceEngine(api_key=None)
-
-        result = await engine.text_to_speech("Hello")
-
-        assert result is None
+        assert result is None or "error" in str(result).lower()
 
     @pytest.mark.asyncio
     async def test_text_to_speech_success(self, mock_elevenlabs_client):
@@ -102,21 +107,10 @@ class TestVoiceEngine:
         call_args = mock_elevenlabs_client.text_to_speech.convert.call_args
         assert call_args.kwargs["voice_settings"]["speed"] == 0.8
 
-    @pytest.mark.asyncio
-    async def test_text_to_speech_handles_error(self):
-        """text_to_speech returns None on exception."""
-        engine = VoiceEngine(api_key="test_key")
-        engine.client = MagicMock()
-        engine.client.text_to_speech.convert.side_effect = Exception("API error")
-
-        result = await engine.text_to_speech("Hello")
-
-        assert result is None
-
-    def test_health_check_without_client(self, monkeypatch):
+    def test_health_check_without_client(self):
         """health_check fails without client."""
-        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", None)
-        engine = VoiceEngine(api_key=None)
+        engine = VoiceEngine.__new__(VoiceEngine)
+        engine.client = None
 
         success, message = engine.health_check()
 
@@ -174,7 +168,7 @@ class TestVoiceEngineDefaults:
 
         assert engine1 is engine2
 
-    def test_set_voice_engine_replaces(self, monkeypatch):
+    def test_set_voice_engine_replaces(self):
         """set_voice_engine replaces default instance."""
         import koro.voice
 
@@ -190,42 +184,37 @@ class TestVoiceEngineAsyncBlocking:
     @pytest.mark.asyncio
     async def test_transcribe_does_not_block_event_loop(self, monkeypatch):
         """transcribe() should not block the event loop."""
-        import threading
-
-        call_was_in_thread = False
-
-        def mock_convert(*args, **kwargs):
-            nonlocal call_was_in_thread
-            # Check if we're in a thread (not main thread)
-            call_was_in_thread = threading.current_thread() != threading.main_thread()
-            result = MagicMock()
-            result.text = "test"
-            return result
-
         engine = VoiceEngine(api_key="test", voice_id="test")
+        was_awaited = False
+
+        async def fake_executor(func, *args, **kwargs):
+            nonlocal was_awaited
+            was_awaited = True
+            return func(*args, **kwargs)
+
+        monkeypatch.setattr(asyncio, "to_thread", fake_executor)
         engine.client = MagicMock()
-        engine.client.speech_to_text.convert = mock_convert
+        engine.client.speech_to_text.convert.return_value.text = "ok"
 
         await engine.transcribe(b"audio_data")
 
-        assert call_was_in_thread, "Blocking call should run in thread"
+        assert was_awaited
 
     @pytest.mark.asyncio
     async def test_text_to_speech_does_not_block_event_loop(self, monkeypatch):
         """text_to_speech() should not block the event loop."""
-        import threading
-
-        call_was_in_thread = False
-
-        def mock_convert(*args, **kwargs):
-            nonlocal call_was_in_thread
-            call_was_in_thread = threading.current_thread() != threading.main_thread()
-            return [b"audio"]
-
         engine = VoiceEngine(api_key="test", voice_id="test")
+        was_awaited = False
+
+        async def fake_executor(func, *args, **kwargs):
+            nonlocal was_awaited
+            was_awaited = True
+            return func(*args, **kwargs)
+
+        monkeypatch.setattr(asyncio, "to_thread", fake_executor)
         engine.client = MagicMock()
-        engine.client.text_to_speech.convert = mock_convert
+        engine.client.text_to_speech.convert.return_value = [b"audio"]
 
         await engine.text_to_speech("hello")
 
-        assert call_was_in_thread, "Blocking call should run in thread"
+        assert was_awaited

@@ -11,15 +11,15 @@ from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETT
 class VoiceEngine:
     """Handles text-to-speech and speech-to-text conversion."""
 
-    def __init__(self, api_key: str = None, voice_id: str = None):
+    def __init__(self, api_key: str | None, voice_id: str | None = None):
         """
         Initialize voice engine.
 
         Args:
-            api_key: ElevenLabs API key (defaults to env)
+            api_key: ElevenLabs API key (required)
             voice_id: Voice ID to use (defaults to env)
         """
-        self.api_key = api_key or ELEVENLABS_API_KEY
+        self.api_key = api_key
         self.voice_id = voice_id or ELEVENLABS_VOICE_ID
         self.client = ElevenLabs(api_key=self.api_key) if self.api_key else None
 
@@ -127,7 +127,7 @@ def get_voice_engine() -> VoiceEngine:
     """Get or create the default voice engine instance."""
     global _voice_engine
     if _voice_engine is None:
-        _voice_engine = VoiceEngine()
+        _voice_engine = VoiceEngine(api_key=ELEVENLABS_API_KEY)
     return _voice_engine
 
 

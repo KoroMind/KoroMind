@@ -20,7 +20,7 @@ def voice_engine():
     """Create voice engine with real API key."""
     from koro.voice import VoiceEngine
 
-    return VoiceEngine()
+    return VoiceEngine(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
 
 @pytest.mark.live

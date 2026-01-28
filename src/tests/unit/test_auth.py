@@ -116,15 +116,11 @@ class TestCredentials:
 
     def test_load_credentials_empty_when_missing(self, tmp_path, monkeypatch):
         """load_credentials returns empty dict when file missing."""
-        import koro.config
+        import koro.core.auth
 
-        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", tmp_path / "missing.json")
-
-        import importlib
-
-        import koro.auth
-
-        importlib.reload(koro.auth)
+        monkeypatch.setattr(
+            koro.core.auth, "CREDENTIALS_FILE", tmp_path / "missing.json"
+        )
 
         from koro.auth import load_credentials
 
@@ -137,15 +133,9 @@ class TestCredentials:
             json.dumps({"claude_token": "token123", "elevenlabs_key": "key456"})
         )
 
-        import koro.config
+        import koro.core.auth
 
-        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
-
-        import importlib
-
-        import koro.auth
-
-        importlib.reload(koro.auth)
+        monkeypatch.setattr(koro.core.auth, "CREDENTIALS_FILE", creds_file)
 
         from koro.auth import load_credentials
 
@@ -159,15 +149,9 @@ class TestCredentials:
         creds_file = tmp_path / "credentials.json"
         creds_file.write_text("not valid json {{{")
 
-        import koro.config
+        import koro.core.auth
 
-        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
-
-        import importlib
-
-        import koro.auth
-
-        importlib.reload(koro.auth)
+        monkeypatch.setattr(koro.core.auth, "CREDENTIALS_FILE", creds_file)
 
         from koro.auth import load_credentials
 
@@ -177,15 +161,9 @@ class TestCredentials:
         """save_credentials creates file with correct permissions."""
         creds_file = tmp_path / "credentials.json"
 
-        import koro.config
+        import koro.core.auth
 
-        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
-
-        import importlib
-
-        import koro.auth
-
-        importlib.reload(koro.auth)
+        monkeypatch.setattr(koro.core.auth, "CREDENTIALS_FILE", creds_file)
 
         from koro.auth import save_credentials
 
@@ -205,15 +183,9 @@ class TestCredentials:
             )
         )
 
-        import koro.config
+        import koro.core.auth
 
-        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
-
-        import importlib
-
-        import koro.auth
-
-        importlib.reload(koro.auth)
+        monkeypatch.setattr(koro.core.auth, "CREDENTIALS_FILE", creds_file)
 
         from koro.auth import apply_saved_credentials
 
@@ -232,15 +204,9 @@ class TestCredentialPermissions:
 
         creds_file = tmp_path / "credentials.json"
 
-        import koro.config
+        import koro.core.auth
 
-        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
-
-        import importlib
-
-        import koro.auth
-
-        importlib.reload(koro.auth)
+        monkeypatch.setattr(koro.core.auth, "CREDENTIALS_FILE", creds_file)
 
         from koro.auth import save_credentials
 
@@ -258,17 +224,10 @@ class TestCredentialPermissions:
 
         creds_file = tmp_path / "new_creds.json"
 
-        import koro.config
+        import koro.core.auth
 
-        monkeypatch.setattr(koro.config, "CREDENTIALS_FILE", creds_file)
+        monkeypatch.setattr(koro.core.auth, "CREDENTIALS_FILE", creds_file)
 
-        import importlib
-
-        import koro.auth
-
-        importlib.reload(koro.auth)
-
-        # Track permission at creation time using stat
         from koro.auth import save_credentials
 
         # File shouldn't exist yet

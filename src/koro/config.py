@@ -6,12 +6,16 @@ New code should import directly from koro.core.config.
 
 # Re-export everything from core config
 from koro.core.config import (  # noqa: F401
+    BASE_DIR,
     CLAUDE_WORKING_DIR,
+    CREDENTIALS_FILE,
     ELEVENLABS_VOICE_ID,
     PERSONA_NAME,
     SANDBOX_DIR,
     SYSTEM_PROMPT_FILE,
+    VOICE_SETTINGS,
     get_env,
+    get_env_bool,
     get_env_int,
     setup_logging,
 )

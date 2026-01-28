@@ -25,9 +25,12 @@ class StateManager:
         Args:
             db_path: Path to SQLite database (defaults to ~/.koromind/koromind.db)
         """
+        self._using_custom_path = db_path is not None
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
         self._ensure_schema()
-        self._migrate_from_json()
+        # Only migrate from global JSON files when using default path
+        if not self._using_custom_path:
+            self._migrate_from_json()
 
     def _ensure_schema(self) -> None:
         """Create database schema if not exists."""

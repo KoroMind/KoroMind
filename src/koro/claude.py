@@ -14,6 +14,9 @@ from koro.core.claude import (
     set_claude_client,
 )
 
+# Re-export config constants that tests monkeypatch on koro.claude
+from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR  # noqa: F401
+
 __all__ = [
     "ClaudeClient",
     "format_tool_call",

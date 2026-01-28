@@ -1,11 +1,19 @@
 """Tests for koro.handlers module."""
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from koro.handlers.utils import send_long_message, should_handle_message
+from koro.state import StateManager
+
+
+@pytest.fixture
+def state_manager(tmp_path):
+    """Create a StateManager with a temp database."""
+    return StateManager(db_path=tmp_path / "test.db")
 
 
 class TestShouldHandleMessage:
@@ -13,7 +21,7 @@ class TestShouldHandleMessage:
 
     def test_handles_all_when_no_topic_filter(self, monkeypatch):
         """Handles all messages when TOPIC_ID not set."""
-        monkeypatch.setattr("koro.handlers.utils.TOPIC_ID", None)
+        monkeypatch.setattr("koro.interfaces.telegram.handlers.utils.TOPIC_ID", None)
 
         assert should_handle_message(None) is True
         assert should_handle_message(123) is True
@@ -21,25 +29,27 @@ class TestShouldHandleMessage:
 
     def test_handles_matching_topic(self, monkeypatch):
         """Handles messages in matching topic."""
-        monkeypatch.setattr("koro.handlers.utils.TOPIC_ID", "100")
+        monkeypatch.setattr("koro.interfaces.telegram.handlers.utils.TOPIC_ID", "100")
 
         assert should_handle_message(100) is True
 
     def test_rejects_non_matching_topic(self, monkeypatch):
         """Rejects messages in non-matching topic."""
-        monkeypatch.setattr("koro.handlers.utils.TOPIC_ID", "100")
+        monkeypatch.setattr("koro.interfaces.telegram.handlers.utils.TOPIC_ID", "100")
 
         assert should_handle_message(200) is False
 
     def test_rejects_no_topic_when_filter_set(self, monkeypatch):
         """Rejects messages without topic when filter is set."""
-        monkeypatch.setattr("koro.handlers.utils.TOPIC_ID", "100")
+        monkeypatch.setattr("koro.interfaces.telegram.handlers.utils.TOPIC_ID", "100")
 
         assert should_handle_message(None) is False
 
     def test_handles_invalid_topic_id_config(self, monkeypatch):
         """Handles all messages when TOPIC_ID is invalid."""
-        monkeypatch.setattr("koro.handlers.utils.TOPIC_ID", "not_a_number")
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.utils.TOPIC_ID", "not_a_number"
+        )
 
         assert should_handle_message(None) is True
         assert should_handle_message(123) is True
@@ -98,9 +108,12 @@ class TestCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_start_ignores_wrong_chat(self, monkeypatch):
         """cmd_start ignores unauthorized chats."""
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 12345)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 12345
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_start
@@ -120,9 +133,12 @@ class TestCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_start_responds_to_correct_chat(self, monkeypatch):
         """cmd_start responds to authorized chat."""
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 12345)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 12345
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_start
@@ -143,9 +159,12 @@ class TestCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_start_allows_all_when_chat_id_zero(self, monkeypatch):
         """cmd_start allows all chats when ALLOWED_CHAT_ID is 0."""
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_start
@@ -166,18 +185,21 @@ class TestMoreCommandHandlers:
     """Additional tests for command handlers."""
 
     @pytest.mark.asyncio
-    async def test_cmd_new_creates_session(self, monkeypatch):
+    async def test_cmd_new_creates_session(self, monkeypatch, state_manager):
         """cmd_new resets current session."""
-        from koro.state import StateManager
+        # Set up initial session
+        await state_manager.update_session("12345", "old_session")
 
-        manager = StateManager()
-        manager.sessions = {
-            "12345": {"current_session": "old_session", "sessions": ["old_session"]}
-        }
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_new
@@ -193,19 +215,23 @@ class TestMoreCommandHandlers:
 
         await cmd_new(update, context)
 
-        assert manager.sessions["12345"]["current_session"] is None
+        state = state_manager.get_user_state(12345)
+        assert state["current_session"] is None
         update.message.reply_text.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_cmd_new_with_name(self, monkeypatch):
+    async def test_cmd_new_with_name(self, monkeypatch, state_manager):
         """cmd_new with name shows session name."""
-        from koro.state import StateManager
-
-        manager = StateManager()
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_new
@@ -225,18 +251,21 @@ class TestMoreCommandHandlers:
         assert "my session" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_continue_with_session(self, monkeypatch):
+    async def test_cmd_continue_with_session(self, monkeypatch, state_manager):
         """cmd_continue shows session info when exists."""
-        from koro.state import StateManager
+        # Set up session
+        await state_manager.update_session("12345", "abc12345")
 
-        manager = StateManager()
-        manager.sessions = {
-            "12345": {"current_session": "abc12345", "sessions": ["abc12345"]}
-        }
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_continue
@@ -255,15 +284,18 @@ class TestMoreCommandHandlers:
         assert "abc12345" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_continue_without_session(self, monkeypatch):
+    async def test_cmd_continue_without_session(self, monkeypatch, state_manager):
         """cmd_continue shows message when no session."""
-        from koro.state import StateManager
-
-        manager = StateManager()
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_continue
@@ -282,15 +314,18 @@ class TestMoreCommandHandlers:
         assert "No previous session" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_sessions_empty(self, monkeypatch):
+    async def test_cmd_sessions_empty(self, monkeypatch, state_manager):
         """cmd_sessions shows empty message when no sessions."""
-        from koro.state import StateManager
-
-        manager = StateManager()
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_sessions
@@ -309,18 +344,22 @@ class TestMoreCommandHandlers:
         assert "No sessions" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_sessions_lists_sessions(self, monkeypatch):
+    async def test_cmd_sessions_lists_sessions(self, monkeypatch, state_manager):
         """cmd_sessions lists available sessions."""
-        from koro.state import StateManager
+        # Set up sessions
+        await state_manager.update_session("12345", "sess1")
+        await state_manager.update_session("12345", "sess2")
 
-        manager = StateManager()
-        manager.sessions = {
-            "12345": {"current_session": "sess2", "sessions": ["sess1", "sess2"]}
-        }
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_sessions
@@ -341,9 +380,12 @@ class TestMoreCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_switch_no_args(self, monkeypatch):
         """cmd_switch shows usage without args."""
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_switch
@@ -362,18 +404,23 @@ class TestMoreCommandHandlers:
         assert "Usage" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_switch_finds_session(self, monkeypatch):
+    async def test_cmd_switch_finds_session(self, monkeypatch, state_manager):
         """cmd_switch switches to matching session."""
-        from koro.state import StateManager
+        # Set up session
+        await state_manager.update_session("12345", "abc123456789")
+        # Clear current to test switch
+        await state_manager.clear_current_session("12345")
 
-        manager = StateManager()
-        manager.sessions = {
-            "12345": {"current_session": None, "sessions": ["abc123456789"]}
-        }
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_switch
@@ -389,19 +436,25 @@ class TestMoreCommandHandlers:
 
         await cmd_switch(update, context)
 
-        assert manager.sessions["12345"]["current_session"] == "abc123456789"
+        state = state_manager.get_user_state(12345)
+        assert state["current_session"] == "abc123456789"
 
     @pytest.mark.asyncio
-    async def test_cmd_switch_not_found(self, monkeypatch):
+    async def test_cmd_switch_not_found(self, monkeypatch, state_manager):
         """cmd_switch shows error when session not found."""
-        from koro.state import StateManager
+        # Set up a different session
+        await state_manager.update_session("12345", "abc123")
 
-        manager = StateManager()
-        manager.sessions = {"12345": {"current_session": None, "sessions": ["abc123"]}}
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_switch
@@ -421,18 +474,21 @@ class TestMoreCommandHandlers:
         assert "not found" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_status_with_session(self, monkeypatch):
+    async def test_cmd_status_with_session(self, monkeypatch, state_manager):
         """cmd_status shows session info."""
-        from koro.state import StateManager
+        # Set up session
+        await state_manager.update_session("12345", "abc12345")
 
-        manager = StateManager()
-        manager.sessions = {
-            "12345": {"current_session": "abc12345", "sessions": ["abc12345"]}
-        }
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_status
@@ -451,15 +507,18 @@ class TestMoreCommandHandlers:
         assert "abc12345" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_status_no_session(self, monkeypatch):
+    async def test_cmd_status_no_session(self, monkeypatch, state_manager):
         """cmd_status shows message when no session."""
-        from koro.state import StateManager
-
-        manager = StateManager()
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_status
@@ -480,10 +539,15 @@ class TestMoreCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_setup_shows_status(self, monkeypatch):
         """cmd_setup shows credentials status."""
-        monkeypatch.setattr("koro.handlers.commands.load_credentials", lambda: {})
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.load_credentials", lambda: {}
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_setup
@@ -502,30 +566,38 @@ class TestMoreCommandHandlers:
         assert call_kwargs["parse_mode"] == "Markdown"
 
     @pytest.mark.asyncio
-    async def test_cmd_health_checks_systems(self, monkeypatch):
+    async def test_cmd_health_checks_systems(self, monkeypatch, state_manager):
         """cmd_health checks all systems."""
         from koro.claude import ClaudeClient
-        from koro.state import StateManager
         from koro.voice import VoiceEngine
 
-        manager = StateManager()
         mock_voice = MagicMock(spec=VoiceEngine)
         mock_voice.health_check.return_value = (True, "OK")
         mock_claude = MagicMock(spec=ClaudeClient)
         mock_claude.health_check.return_value = (True, "OK")
 
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
         monkeypatch.setattr(
-            "koro.handlers.commands.get_voice_engine", lambda: mock_voice
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
         )
         monkeypatch.setattr(
-            "koro.handlers.commands.get_claude_client", lambda: mock_claude
+            "koro.interfaces.telegram.handlers.commands.get_voice_engine",
+            lambda: mock_voice,
         )
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_claude_client",
+            lambda: mock_claude,
         )
-        monkeypatch.setattr("koro.handlers.commands.SANDBOX_DIR", "/tmp/sandbox")
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.SANDBOX_DIR", "/tmp/sandbox"
+        )
 
         from koro.handlers.commands import cmd_health
 
@@ -545,15 +617,18 @@ class TestMoreCommandHandlers:
         assert "Claude" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_settings_shows_menu(self, monkeypatch):
+    async def test_cmd_settings_shows_menu(self, monkeypatch, state_manager):
         """cmd_settings shows settings menu."""
-        from koro.state import StateManager
-
-        manager = StateManager()
-        monkeypatch.setattr("koro.handlers.commands.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_settings
@@ -577,9 +652,12 @@ class TestMoreCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_claude_token_no_args(self, monkeypatch):
         """cmd_claude_token shows usage without args."""
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_claude_token
@@ -601,9 +679,12 @@ class TestMoreCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_claude_token_invalid_format(self, monkeypatch):
         """cmd_claude_token rejects invalid token format."""
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_claude_token
@@ -626,13 +707,19 @@ class TestMoreCommandHandlers:
     async def test_cmd_claude_token_saves_valid(self, monkeypatch, tmp_path):
         """cmd_claude_token saves valid token."""
         creds = {}
-        monkeypatch.setattr("koro.handlers.commands.load_credentials", lambda: creds)
         monkeypatch.setattr(
-            "koro.handlers.commands.save_credentials", lambda c: creds.update(c)
+            "koro.interfaces.telegram.handlers.commands.load_credentials", lambda: creds
         )
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.save_credentials",
+            lambda c: creds.update(c),
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_claude_token
@@ -655,9 +742,12 @@ class TestMoreCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_elevenlabs_key_no_args(self, monkeypatch):
         """cmd_elevenlabs_key shows usage without args."""
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_elevenlabs_key
@@ -679,9 +769,12 @@ class TestMoreCommandHandlers:
     @pytest.mark.asyncio
     async def test_cmd_elevenlabs_key_too_short(self, monkeypatch):
         """cmd_elevenlabs_key rejects short key."""
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 0)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_elevenlabs_key
@@ -707,8 +800,6 @@ class TestApprovalCallbackHandlers:
     @pytest.mark.asyncio
     async def test_approval_callback_approves(self, monkeypatch):
         """Approval callback approves tool use."""
-        import asyncio
-
         from koro.handlers.messages import pending_approvals
 
         approval_event = asyncio.Event()
@@ -744,8 +835,6 @@ class TestApprovalCallbackHandlers:
     @pytest.mark.asyncio
     async def test_approval_callback_rejects(self, monkeypatch):
         """Approval callback rejects tool use."""
-        import asyncio
-
         from koro.handlers.messages import pending_approvals
 
         approval_event = asyncio.Event()
@@ -835,7 +924,8 @@ class TestMessageHandlers:
     async def test_handle_voice_ignores_wrong_topic(self, monkeypatch):
         """handle_voice ignores wrong topic."""
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: False
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: False,
         )
 
         from koro.handlers.messages import handle_voice
@@ -854,7 +944,8 @@ class TestMessageHandlers:
     async def test_handle_text_ignores_wrong_topic(self, monkeypatch):
         """handle_text ignores wrong topic."""
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: False
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: False,
         )
 
         from koro.handlers.messages import handle_text
@@ -873,9 +964,12 @@ class TestMessageHandlers:
     async def test_handle_voice_ignores_wrong_chat(self, monkeypatch):
         """handle_voice ignores unauthorized chat."""
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 12345)
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 12345
+        )
 
         from koro.handlers.messages import handle_voice
 
@@ -894,9 +988,12 @@ class TestMessageHandlers:
     async def test_handle_text_ignores_wrong_chat(self, monkeypatch):
         """handle_text ignores unauthorized chat."""
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 12345)
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 12345
+        )
 
         from koro.handlers.messages import handle_text
 
@@ -924,10 +1021,16 @@ class TestMessageHandlers:
         }
 
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_rate_limiter",
+            lambda: limiter,
+        )
 
         from koro.handlers.messages import handle_voice
 
@@ -960,10 +1063,16 @@ class TestMessageHandlers:
         }
 
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_rate_limiter",
+            lambda: limiter,
+        )
 
         from koro.handlers.messages import handle_text
 
@@ -988,21 +1097,14 @@ class TestCallbackHandlers:
     """Tests for callback query handlers."""
 
     @pytest.mark.asyncio
-    async def test_settings_toggle_audio(self, monkeypatch):
+    async def test_settings_toggle_audio(self, monkeypatch, state_manager):
         """Settings callback toggles audio."""
-        from koro.state import StateManager
+        # Set up initial settings
+        state_manager.update_setting(12345, "audio_enabled", True)
 
-        manager = StateManager()
-        manager.settings = {
-            "12345": {
-                "audio_enabled": True,
-                "voice_speed": 1.0,
-                "mode": "go_all",
-                "watch_enabled": False,
-            }
-        }
         monkeypatch.setattr(
-            "koro.handlers.callbacks.get_state_manager", lambda: manager
+            "koro.interfaces.telegram.handlers.callbacks.get_state_manager",
+            lambda: state_manager,
         )
 
         from koro.handlers.callbacks import handle_settings_callback
@@ -1021,24 +1123,18 @@ class TestCallbackHandlers:
         await handle_settings_callback(update, context)
 
         # Audio should be toggled off
-        assert manager.settings["12345"]["audio_enabled"] is False
+        settings = state_manager.get_user_settings(12345)
+        assert settings["audio_enabled"] is False
 
     @pytest.mark.asyncio
-    async def test_settings_toggle_mode(self, monkeypatch):
+    async def test_settings_toggle_mode(self, monkeypatch, state_manager):
         """Settings callback toggles mode."""
-        from koro.state import StateManager
+        # Set up initial settings
+        state_manager.update_setting(12345, "mode", "go_all")
 
-        manager = StateManager()
-        manager.settings = {
-            "12345": {
-                "audio_enabled": True,
-                "voice_speed": 1.0,
-                "mode": "go_all",
-                "watch_enabled": False,
-            }
-        }
         monkeypatch.setattr(
-            "koro.handlers.callbacks.get_state_manager", lambda: manager
+            "koro.interfaces.telegram.handlers.callbacks.get_state_manager",
+            lambda: state_manager,
         )
 
         from koro.handlers.callbacks import handle_settings_callback
@@ -1056,24 +1152,18 @@ class TestCallbackHandlers:
 
         await handle_settings_callback(update, context)
 
-        assert manager.settings["12345"]["mode"] == "approve"
+        settings = state_manager.get_user_settings(12345)
+        assert settings["mode"] == "approve"
 
     @pytest.mark.asyncio
-    async def test_settings_set_speed(self, monkeypatch):
+    async def test_settings_set_speed(self, monkeypatch, state_manager):
         """Settings callback sets voice speed."""
-        from koro.state import StateManager
+        # Set up initial settings
+        state_manager.update_setting(12345, "voice_speed", 1.0)
 
-        manager = StateManager()
-        manager.settings = {
-            "12345": {
-                "audio_enabled": True,
-                "voice_speed": 1.0,
-                "mode": "go_all",
-                "watch_enabled": False,
-            }
-        }
         monkeypatch.setattr(
-            "koro.handlers.callbacks.get_state_manager", lambda: manager
+            "koro.interfaces.telegram.handlers.callbacks.get_state_manager",
+            lambda: state_manager,
         )
 
         from koro.handlers.callbacks import handle_settings_callback
@@ -1091,24 +1181,18 @@ class TestCallbackHandlers:
 
         await handle_settings_callback(update, context)
 
-        assert manager.settings["12345"]["voice_speed"] == 0.9
+        settings = state_manager.get_user_settings(12345)
+        assert settings["voice_speed"] == 0.9
 
     @pytest.mark.asyncio
-    async def test_settings_rejects_invalid_speed(self, monkeypatch):
+    async def test_settings_rejects_invalid_speed(self, monkeypatch, state_manager):
         """Settings callback rejects invalid speed."""
-        from koro.state import StateManager
+        # Set up initial settings
+        state_manager.update_setting(12345, "voice_speed", 1.0)
 
-        manager = StateManager()
-        manager.settings = {
-            "12345": {
-                "audio_enabled": True,
-                "voice_speed": 1.0,
-                "mode": "go_all",
-                "watch_enabled": False,
-            }
-        }
         monkeypatch.setattr(
-            "koro.handlers.callbacks.get_state_manager", lambda: manager
+            "koro.interfaces.telegram.handlers.callbacks.get_state_manager",
+            lambda: state_manager,
         )
 
         from koro.handlers.callbacks import handle_settings_callback
@@ -1126,7 +1210,8 @@ class TestCallbackHandlers:
         await handle_settings_callback(update, context)
 
         # Speed unchanged
-        assert manager.settings["12345"]["voice_speed"] == 1.0
+        settings = state_manager.get_user_settings(12345)
+        assert settings["voice_speed"] == 1.0
         # Error shown
         query.answer.assert_called_with("Invalid speed range")
 
@@ -1135,14 +1220,12 @@ class TestMessageHandlersFullFlow:
     """Tests for full message handler flow."""
 
     @pytest.mark.asyncio
-    async def test_handle_text_full_flow(self, monkeypatch):
+    async def test_handle_text_full_flow(self, monkeypatch, state_manager):
         """handle_text processes text and calls Claude."""
         from koro.claude import ClaudeClient
         from koro.rate_limit import RateLimiter
-        from koro.state import StateManager
         from koro.voice import VoiceEngine
 
-        manager = StateManager()
         limiter = RateLimiter()
         mock_voice = MagicMock(spec=VoiceEngine)
         mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
@@ -1152,16 +1235,27 @@ class TestMessageHandlersFullFlow:
         )
 
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
-        )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr(
-            "koro.handlers.messages.get_voice_engine", lambda: mock_voice
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
         monkeypatch.setattr(
-            "koro.handlers.messages.get_claude_client", lambda: mock_claude
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_rate_limiter",
+            lambda: limiter,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_voice_engine",
+            lambda: mock_voice,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_claude_client",
+            lambda: mock_claude,
         )
 
         from koro.handlers.messages import handle_text
@@ -1188,22 +1282,15 @@ class TestMessageHandlersFullFlow:
         processing_msg.edit_text.assert_called()
 
     @pytest.mark.asyncio
-    async def test_handle_text_no_audio_when_disabled(self, monkeypatch):
+    async def test_handle_text_no_audio_when_disabled(self, monkeypatch, state_manager):
         """handle_text skips audio when disabled."""
         from koro.claude import ClaudeClient
         from koro.rate_limit import RateLimiter
-        from koro.state import StateManager
         from koro.voice import VoiceEngine
 
-        manager = StateManager()
-        manager.settings = {
-            "12345": {
-                "audio_enabled": False,
-                "voice_speed": 1.0,
-                "mode": "go_all",
-                "watch_enabled": False,
-            }
-        }
+        # Set audio disabled
+        state_manager.update_setting(12345, "audio_enabled", False)
+
         limiter = RateLimiter()
         mock_voice = MagicMock(spec=VoiceEngine)
         mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
@@ -1211,16 +1298,27 @@ class TestMessageHandlersFullFlow:
         mock_claude.query = AsyncMock(return_value=("Response", "sess123", {}))
 
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
-        )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr(
-            "koro.handlers.messages.get_voice_engine", lambda: mock_voice
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
         monkeypatch.setattr(
-            "koro.handlers.messages.get_claude_client", lambda: mock_claude
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_rate_limiter",
+            lambda: limiter,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_voice_engine",
+            lambda: mock_voice,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_claude_client",
+            lambda: mock_claude,
         )
 
         from koro.handlers.messages import handle_text
@@ -1246,14 +1344,14 @@ class TestMessageHandlersFullFlow:
         update.message.reply_voice.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handle_voice_transcribes_and_calls_claude(self, monkeypatch):
+    async def test_handle_voice_transcribes_and_calls_claude(
+        self, monkeypatch, state_manager
+    ):
         """handle_voice transcribes voice and calls Claude."""
         from koro.claude import ClaudeClient
         from koro.rate_limit import RateLimiter
-        from koro.state import StateManager
         from koro.voice import VoiceEngine
 
-        manager = StateManager()
         limiter = RateLimiter()
         mock_voice = MagicMock(spec=VoiceEngine)
         mock_voice.transcribe = AsyncMock(return_value="Hello from voice")
@@ -1262,16 +1360,27 @@ class TestMessageHandlersFullFlow:
         mock_claude.query = AsyncMock(return_value=("Hello back!", "sess123", {}))
 
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
-        )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr(
-            "koro.handlers.messages.get_voice_engine", lambda: mock_voice
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
         monkeypatch.setattr(
-            "koro.handlers.messages.get_claude_client", lambda: mock_claude
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_rate_limiter",
+            lambda: limiter,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_voice_engine",
+            lambda: mock_voice,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_claude_client",
+            lambda: mock_claude,
         )
 
         from koro.handlers.messages import handle_voice
@@ -1306,13 +1415,13 @@ class TestMessageHandlersFullFlow:
         mock_claude.query.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_handle_voice_error_on_transcription_failure(self, monkeypatch):
+    async def test_handle_voice_error_on_transcription_failure(
+        self, monkeypatch, state_manager
+    ):
         """handle_voice shows error on transcription failure."""
         from koro.rate_limit import RateLimiter
-        from koro.state import StateManager
         from koro.voice import VoiceEngine
 
-        manager = StateManager()
         limiter = RateLimiter()
         mock_voice = MagicMock(spec=VoiceEngine)
         mock_voice.transcribe = AsyncMock(
@@ -1320,13 +1429,23 @@ class TestMessageHandlersFullFlow:
         )
 
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
         monkeypatch.setattr(
-            "koro.handlers.messages.get_voice_engine", lambda: mock_voice
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_rate_limiter",
+            lambda: limiter,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_voice_engine",
+            lambda: mock_voice,
         )
 
         from koro.handlers.messages import handle_voice
@@ -1360,25 +1479,33 @@ class TestMessageHandlersFullFlow:
         assert "error" in call_text.lower()
 
     @pytest.mark.asyncio
-    async def test_handle_text_handles_exception(self, monkeypatch):
+    async def test_handle_text_handles_exception(self, monkeypatch, state_manager):
         """handle_text handles exceptions gracefully."""
         from koro.claude import ClaudeClient
         from koro.rate_limit import RateLimiter
-        from koro.state import StateManager
 
-        manager = StateManager()
         limiter = RateLimiter()
         mock_claude = MagicMock(spec=ClaudeClient)
         mock_claude.query = AsyncMock(side_effect=Exception("Connection failed"))
 
         monkeypatch.setattr(
-            "koro.handlers.messages.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.messages.should_handle_message",
+            lambda x: True,
         )
-        monkeypatch.setattr("koro.handlers.messages.ALLOWED_CHAT_ID", 0)
-        monkeypatch.setattr("koro.handlers.messages.get_state_manager", lambda: manager)
-        monkeypatch.setattr("koro.handlers.messages.get_rate_limiter", lambda: limiter)
         monkeypatch.setattr(
-            "koro.handlers.messages.get_claude_client", lambda: mock_claude
+            "koro.interfaces.telegram.handlers.messages.ALLOWED_CHAT_ID", 0
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_state_manager",
+            lambda: state_manager,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_rate_limiter",
+            lambda: limiter,
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.messages.get_claude_client",
+            lambda: mock_claude,
         )
 
         from koro.handlers.messages import handle_text
@@ -1460,9 +1587,12 @@ class TestExceptionLogging:
         context = MagicMock()
         context.args = []
 
-        monkeypatch.setattr("koro.handlers.commands.ALLOWED_CHAT_ID", 12345)
         monkeypatch.setattr(
-            "koro.handlers.commands.should_handle_message", lambda x: True
+            "koro.interfaces.telegram.handlers.commands.ALLOWED_CHAT_ID", 12345
+        )
+        monkeypatch.setattr(
+            "koro.interfaces.telegram.handlers.commands.should_handle_message",
+            lambda x: True,
         )
 
         from koro.handlers.commands import cmd_claude_token

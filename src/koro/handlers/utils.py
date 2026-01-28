@@ -4,6 +4,9 @@ This module re-exports from koro.interfaces.telegram.handlers.utils for backward
 New code should import directly from koro.interfaces.telegram.handlers.utils.
 """
 
+# Re-export TOPIC_ID for test monkeypatching
+from koro.config import TOPIC_ID  # noqa: F401
+
 # Re-export everything from the new location
 from koro.interfaces.telegram.handlers.utils import (
     debug,
@@ -12,6 +15,7 @@ from koro.interfaces.telegram.handlers.utils import (
 )
 
 __all__ = [
+    "TOPIC_ID",
     "debug",
     "send_long_message",
     "should_handle_message",

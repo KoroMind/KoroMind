@@ -117,8 +117,8 @@ class TestClaudeClient:
 
     def test_init_with_defaults(self, monkeypatch):
         """ClaudeClient uses default directories."""
-        monkeypatch.setattr("koro.claude.SANDBOX_DIR", "/default/sandbox")
-        monkeypatch.setattr("koro.claude.CLAUDE_WORKING_DIR", "/default/working")
+        monkeypatch.setattr("koro.core.claude.SANDBOX_DIR", "/default/sandbox")
+        monkeypatch.setattr("koro.core.claude.CLAUDE_WORKING_DIR", "/default/working")
 
         client = ClaudeClient()
 
@@ -176,29 +176,29 @@ class TestClaudeClientDefaults:
 
     def test_get_claude_client_creates_instance(self, monkeypatch):
         """get_claude_client creates instance on first call."""
-        monkeypatch.setattr("koro.claude.SANDBOX_DIR", "/test/sandbox")
-        monkeypatch.setattr("koro.claude.CLAUDE_WORKING_DIR", "/test/working")
+        monkeypatch.setattr("koro.core.claude.SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr("koro.core.claude.CLAUDE_WORKING_DIR", "/test/working")
 
-        import koro.claude
+        import koro.core.claude
 
-        koro.claude._claude_client = None
+        koro.core.claude._claude_client = None
 
-        client = koro.claude.get_claude_client()
+        client = koro.core.claude.get_claude_client()
 
         assert client is not None
         assert isinstance(client, ClaudeClient)
 
     def test_get_claude_client_returns_same(self, monkeypatch):
         """get_claude_client returns same instance."""
-        monkeypatch.setattr("koro.claude.SANDBOX_DIR", "/test/sandbox")
-        monkeypatch.setattr("koro.claude.CLAUDE_WORKING_DIR", "/test/working")
+        monkeypatch.setattr("koro.core.claude.SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr("koro.core.claude.CLAUDE_WORKING_DIR", "/test/working")
 
-        import koro.claude
+        import koro.core.claude
 
-        koro.claude._claude_client = None
+        koro.core.claude._claude_client = None
 
-        client1 = koro.claude.get_claude_client()
-        client2 = koro.claude.get_claude_client()
+        client1 = koro.core.claude.get_claude_client()
+        client2 = koro.core.claude.get_claude_client()
 
         assert client1 is client2
 
@@ -233,7 +233,7 @@ class TestClaudeClientQuery:
 
         mock_sdk_client.receive_response = mock_receive
 
-        with patch("koro.claude.ClaudeSDKClient", return_value=mock_sdk_client):
+        with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
             client = ClaudeClient(
                 sandbox_dir=str(sandbox_dir), working_dir=str(tmp_path)
             )
@@ -247,7 +247,7 @@ class TestClaudeClientQuery:
     ):
         """query includes megg context for new sessions."""
         monkeypatch.setattr(
-            "koro.claude.load_megg_context", lambda x: "Megg context here"
+            "koro.core.claude.load_megg_context", lambda x: "Megg context here"
         )
 
         mock_sdk_client = MagicMock()
@@ -267,7 +267,7 @@ class TestClaudeClientQuery:
 
         mock_sdk_client.receive_response = mock_receive
 
-        with patch("koro.claude.ClaudeSDKClient", return_value=mock_sdk_client):
+        with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
             client = ClaudeClient(
                 sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
             )
@@ -286,7 +286,7 @@ class TestClaudeClientQuery:
             megg_called = True
             return "Megg context"
 
-        monkeypatch.setattr("koro.claude.load_megg_context", mock_load_megg)
+        monkeypatch.setattr("koro.core.claude.load_megg_context", mock_load_megg)
 
         mock_sdk_client = MagicMock()
         mock_sdk_client.__aenter__ = AsyncMock(return_value=mock_sdk_client)
@@ -299,7 +299,7 @@ class TestClaudeClientQuery:
 
         mock_sdk_client.receive_response = mock_receive
 
-        with patch("koro.claude.ClaudeSDKClient", return_value=mock_sdk_client):
+        with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
             client = ClaudeClient(
                 sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
             )
@@ -316,7 +316,7 @@ class TestClaudeClientQuery:
         mock_sdk_client.__aexit__ = AsyncMock(return_value=None)
         mock_sdk_client.query = AsyncMock(side_effect=Exception("SDK error"))
 
-        with patch("koro.claude.ClaudeSDKClient", return_value=mock_sdk_client):
+        with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
             client = ClaudeClient(
                 sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
             )
@@ -327,7 +327,7 @@ class TestClaudeClientQuery:
 
     def test_load_megg_context_uses_default_dir(self, monkeypatch):
         """load_megg_context uses CLAUDE_WORKING_DIR when no dir given."""
-        monkeypatch.setattr("koro.claude.CLAUDE_WORKING_DIR", "/default/working")
+        monkeypatch.setattr("koro.core.claude.CLAUDE_WORKING_DIR", "/default/working")
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="context")

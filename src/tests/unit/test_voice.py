@@ -21,7 +21,7 @@ class TestVoiceEngine:
 
     def test_init_without_api_key(self, monkeypatch):
         """VoiceEngine handles missing API key."""
-        monkeypatch.setattr("koro.voice.ELEVENLABS_API_KEY", None)
+        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", None)
 
         engine = VoiceEngine(api_key=None)
 
@@ -40,7 +40,7 @@ class TestVoiceEngine:
     @pytest.mark.asyncio
     async def test_transcribe_without_client(self, monkeypatch):
         """transcribe returns error without client."""
-        monkeypatch.setattr("koro.voice.ELEVENLABS_API_KEY", None)
+        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", None)
         engine = VoiceEngine(api_key=None)
 
         result = await engine.transcribe(b"audio_data")
@@ -73,7 +73,7 @@ class TestVoiceEngine:
     @pytest.mark.asyncio
     async def test_text_to_speech_without_client(self, monkeypatch):
         """text_to_speech returns None without client."""
-        monkeypatch.setattr("koro.voice.ELEVENLABS_API_KEY", None)
+        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", None)
         engine = VoiceEngine(api_key=None)
 
         result = await engine.text_to_speech("Hello")
@@ -115,7 +115,7 @@ class TestVoiceEngine:
 
     def test_health_check_without_client(self, monkeypatch):
         """health_check fails without client."""
-        monkeypatch.setattr("koro.voice.ELEVENLABS_API_KEY", None)
+        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", None)
         engine = VoiceEngine(api_key=None)
 
         success, message = engine.health_check()
@@ -150,7 +150,7 @@ class TestVoiceEngineDefaults:
 
     def test_get_voice_engine_creates_instance(self, monkeypatch):
         """get_voice_engine creates instance on first call."""
-        monkeypatch.setattr("koro.voice.ELEVENLABS_API_KEY", "test_key")
+        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", "test_key")
 
         import koro.voice
 
@@ -163,7 +163,7 @@ class TestVoiceEngineDefaults:
 
     def test_get_voice_engine_returns_same(self, monkeypatch):
         """get_voice_engine returns same instance."""
-        monkeypatch.setattr("koro.voice.ELEVENLABS_API_KEY", "test_key")
+        monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", "test_key")
 
         import koro.voice
 

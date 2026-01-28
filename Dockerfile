@@ -37,13 +37,13 @@ WORKDIR /home/claude/app
 # Copy dependency manifests first for better caching
 COPY --chown=claude:claude pyproject.toml uv.lock ./
 
+# Copy application code (needed for editable build during uv sync)
+COPY --chown=claude:claude src/ ./src/
+
 # Create virtual environment and install dependencies via uv
 RUN python3 -m venv .venv && \
     .venv/bin/pip install --no-cache-dir --upgrade pip uv && \
     .venv/bin/uv sync --frozen --no-dev
-
-# Copy application code
-COPY --chown=claude:claude src/ ./src/
 
 # Copy Claude settings (agents, skills, config from toru-claude-settings submodule)
 COPY --chown=claude:claude .claude-settings/ /home/claude/.claude/

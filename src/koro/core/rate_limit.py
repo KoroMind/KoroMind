@@ -20,8 +20,12 @@ class RateLimiter:
             cooldown_seconds: Minimum seconds between messages
             per_minute_limit: Maximum messages per minute
         """
-        self.cooldown_seconds = cooldown_seconds or RATE_LIMIT_SECONDS
-        self.per_minute_limit = per_minute_limit or RATE_LIMIT_PER_MINUTE
+        self.cooldown_seconds = (
+            RATE_LIMIT_SECONDS if cooldown_seconds is None else cooldown_seconds
+        )
+        self.per_minute_limit = (
+            RATE_LIMIT_PER_MINUTE if per_minute_limit is None else per_minute_limit
+        )
         self.user_limits: dict[str, dict] = {}
 
     def check(self, user_id: int | str) -> tuple[bool, str]:
@@ -39,7 +43,7 @@ class RateLimiter:
 
         if user_id_str not in self.user_limits:
             self.user_limits[user_id_str] = {
-                "last_message": 0,
+                "last_message": None,
                 "minute_count": 0,
                 "minute_start": now,
             }
@@ -47,13 +51,14 @@ class RateLimiter:
         limits = self.user_limits[user_id_str]
 
         # Check per-message cooldown
-        time_since_last = now - limits["last_message"]
-        if time_since_last < self.cooldown_seconds:
-            wait_time = self.cooldown_seconds - time_since_last
-            return (
-                False,
-                f"Please wait {wait_time:.1f}s before sending another message.",
-            )
+        if limits["last_message"] is not None and self.cooldown_seconds > 0:
+            time_since_last = now - limits["last_message"]
+            if time_since_last < self.cooldown_seconds:
+                wait_time = self.cooldown_seconds - time_since_last
+                return (
+                    False,
+                    f"Please wait {wait_time:.1f}s before sending another message.",
+                )
 
         # Check per-minute limit
         if now - limits["minute_start"] > 60:

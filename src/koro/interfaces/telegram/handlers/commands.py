@@ -98,7 +98,7 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = "Sessions:\n"
     for i, sess in enumerate(state["sessions"][-10:], 1):
         current = " (current)" if sess == state["current_session"] else ""
-        msg += f"{i}. {sess[:8]}...{current}\n"
+        msg += f"{i}. {sess[:9]}...{current}\n"
 
     await update.message.reply_text(msg)
 

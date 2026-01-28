@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+import koro.core.prompt as prompt
 from koro.prompt import PromptManager, build_dynamic_prompt
 
 
@@ -13,17 +14,9 @@ class TestLoadSystemPrompt:
         prompt_file = tmp_path / "prompt.md"
         prompt_file.write_text("You are a test assistant.")
 
-        import koro.config
+        monkeypatch.setattr(prompt, "SYSTEM_PROMPT_FILE", str(prompt_file))
 
-        monkeypatch.setattr(koro.config, "SYSTEM_PROMPT_FILE", str(prompt_file))
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
-
-        content = koro.prompt.load_system_prompt(str(prompt_file))
+        content = prompt.load_system_prompt(str(prompt_file))
         assert content == "You are a test assistant."
 
     def test_replaces_placeholders(self, tmp_path, monkeypatch):
@@ -31,37 +24,21 @@ class TestLoadSystemPrompt:
         prompt_file = tmp_path / "prompt.md"
         prompt_file.write_text("Sandbox: {sandbox_dir}, Read: {read_dir}")
 
-        import koro.config
+        monkeypatch.setattr(prompt, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(prompt, "CLAUDE_WORKING_DIR", "/test/working")
+        monkeypatch.setattr(prompt, "BASE_DIR", tmp_path)
 
-        monkeypatch.setattr(koro.config, "SANDBOX_DIR", "/test/sandbox")
-        monkeypatch.setattr(koro.config, "CLAUDE_WORKING_DIR", "/test/working")
-        monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
-
-        content = koro.prompt.load_system_prompt(str(prompt_file))
+        content = prompt.load_system_prompt(str(prompt_file))
         assert "/test/sandbox" in content
         assert "/test/working" in content
 
     def test_fallback_default_when_missing(self, tmp_path, monkeypatch):
         """load_system_prompt returns default when file missing."""
-        import koro.config
+        monkeypatch.setattr(prompt, "SYSTEM_PROMPT_FILE", "")
+        monkeypatch.setattr(prompt, "SANDBOX_DIR", "/sandbox")
+        monkeypatch.setattr(prompt, "CLAUDE_WORKING_DIR", "/working")
 
-        monkeypatch.setattr(koro.config, "SYSTEM_PROMPT_FILE", "")
-        monkeypatch.setattr(koro.config, "SANDBOX_DIR", "/sandbox")
-        monkeypatch.setattr(koro.config, "CLAUDE_WORKING_DIR", "/working")
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
-
-        content = koro.prompt.load_system_prompt()
+        content = prompt.load_system_prompt()
         assert "voice assistant" in content.lower()
         assert "/sandbox" in content
         assert "/working" in content
@@ -73,17 +50,9 @@ class TestLoadSystemPrompt:
         prompt_file = prompt_dir / "test.md"
         prompt_file.write_text("Relative prompt content")
 
-        import koro.config
+        monkeypatch.setattr(prompt, "BASE_DIR", tmp_path)
 
-        monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
-
-        content = koro.prompt.load_system_prompt("prompts/test.md")
+        content = prompt.load_system_prompt("prompts/test.md")
         assert content == "Relative prompt content"
 
     def test_path_traversal_blocked(self, tmp_path, monkeypatch):
@@ -98,21 +67,13 @@ class TestLoadSystemPrompt:
         base_dir = tmp_path / "app"
         base_dir.mkdir()
 
-        import koro.config
-
-        monkeypatch.setattr(koro.config, "BASE_DIR", base_dir)
-        monkeypatch.setattr(koro.config, "SYSTEM_PROMPT_FILE", "")
-        monkeypatch.setattr(koro.config, "SANDBOX_DIR", "/sandbox")
-        monkeypatch.setattr(koro.config, "CLAUDE_WORKING_DIR", "/working")
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
+        monkeypatch.setattr(prompt, "BASE_DIR", base_dir)
+        monkeypatch.setattr(prompt, "SYSTEM_PROMPT_FILE", "")
+        monkeypatch.setattr(prompt, "SANDBOX_DIR", "/sandbox")
+        monkeypatch.setattr(prompt, "CLAUDE_WORKING_DIR", "/working")
 
         # Try to access file outside BASE_DIR via path traversal
-        content = koro.prompt.load_system_prompt("../outside/secret.txt")
+        content = prompt.load_system_prompt("../outside/secret.txt")
 
         # Should return default prompt, not the secret file
         assert "SECRET DATA" not in content
@@ -175,24 +136,15 @@ class TestPromptManager:
         prompt_file = tmp_path / "lazy.md"
         prompt_file.write_text("Lazy loaded prompt")
 
-        import koro.config
-
-        monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
-
+        monkeypatch.setattr(prompt, "BASE_DIR", tmp_path)
         manager = PromptManager(str(prompt_file))
 
         # Not loaded yet
         assert manager._base_prompt is None
 
         # Access triggers load
-        prompt = manager.base_prompt
-        assert prompt == "Lazy loaded prompt"
+        base_prompt = manager.base_prompt
+        assert base_prompt == "Lazy loaded prompt"
         assert manager._base_prompt is not None
 
     def test_caches_prompt(self, tmp_path, monkeypatch):
@@ -200,16 +152,7 @@ class TestPromptManager:
         prompt_file = tmp_path / "cached.md"
         prompt_file.write_text("Original content")
 
-        import koro.config
-
-        monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
-
+        monkeypatch.setattr(prompt, "BASE_DIR", tmp_path)
         manager = PromptManager(str(prompt_file))
 
         first = manager.base_prompt
@@ -226,16 +169,7 @@ class TestPromptManager:
         prompt_file = tmp_path / "reload.md"
         prompt_file.write_text("Original")
 
-        import koro.config
-
-        monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
-
+        monkeypatch.setattr(prompt, "BASE_DIR", tmp_path)
         manager = PromptManager(str(prompt_file))
 
         manager.base_prompt  # Load cache
@@ -250,16 +184,7 @@ class TestPromptManager:
         prompt_file = tmp_path / "dynamic.md"
         prompt_file.write_text("Base content")
 
-        import koro.config
-
-        monkeypatch.setattr(koro.config, "BASE_DIR", tmp_path)
-
-        import importlib
-
-        import koro.prompt
-
-        importlib.reload(koro.prompt)
-
+        monkeypatch.setattr(prompt, "BASE_DIR", tmp_path)
         manager = PromptManager(str(prompt_file))
         settings = {"audio_enabled": False}
 

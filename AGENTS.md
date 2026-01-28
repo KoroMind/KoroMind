@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KoroMind is a voice-first Telegram bot that connects ElevenLabs STT/TTS with the Claude Agent SDK for agentic tool execution. Users send voice messages, Claude executes tools (Read, Write, Bash, WebSearch, etc.), and responses come back as voice.
+KoroMind is a multi-interface personal AI assistant ("second brain") that connects ElevenLabs STT/TTS with the Claude Agent SDK for agentic tool execution. Access it via Telegram bot, REST API, or CLI.
 
 ## Commands
 
@@ -19,9 +19,20 @@ cp .env.example .env  # Then fill in credentials
 
 ### Running
 ```bash
-python src/bot.py                # Run the bot
-docker compose up -d --build     # Docker deployment
-docker compose logs -f koro      # View Docker logs
+# Telegram Bot (default)
+python -m koro
+python -m koro telegram
+
+# REST API Server
+python -m koro api
+python -m koro api --port 8080
+
+# CLI Interface
+python -m koro cli
+
+# Docker
+docker compose up -d --build
+docker compose logs -f koro
 ```
 
 ### Testing
@@ -41,40 +52,80 @@ pre-commit run black --all-files # Just black
 pre-commit run ruff-check --all-files
 ```
 
+### PR Review (gh)
+```bash
+gh pr-review review view 9 -R KoroMind/KoroMind
+```
+
 ## Architecture
 
 ### Package Structure
-- `src/bot.py` - Entry point, imports from `koro.main`
-- `src/koro/` - Main package
-  - `main.py` - Application setup and Telegram bot initialization
-  - `config.py` - Environment configuration loading
-  - `claude.py` - Claude Agent SDK integration
-  - `voice.py` - ElevenLabs STT/TTS handling
-  - `state.py` - Session and user settings persistence
-  - `auth.py` - Chat ID and topic authorization
-  - `rate_limit.py` - Per-user rate limiting
-  - `prompt.py` - System prompt loading
-  - `handlers/` - Telegram handlers
-    - `commands.py` - /start, /new, /settings, etc.
-    - `messages.py` - Voice and text message processing
-    - `callbacks.py` - Inline button callbacks (approve/deny, settings)
-    - `utils.py` - Shared handler utilities
+```
+src/koro/
+├── core/                    # Brain engine (library)
+│   ├── brain.py             # Main orchestrator
+│   ├── claude.py            # Claude SDK wrapper
+│   ├── voice.py             # STT/TTS engine
+│   ├── state.py             # SQLite state manager
+│   ├── types.py             # Shared types (BrainResponse, Session, etc.)
+│   ├── config.py            # Configuration
+│   ├── prompt.py            # System prompt loading
+│   ├── rate_limit.py        # Rate limiting
+│   └── auth.py              # Authentication utilities
+│
+├── api/                     # REST API service
+│   ├── app.py               # FastAPI application
+│   ├── middleware.py        # Auth, rate limiting
+│   └── routes/
+│       ├── health.py        # Health checks
+│       ├── messages.py      # POST /messages
+│       ├── sessions.py      # Session management
+│       └── settings.py      # User settings
+│
+├── interfaces/
+│   ├── telegram/            # Telegram adapter
+│   │   ├── bot.py           # Bot initialization
+│   │   └── handlers/        # Command/message handlers
+│   │
+│   └── cli/                 # CLI adapter
+│       └── app.py           # Rich/Typer CLI
+│
+├── main.py                  # Unified entry point
+│
+└── (legacy re-exports)      # For backward compatibility:
+    ├── config.py            # Re-exports from core
+    ├── claude.py
+    ├── voice.py
+    ├── state.py
+    ├── prompt.py
+    ├── rate_limit.py
+    ├── auth.py
+    └── handlers/            # Re-exports from interfaces/telegram
+```
 
 ### Key Concepts
-- **Sessions**: Conversation context persists via session IDs stored in `sessions_state.json`
-- **Approve Mode**: Human-in-the-loop requiring inline button confirmation for each tool call
+- **Brain**: Central orchestrator in `koro.core.brain` that coordinates all operations
+- **Sessions**: Conversation context persists via SQLite database (`~/.koromind/koromind.db`)
+- **Approve Mode**: Human-in-the-loop requiring button confirmation for each tool call
 - **Go All Mode**: Auto-approve all tool executions
-- **Watch Mode**: Stream tool calls to Telegram in real-time
+- **Watch Mode**: Stream tool calls to interface in real-time
 - **Sandbox**: Claude can only write/execute in configured sandbox directory
 
 ### Data Flow
 ```
-Voice → Download → ElevenLabs STT → Claude Agent SDK → [Tools] → Response → ElevenLabs TTS → Voice reply
+Message → Brain.process_message() → STT (if voice) → Claude SDK → [Tools] → Response → TTS (if audio) → Reply
 ```
 
-### State Files
-- `sessions_state.json` - Per-user session IDs and current session
-- `user_settings.json` - Per-user preferences (mode, audio, speed, watch)
+### State Storage
+```
+~/.koromind/
+└── koromind.db     # SQLite database
+    ├── sessions    # User sessions
+    ├── settings    # User preferences
+    └── memory      # Long-term memory (future)
+```
+
+Legacy JSON files (`sessions_state.json`, `user_settings.json`) are auto-migrated on first run.
 
 ## Code Style
 - Python 3.11+, PEP 8

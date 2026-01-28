@@ -5,6 +5,8 @@ import os
 import pytest
 from dotenv import load_dotenv
 
+from koro.claude import ClaudeClient
+
 # Load environment variables
 load_dotenv()
 
@@ -29,8 +31,6 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def claude_client(tmp_path):
     """Create Claude client with temp sandbox."""
-    from koro.claude import ClaudeClient
-
     sandbox = tmp_path / "sandbox"
     sandbox.mkdir()
     return ClaudeClient(sandbox_dir=str(sandbox), working_dir=str(tmp_path))

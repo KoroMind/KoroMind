@@ -1,97 +1,36 @@
-"""Configuration management for KoroMind."""
+"""Configuration management for KoroMind.
 
-import logging
-import os
-from pathlib import Path
+This module re-exports from koro.core.config for backward compatibility.
+New code should import directly from koro.core.config.
+"""
 
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-
-def get_env(key: str, default: str = None) -> str | None:
-    """Get environment variable with optional default."""
-    return os.getenv(key, default)
-
-
-def get_env_int(key: str, default: int) -> int:
-    """Get environment variable as integer."""
-    value = os.getenv(key)
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
-
-
-def get_env_bool(key: str, default: bool = False) -> bool:
-    """Get environment variable as boolean."""
-    value = os.getenv(key, "").lower()
-    if value in ("true", "1", "yes"):
-        return True
-    if value in ("false", "0", "no"):
-        return False
-    return default
-
-
-# Core settings
-TELEGRAM_BOT_TOKEN = get_env("TELEGRAM_BOT_TOKEN")
-ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY")
-ALLOWED_CHAT_ID = get_env_int("TELEGRAM_DEFAULT_CHAT_ID", 0)
-TOPIC_ID = get_env("TELEGRAM_TOPIC_ID")
-
-# Directories
-CLAUDE_WORKING_DIR = get_env("CLAUDE_WORKING_DIR", os.path.expanduser("~"))
-SANDBOX_DIR = get_env(
-    "CLAUDE_SANDBOX_DIR", os.path.join(os.path.expanduser("~"), "claude-voice-sandbox")
+# Re-export everything from core config
+from koro.core.config import (  # noqa: F401
+    BASE_DIR,
+    CLAUDE_WORKING_DIR,
+    CREDENTIALS_FILE,
+    ELEVENLABS_VOICE_ID,
+    PERSONA_NAME,
+    SANDBOX_DIR,
+    SETTINGS_FILE,
+    STATE_FILE,
+    SYSTEM_PROMPT_FILE,
+    VOICE_SETTINGS,
+    get_env,
+    get_env_bool,
+    get_env_int,
+    setup_logging,
 )
 
-# Voice settings
-MAX_VOICE_CHARS = get_env_int("MAX_VOICE_RESPONSE_CHARS", 500)
-ELEVENLABS_VOICE_ID = get_env("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
-
-# Persona settings
-PERSONA_NAME = get_env("PERSONA_NAME", "Assistant")
-SYSTEM_PROMPT_FILE = get_env("SYSTEM_PROMPT_FILE", "")
-CLAUDE_SETTINGS_FILE = get_env("CLAUDE_SETTINGS_FILE", "")
-
-# Logging
-LOG_LEVEL = get_env("LOG_LEVEL", "INFO")
-
-# Voice settings for expressive delivery
-VOICE_SETTINGS = {
-    "stability": 0.3,
-    "similarity_boost": 0.75,
-    "style": 0.4,
-    "speed": 1.1,
-}
-
-# Rate limiting
-RATE_LIMIT_SECONDS = 2
-RATE_LIMIT_PER_MINUTE = 10
-
-# Paths
-# In src layout, repo root is two levels above this file: src/koro/config.py
-BASE_DIR = Path(__file__).resolve().parents[2]
-STATE_FILE = BASE_DIR / "sessions_state.json"
-SETTINGS_FILE = BASE_DIR / "user_settings.json"
-CREDENTIALS_FILE = BASE_DIR / "credentials.json"
-
-
-def setup_logging() -> logging.Logger:
-    """Configure and return logger."""
-    logging.basicConfig(
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
-    )
-    return logging.getLogger(__name__)
+# Telegram-specific settings (not in core)
+TELEGRAM_BOT_TOKEN = get_env("TELEGRAM_BOT_TOKEN")
+ALLOWED_CHAT_ID = get_env_int("TELEGRAM_DEFAULT_CHAT_ID", 0)
+TOPIC_ID = get_env("TELEGRAM_TOPIC_ID")
 
 
 def validate_environment() -> tuple[bool, str]:
     """
-    Validate required environment variables.
+    Validate required environment variables for Telegram interface.
 
     Returns:
         (is_valid, message) - If not valid, message explains what's missing.

@@ -140,50 +140,25 @@ src/koro/
 - Telegram bot token from [@BotFather](https://t.me/botfather) (for Telegram interface)
 - ElevenLabs API key from [elevenlabs.io](https://elevenlabs.io) (for voice)
 
-### Installation
+### Docker (Recommended)
 
 ```bash
-# Clone and setup
-git clone https://github.com/KoroMind/KoroMind.git
-cd KoroMind
+cp .env.example .env   # Edit with your credentials
+docker-compose up -d --build
+```
 
-# Install with uv (recommended)
+### Manual Setup
+
+```bash
 pip install uv
-uv venv -p python3.11
-source .venv/bin/activate
+uv venv -p python3.11 && source .venv/bin/activate
 uv sync
+cp .env.example .env   # Edit with your credentials
 
-# Or with pip
-pip install -e .
-
-# Configure
-cp .env.example .env
-# Edit .env with your credentials
-```
-
-### Running
-
-```bash
-# Telegram Bot (default)
-python -m koro
-# or
-koromind telegram
-
-# REST API Server
-python -m koro api
-# or
-koromind api --port 8420
-
-# CLI Interface
-python -m koro cli
-# or
-koro-cli
-```
-
-### Docker
-
-```bash
-docker-compose up --build -d
+# Run one of:
+python -m koro              # Telegram bot
+python -m koro api          # REST API
+python -m koro cli          # CLI
 ```
 
 ---

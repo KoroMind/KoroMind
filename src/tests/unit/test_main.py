@@ -1,136 +1,116 @@
 """Tests for koro.main module."""
 
-from unittest.mock import MagicMock, patch
+import sys
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+import koro.core.config as config
+from koro.main import main
+
+
+@pytest.fixture
+def mock_telegram_bot(monkeypatch):
+    """Provide a mocked telegram bot module."""
+    module = MagicMock()
+    module.run_telegram_bot = MagicMock()
+    monkeypatch.setitem(sys.modules, "koro.interfaces.telegram.bot", module)
+    return module
+
+
+@pytest.fixture
+def mock_cli_app(monkeypatch):
+    """Provide a mocked CLI app module."""
+    module = MagicMock()
+    module.run_cli = MagicMock()
+    monkeypatch.setitem(sys.modules, "koro.interfaces.cli.app", module)
+    return module
+
+
+@pytest.fixture
+def mock_uvicorn(monkeypatch):
+    """Provide a mocked uvicorn module."""
+    module = MagicMock()
+    module.run = MagicMock()
+    monkeypatch.setitem(sys.modules, "uvicorn", module)
+    return module
+
+
+@pytest.fixture
+def config_defaults(monkeypatch):
+    """Set predictable API defaults for tests."""
+    monkeypatch.setattr(config, "KOROMIND_HOST", "127.0.0.1")
+    monkeypatch.setattr(config, "KOROMIND_PORT", 8420)
 
 
 class TestMainEntryPoint:
     """Tests for the main entry point and interface selection."""
 
-    def test_main_defaults_to_telegram(self, monkeypatch):
+    def test_main_defaults_to_telegram(self, monkeypatch, mock_telegram_bot):
         """Main entry point defaults to telegram interface."""
-        monkeypatch.setattr("sys.argv", ["koro"])
+        monkeypatch.setattr(sys, "argv", ["koro"])
 
-        # Mock the telegram bot module before importing main
-        mock_bot_module = MagicMock()
-        mock_run = MagicMock()
-        mock_bot_module.run_telegram_bot = mock_run
+        main()
 
-        with patch.dict(
-            "sys.modules", {"koro.interfaces.telegram.bot": mock_bot_module}
-        ):
-            import importlib
+        mock_telegram_bot.run_telegram_bot.assert_called_once()
 
-            import koro.main
-
-            importlib.reload(koro.main)
-
-            koro.main.main()
-
-            mock_run.assert_called_once()
-
-    def test_main_accepts_telegram_arg(self, monkeypatch):
+    def test_main_accepts_telegram_arg(self, monkeypatch, mock_telegram_bot):
         """Main entry point accepts explicit telegram argument."""
-        monkeypatch.setattr("sys.argv", ["koro", "telegram"])
+        monkeypatch.setattr(sys, "argv", ["koro", "telegram"])
 
-        with patch.dict("sys.modules", {"koro.interfaces.telegram.bot": MagicMock()}):
-            mock_run = MagicMock()
-            with patch("koro.interfaces.telegram.bot.run_telegram_bot", mock_run):
-                import importlib
+        main()
 
-                import koro.main
+        mock_telegram_bot.run_telegram_bot.assert_called_once()
 
-                importlib.reload(koro.main)
-
-    def test_main_api_starts_uvicorn(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "argv,expected_host,expected_port",
+        [
+            (["koro", "api"], "127.0.0.1", 8420),
+            (["koro", "api", "--port", "9000"], "127.0.0.1", 9000),
+            (["koro", "api", "--host", "0.0.0.0"], "0.0.0.0", 8420),
+        ],
+    )
+    def test_main_api_starts_uvicorn(
+        self,
+        monkeypatch,
+        mock_uvicorn,
+        config_defaults,
+        argv,
+        expected_host,
+        expected_port,
+    ):
         """Main entry point starts uvicorn for API interface."""
-        monkeypatch.setattr("sys.argv", ["koro", "api"])
+        monkeypatch.setattr(sys, "argv", argv)
 
-        mock_uvicorn = MagicMock()
-        with patch.dict("sys.modules", {"uvicorn": mock_uvicorn}):
-            with patch("uvicorn.run", mock_uvicorn.run):
-                import importlib
+        main()
 
-                import koro.main
+        mock_uvicorn.run.assert_called_once()
+        call_kwargs = mock_uvicorn.run.call_args.kwargs
+        assert call_kwargs["host"] == expected_host
+        assert call_kwargs["port"] == expected_port
 
-                importlib.reload(koro.main)
-
-                koro.main.main()
-
-                mock_uvicorn.run.assert_called_once()
-
-    def test_main_api_with_custom_port(self, monkeypatch):
-        """Main entry point passes custom port to uvicorn."""
-        monkeypatch.setattr("sys.argv", ["koro", "api", "--port", "9000"])
-
-        mock_uvicorn = MagicMock()
-        with patch.dict("sys.modules", {"uvicorn": mock_uvicorn}):
-            with patch("uvicorn.run", mock_uvicorn.run):
-                import importlib
-
-                import koro.main
-
-                importlib.reload(koro.main)
-
-                koro.main.main()
-
-                call_kwargs = mock_uvicorn.run.call_args[1]
-                assert call_kwargs["port"] == 9000
-
-    def test_main_api_with_custom_host(self, monkeypatch):
-        """Main entry point passes custom host to uvicorn."""
-        monkeypatch.setattr("sys.argv", ["koro", "api", "--host", "0.0.0.0"])
-
-        mock_uvicorn = MagicMock()
-        with patch.dict("sys.modules", {"uvicorn": mock_uvicorn}):
-            with patch("uvicorn.run", mock_uvicorn.run):
-                import importlib
-
-                import koro.main
-
-                importlib.reload(koro.main)
-
-                koro.main.main()
-
-                call_kwargs = mock_uvicorn.run.call_args[1]
-                assert call_kwargs["host"] == "0.0.0.0"
-
-    def test_main_cli_starts_cli(self, monkeypatch):
+    def test_main_cli_starts_cli(self, monkeypatch, mock_cli_app):
         """Main entry point starts CLI interface."""
-        monkeypatch.setattr("sys.argv", ["koro", "cli"])
+        monkeypatch.setattr(sys, "argv", ["koro", "cli"])
 
-        # Mock the CLI module
-        mock_cli_module = MagicMock()
-        mock_run = MagicMock()
-        mock_cli_module.run_cli = mock_run
+        main()
 
-        with patch.dict("sys.modules", {"koro.interfaces.cli.app": mock_cli_module}):
-            import importlib
-
-            import koro.main
-
-            importlib.reload(koro.main)
-
-            koro.main.main()
-
-            mock_run.assert_called_once()
+        mock_cli_app.run_cli.assert_called_once()
 
 
 class TestTelegramBotErrorHandler:
     """Tests for error handling in the Telegram bot."""
 
-    def test_telegram_bot_module_exists(self):
-        """Telegram bot module can be imported."""
-        from koro.interfaces.telegram import bot
+    @pytest.mark.asyncio
+    async def test_error_handler_reports_to_chat(self):
+        """error_handler sends a user-friendly message."""
+        from koro.interfaces.telegram.bot import error_handler
 
-        assert hasattr(bot, "run_telegram_bot")
+        update = MagicMock()
+        update.effective_chat.send_message = AsyncMock()
+        context = MagicMock()
+        context.error = Exception("boom")
 
-    def test_telegram_bot_has_error_handling(self):
-        """Telegram bot module sets up error handling."""
-        # Check that the bot module has appropriate error handling mechanisms
-        import inspect
+        await error_handler(update, context)
 
-        from koro.interfaces.telegram import bot
-
-        source = inspect.getsource(bot)
-        # The bot should have error handling - either add_error_handler or try/except
-        assert "error" in source.lower()
+        update.effective_chat.send_message.assert_called_once()

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import koro.voice as voice_module
 from koro.voice import VoiceEngine
 
 
@@ -145,12 +146,9 @@ class TestVoiceEngineDefaults:
     def test_get_voice_engine_creates_instance(self, monkeypatch):
         """get_voice_engine creates instance on first call."""
         monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", "test_key")
+        voice_module._voice_engine = None
 
-        import koro.voice
-
-        koro.voice._voice_engine = None
-
-        engine = koro.voice.get_voice_engine()
+        engine = voice_module.get_voice_engine()
 
         assert engine is not None
         assert isinstance(engine, VoiceEngine)
@@ -158,24 +156,19 @@ class TestVoiceEngineDefaults:
     def test_get_voice_engine_returns_same(self, monkeypatch):
         """get_voice_engine returns same instance."""
         monkeypatch.setattr("koro.core.voice.ELEVENLABS_API_KEY", "test_key")
+        voice_module._voice_engine = None
 
-        import koro.voice
-
-        koro.voice._voice_engine = None
-
-        engine1 = koro.voice.get_voice_engine()
-        engine2 = koro.voice.get_voice_engine()
+        engine1 = voice_module.get_voice_engine()
+        engine2 = voice_module.get_voice_engine()
 
         assert engine1 is engine2
 
     def test_set_voice_engine_replaces(self):
         """set_voice_engine replaces default instance."""
-        import koro.voice
-
         custom = VoiceEngine(api_key="custom_key")
-        koro.voice.set_voice_engine(custom)
+        voice_module.set_voice_engine(custom)
 
-        assert koro.voice.get_voice_engine() is custom
+        assert voice_module.get_voice_engine() is custom
 
 
 class TestVoiceEngineAsyncBlocking:

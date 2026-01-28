@@ -6,6 +6,8 @@ from io import BytesIO
 import pytest
 from dotenv import load_dotenv
 
+from koro.voice import VoiceEngine
+
 # Load environment variables
 load_dotenv()
 
@@ -18,8 +20,6 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def voice_engine():
     """Create voice engine with real API key."""
-    from koro.voice import VoiceEngine
-
     return VoiceEngine(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
 

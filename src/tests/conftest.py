@@ -1,5 +1,7 @@
 """Shared test fixtures and configuration."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -80,10 +82,12 @@ def mock_telegram_update():
     update.effective_user.id = 12345
     update.effective_user.is_bot = False
     update.effective_chat.id = 12345
+    update.effective_chat.send_message = AsyncMock()
     update.message.message_thread_id = None
     update.message.text = "Hello test"
     update.message.reply_text = AsyncMock()
     update.message.reply_voice = AsyncMock()
+    update.message.delete = AsyncMock()
     update.message.voice.get_file = AsyncMock()
     return update
 
@@ -94,6 +98,81 @@ def mock_telegram_context():
     context = MagicMock()
     context.args = []
     return context
+
+
+@pytest.fixture
+def make_processing_message():
+    """Factory for a processing message with edit_text."""
+
+    def _make_processing_message():
+        message = MagicMock()
+        message.edit_text = AsyncMock()
+        return message
+
+    return _make_processing_message
+
+
+@pytest.fixture
+def make_update():
+    """Factory for Telegram Update objects used in handlers tests."""
+
+    def _make_update(
+        *,
+        user_id: int = 12345,
+        chat_id: int = 12345,
+        is_bot: bool = False,
+        thread_id: int | None = None,
+        text: str | None = "Hello test",
+        voice: MagicMock | None = None,
+    ):
+        update = MagicMock()
+        update.effective_user.id = user_id
+        update.effective_user.is_bot = is_bot
+        update.effective_chat.id = chat_id
+        update.effective_chat.send_message = AsyncMock()
+
+        update.message.message_thread_id = thread_id
+        update.message.text = text
+        update.message.reply_text = AsyncMock()
+        update.message.reply_voice = AsyncMock()
+        update.message.delete = AsyncMock()
+        if voice is not None:
+            update.message.voice = voice
+
+        return update
+
+    return _make_update
+
+
+@pytest.fixture
+def make_callback_query():
+    """Factory for callback queries."""
+
+    def _make_callback_query(data: str):
+        query = MagicMock()
+        query.data = data
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        return query
+
+    return _make_callback_query
+
+
+@pytest.fixture
+def make_voice_message():
+    """Factory for Telegram voice message objects."""
+
+    def _make_voice_message(audio_bytes: bytes = b"voice_data"):
+        voice_file = MagicMock()
+        voice_file.download_as_bytearray = AsyncMock(
+            return_value=bytearray(audio_bytes)
+        )
+
+        voice_obj = MagicMock()
+        voice_obj.get_file = AsyncMock(return_value=voice_file)
+        return voice_obj
+
+    return _make_voice_message
 
 
 @pytest.fixture

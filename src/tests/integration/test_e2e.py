@@ -6,6 +6,9 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
+from koro.claude import ClaudeClient
+from koro.voice import VoiceEngine
+
 # Load environment variables
 load_dotenv()
 
@@ -31,9 +34,6 @@ class TestFullPipeline:
     @pytest.mark.asyncio
     async def test_voice_to_voice_flow(self, tmp_path):
         """Complete flow: TTS -> STT -> Claude -> TTS."""
-        from koro.claude import ClaudeClient
-        from koro.voice import VoiceEngine
-
         voice = VoiceEngine(api_key=os.getenv("ELEVENLABS_API_KEY"))
         claude = ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
@@ -63,8 +63,6 @@ class TestFullPipeline:
     @pytest.mark.asyncio
     async def test_session_persistence_flow(self, tmp_path):
         """Test that sessions persist across interactions."""
-        from koro.claude import ClaudeClient
-
         claude = ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
@@ -86,8 +84,6 @@ class TestFullPipeline:
     @pytest.mark.asyncio
     async def test_tool_execution_flow(self, tmp_path):
         """Test Claude can execute tools in the flow."""
-        from koro.claude import ClaudeClient
-
         sandbox = tmp_path / "sandbox"
         sandbox.mkdir()
 
@@ -112,8 +108,6 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_handles_empty_transcription(self):
         """Pipeline handles empty/failed transcription gracefully."""
-        from koro.voice import VoiceEngine
-
         voice = VoiceEngine(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
         # Try to transcribe invalid audio
@@ -125,9 +119,6 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_handles_long_response(self, tmp_path):
         """Pipeline handles long Claude responses."""
-        from koro.claude import ClaudeClient
-        from koro.voice import VoiceEngine
-
         claude = ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )

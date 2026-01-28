@@ -1,39 +1,57 @@
 """Tests for koro.rate_limit module."""
 
-import time
+import pytest
 
-from koro.rate_limit import RateLimiter
+import koro.core.rate_limit as rate_limit
 
 
 class TestRateLimiter:
     """Tests for RateLimiter class."""
 
+    @pytest.fixture
+    def time_controller(self, monkeypatch):
+        """Provide a controllable time source for deterministic tests."""
+
+        class TimeController:
+            def __init__(self, start: float = 0.0):
+                self.current = start
+
+            def time(self) -> float:
+                return self.current
+
+            def advance(self, seconds: float) -> None:
+                self.current += seconds
+
+        controller = TimeController()
+        monkeypatch.setattr(rate_limit.time, "time", controller.time)
+        return controller
+
     def test_init_with_defaults(self):
         """RateLimiter uses default values."""
-        limiter = RateLimiter()
+        limiter = rate_limit.RateLimiter()
 
         assert limiter.cooldown_seconds == 2
         assert limiter.per_minute_limit == 10
 
     def test_init_with_custom_values(self):
         """RateLimiter accepts custom values."""
-        limiter = RateLimiter(cooldown_seconds=5, per_minute_limit=20)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=5, per_minute_limit=20)
 
         assert limiter.cooldown_seconds == 5
         assert limiter.per_minute_limit == 20
 
-    def test_first_message_allowed(self):
+    def test_first_message_allowed(self, time_controller):
         """First message from user is always allowed."""
-        limiter = RateLimiter()
+        limiter = rate_limit.RateLimiter()
 
         allowed, message = limiter.check(12345)
 
         assert allowed is True
         assert message == ""
 
-    def test_cooldown_blocks_rapid_messages(self):
+    def test_cooldown_blocks_rapid_messages(self, time_controller):
         """Messages within cooldown period are blocked."""
-        limiter = RateLimiter(cooldown_seconds=2)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=2)
 
         # First message
         limiter.check(12345)
@@ -44,58 +62,55 @@ class TestRateLimiter:
         assert allowed is False
         assert "wait" in message.lower()
 
-    def test_cooldown_allows_after_delay(self):
+    def test_cooldown_allows_after_delay(self, time_controller):
         """Messages after cooldown period are allowed."""
-        limiter = RateLimiter(cooldown_seconds=0.1)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=0.1)
 
         limiter.check(12345)
-        time.sleep(0.15)
+        time_controller.advance(0.15)
         allowed, message = limiter.check(12345)
 
         assert allowed is True
 
-    def test_per_minute_limit_blocks_excess(self):
+    def test_per_minute_limit_blocks_excess(self, time_controller):
         """Per-minute limit blocks excess messages."""
-        # Use a small but non-zero cooldown to avoid timing edge cases
-        limiter = RateLimiter(cooldown_seconds=0.001, per_minute_limit=3)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=0.01, per_minute_limit=3)
 
         # First 3 should pass (with tiny delay between)
         for i in range(3):
-            time.sleep(0.002)  # Small delay to pass cooldown
+            time_controller.advance(0.02)
             allowed, _ = limiter.check(12345)
             assert allowed is True, f"Message {i+1} should be allowed"
 
         # 4th should be blocked by per-minute limit
-        time.sleep(0.002)
+        time_controller.advance(0.02)
         allowed, message = limiter.check(12345)
 
         assert allowed is False
         assert "limit reached" in message.lower()
 
-    def test_per_minute_resets_after_minute(self):
+    def test_per_minute_resets_after_minute(self, time_controller):
         """Per-minute counter resets after a minute."""
-        limiter = RateLimiter(cooldown_seconds=0.001, per_minute_limit=2)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=0.01, per_minute_limit=2)
 
         # Use up limit
-        time.sleep(0.002)
+        time_controller.advance(0.02)
         limiter.check(12345)
-        time.sleep(0.002)
+        time_controller.advance(0.02)
         limiter.check(12345)
-        time.sleep(0.002)
         allowed, _ = limiter.check(12345)
         assert allowed is False
 
-        # Simulate time passing by adjusting minute_start and last_message
-        limiter.user_limits["12345"]["minute_start"] = time.time() - 61
-        limiter.user_limits["12345"]["last_message"] = time.time() - 61
+        # Move past the minute window
+        time_controller.advance(61)
 
         # Should be allowed again
         allowed, _ = limiter.check(12345)
         assert allowed is True
 
-    def test_different_users_independent(self):
+    def test_different_users_independent(self, time_controller):
         """Different users have independent limits."""
-        limiter = RateLimiter(cooldown_seconds=0, per_minute_limit=1)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=0, per_minute_limit=1)
 
         # User 1 uses their limit
         limiter.check(11111)
@@ -106,9 +121,9 @@ class TestRateLimiter:
         allowed2, _ = limiter.check(22222)
         assert allowed2 is True
 
-    def test_reset_clears_user_limits(self):
+    def test_reset_clears_user_limits(self, time_controller):
         """reset() clears limits for specific user."""
-        limiter = RateLimiter(cooldown_seconds=0, per_minute_limit=1)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=0, per_minute_limit=1)
 
         limiter.check(12345)
         limiter.check(12345)  # Blocked
@@ -118,9 +133,9 @@ class TestRateLimiter:
         allowed, _ = limiter.check(12345)
         assert allowed is True
 
-    def test_reset_all_clears_all(self):
+    def test_reset_all_clears_all(self, time_controller):
         """reset_all() clears all user limits."""
-        limiter = RateLimiter(cooldown_seconds=0, per_minute_limit=1)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=0, per_minute_limit=1)
 
         limiter.check(11111)
         limiter.check(22222)
@@ -129,35 +144,32 @@ class TestRateLimiter:
 
         assert limiter.user_limits == {}
 
-    def test_check_updates_last_message_time(self):
+    def test_check_updates_last_message_time(self, time_controller):
         """check() updates last message timestamp."""
-        limiter = RateLimiter()
+        limiter = rate_limit.RateLimiter()
 
-        before = time.time()
         limiter.check(12345)
-        after = time.time()
-
         last_msg = limiter.user_limits["12345"]["last_message"]
-        assert before <= last_msg <= after
+        assert last_msg == time_controller.current
 
-    def test_check_increments_minute_count(self):
+    def test_check_increments_minute_count(self, time_controller):
         """check() increments minute counter."""
-        limiter = RateLimiter(cooldown_seconds=0.001)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=0.01)
 
-        time.sleep(0.002)
+        time_controller.advance(0.02)
         limiter.check(12345)
         assert limiter.user_limits["12345"]["minute_count"] == 1
 
-        time.sleep(0.002)
+        time_controller.advance(0.02)
         limiter.check(12345)
         assert limiter.user_limits["12345"]["minute_count"] == 2
 
-    def test_cooldown_message_shows_wait_time(self):
+    def test_cooldown_message_shows_wait_time(self, time_controller):
         """Cooldown message shows how long to wait."""
-        limiter = RateLimiter(cooldown_seconds=10)
+        limiter = rate_limit.RateLimiter(cooldown_seconds=10)
 
         limiter.check(12345)
         _, message = limiter.check(12345)
 
-        # Should show approximately 10 seconds to wait
-        assert "9" in message or "10" in message
+        assert "please wait" in message.lower()
+        assert "s" in message

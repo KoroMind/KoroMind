@@ -48,14 +48,20 @@ KOROMIND_DATA_DIR = Path(
 # Ensure data directory exists
 KOROMIND_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Database path
-DATABASE_PATH = KOROMIND_DATA_DIR / "koromind.db"
+# Database directory and path
+DB_DIR = KOROMIND_DATA_DIR / "db"
+DB_DIR.mkdir(parents=True, exist_ok=True)
+DATABASE_PATH = DB_DIR / "koromind.db"
+
+# Vault directory (long-term memory - markdown + attachments)
+VAULT_DIR = Path(get_env("KOROMIND_VAULT_DIR", str(KOROMIND_DATA_DIR / "vault")))
+
+# Sandbox directory (working scratchpad for Claude)
+# Keep as string for backward compatibility with code expecting str
+SANDBOX_DIR = get_env("KOROMIND_SANDBOX_DIR", str(KOROMIND_DATA_DIR / "sandbox"))
 
 # Directories for Claude operations
 CLAUDE_WORKING_DIR = get_env("CLAUDE_WORKING_DIR", os.path.expanduser("~"))
-SANDBOX_DIR = get_env(
-    "CLAUDE_SANDBOX_DIR", os.path.join(os.path.expanduser("~"), "claude-voice-sandbox")
-)
 
 # Voice settings
 MAX_VOICE_CHARS = get_env_int("MAX_VOICE_RESPONSE_CHARS", 500)

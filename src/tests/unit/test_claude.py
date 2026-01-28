@@ -5,13 +5,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import koro.core.claude as claude
+import koro.core.config as config
+import koro.providers.llm.claude as provider_claude
 
 
 @pytest.fixture
 def mock_subprocess_run(monkeypatch):
     """Stub subprocess.run used by the Claude module."""
     mock_run = MagicMock()
-    monkeypatch.setattr(claude.subprocess, "run", mock_run)
+    # Patch at the provider module level where subprocess is actually used
+    monkeypatch.setattr(provider_claude.subprocess, "run", mock_run)
     return mock_run
 
 
@@ -34,7 +37,8 @@ def mock_sdk_client():
 @pytest.fixture
 def patch_sdk_client(monkeypatch, mock_sdk_client):
     """Patch ClaudeSDKClient constructor to return the stub client."""
-    monkeypatch.setattr(claude, "ClaudeSDKClient", lambda **_: mock_sdk_client)
+    # Patch at the provider module level where ClaudeSDKClient is actually used
+    monkeypatch.setattr(provider_claude, "ClaudeSDKClient", lambda **_: mock_sdk_client)
     return mock_sdk_client
 
 
@@ -76,7 +80,7 @@ class TestLoadMeggContext:
 
     def test_load_megg_context_uses_default_dir(self, monkeypatch, mock_subprocess_run):
         """load_megg_context uses CLAUDE_WORKING_DIR when no dir given."""
-        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/default/working")
+        monkeypatch.setattr(config, "CLAUDE_WORKING_DIR", "/default/working")
         mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="context")
 
         claude.load_megg_context()
@@ -139,8 +143,8 @@ class TestClaudeClient:
 
     def test_init_with_defaults(self, monkeypatch):
         """ClaudeClient uses default directories."""
-        monkeypatch.setattr(claude, "SANDBOX_DIR", "/default/sandbox")
-        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/default/working")
+        monkeypatch.setattr(config, "SANDBOX_DIR", "/default/sandbox")
+        monkeypatch.setattr(config, "CLAUDE_WORKING_DIR", "/default/working")
 
         client = claude.ClaudeClient()
 
@@ -194,8 +198,8 @@ class TestClaudeClientDefaults:
         self, monkeypatch, reset_default_client
     ):
         """get_claude_client creates instance on first call."""
-        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
-        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+        monkeypatch.setattr(config, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(config, "CLAUDE_WORKING_DIR", "/test/working")
 
         client = claude.get_claude_client()
 
@@ -204,8 +208,8 @@ class TestClaudeClientDefaults:
 
     def test_get_claude_client_returns_same(self, monkeypatch, reset_default_client):
         """get_claude_client returns same instance."""
-        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
-        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+        monkeypatch.setattr(config, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(config, "CLAUDE_WORKING_DIR", "/test/working")
 
         client1 = claude.get_claude_client()
         client2 = claude.get_claude_client()
@@ -241,7 +245,9 @@ class TestClaudeClientQuery:
         self, tmp_path, monkeypatch, patch_sdk_client
     ):
         """query includes megg context for new sessions."""
-        monkeypatch.setattr(claude, "load_megg_context", lambda _: "Megg context here")
+        monkeypatch.setattr(
+            provider_claude, "load_megg_context", lambda _: "Megg context here"
+        )
 
         captured_prompt = {}
 
@@ -268,7 +274,7 @@ class TestClaudeClientQuery:
             called["megg"] = True
             return "Megg context"
 
-        monkeypatch.setattr(claude, "load_megg_context", mock_load_megg)
+        monkeypatch.setattr(provider_claude, "load_megg_context", mock_load_megg)
 
         client = claude.ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
@@ -290,7 +296,7 @@ class TestClaudeClientQuery:
                 yield
 
         mock_client.receive_response = empty_receive
-        monkeypatch.setattr(claude, "ClaudeSDKClient", lambda **_: mock_client)
+        monkeypatch.setattr(provider_claude, "ClaudeSDKClient", lambda **_: mock_client)
 
         client = claude.ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)

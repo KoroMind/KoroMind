@@ -1,4 +1,8 @@
-"""Authentication management for Claude and credentials."""
+"""Authentication logic and policies for Claude and credentials.
+
+This module contains pure authentication logic. Persistence is handled
+by storage.repos.auth_repo.
+"""
 
 import json
 import logging
@@ -7,8 +11,17 @@ import time
 from pathlib import Path
 
 from koro.core.config import CREDENTIALS_FILE
+from koro.storage.repos.auth_repo import AuthRepo
 
 logger = logging.getLogger(__name__)
+
+
+def _get_repo(auth_repo: AuthRepo | None = None) -> AuthRepo:
+    """Get auth repo, creating one with current CREDENTIALS_FILE if needed."""
+    if auth_repo is not None:
+        return auth_repo
+    # Create new repo with current CREDENTIALS_FILE value (supports monkeypatching)
+    return AuthRepo(credentials_path=CREDENTIALS_FILE)
 
 
 def check_claude_auth() -> tuple[bool, str]:
@@ -46,37 +59,75 @@ def check_claude_auth() -> tuple[bool, str]:
     return False, "none"
 
 
-def load_credentials() -> dict:
-    """Load saved credentials from file."""
-    if CREDENTIALS_FILE.exists():
-        try:
-            with open(CREDENTIALS_FILE) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.debug("Failed to load credentials file: %s", exc)
-    return {}
+def is_token_expired(expires_at: int, buffer_ms: int = 300000) -> bool:
+    """
+    Check if a token is expired.
+
+    Args:
+        expires_at: Expiration timestamp in milliseconds
+        buffer_ms: Buffer time in milliseconds (default: 5 minutes)
+
+    Returns:
+        True if token is expired or will expire within buffer time
+    """
+    current_time_ms = time.time() * 1000
+    return expires_at < (current_time_ms + buffer_ms)
 
 
-def save_credentials(creds: dict) -> None:
-    """Save credentials to file with secure permissions from creation."""
-    # Use os.open to create file with correct permissions atomically
-    fd = os.open(CREDENTIALS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(creds, f, indent=2)
-    except Exception:
-        os.close(fd)
-        raise
+def validate_api_key(api_key: str) -> bool:
+    """
+    Validate an API key format.
+
+    Args:
+        api_key: API key to validate
+
+    Returns:
+        True if key appears to be valid format
+    """
+    if not api_key:
+        return False
+    # Anthropic API keys start with "sk-ant-"
+    return api_key.startswith("sk-ant-") and len(api_key) > 20
 
 
-def apply_saved_credentials() -> tuple[str | None, str | None]:
+def load_credentials(auth_repo: AuthRepo | None = None) -> dict:
+    """
+    Load saved credentials from file.
+
+    Args:
+        auth_repo: Optional AuthRepo instance (defaults to new repo with CREDENTIALS_FILE)
+
+    Returns:
+        Credentials dictionary
+    """
+    return _get_repo(auth_repo).load()
+
+
+def save_credentials(creds: dict, auth_repo: AuthRepo | None = None) -> None:
+    """
+    Save credentials to file.
+
+    Args:
+        creds: Credentials dictionary
+        auth_repo: Optional AuthRepo instance (defaults to new repo with CREDENTIALS_FILE)
+    """
+    _get_repo(auth_repo).save(creds)
+
+
+def apply_saved_credentials(
+    auth_repo: AuthRepo | None = None,
+) -> tuple[str | None, str | None]:
     """
     Apply saved credentials on startup.
+
+    Args:
+        auth_repo: Optional AuthRepo instance (defaults to new repo with CREDENTIALS_FILE)
 
     Returns:
         (claude_token, elevenlabs_key) - The applied credentials or None
     """
-    creds = load_credentials()
+    repo = _get_repo(auth_repo)
+    creds = repo.load()
     claude_token = None
     elevenlabs_key = None
 
@@ -88,3 +139,61 @@ def apply_saved_credentials() -> tuple[str | None, str | None]:
         elevenlabs_key = creds["elevenlabs_key"]
 
     return claude_token, elevenlabs_key
+
+
+def save_claude_token(token: str, auth_repo: AuthRepo | None = None) -> None:
+    """
+    Save Claude OAuth token.
+
+    Args:
+        token: OAuth token
+        auth_repo: Optional AuthRepo instance (defaults to new repo with CREDENTIALS_FILE)
+    """
+    _get_repo(auth_repo).set_claude_token(token)
+
+
+def save_elevenlabs_key(key: str, auth_repo: AuthRepo | None = None) -> None:
+    """
+    Save ElevenLabs API key.
+
+    Args:
+        key: API key
+        auth_repo: Optional AuthRepo instance (defaults to new repo with CREDENTIALS_FILE)
+    """
+    _get_repo(auth_repo).set_elevenlabs_key(key)
+
+
+def get_saved_claude_token(auth_repo: AuthRepo | None = None) -> str | None:
+    """
+    Get saved Claude OAuth token.
+
+    Args:
+        auth_repo: Optional AuthRepo instance (defaults to new repo with CREDENTIALS_FILE)
+
+    Returns:
+        Saved token or None
+    """
+    return _get_repo(auth_repo).get_claude_token()
+
+
+def get_saved_elevenlabs_key(auth_repo: AuthRepo | None = None) -> str | None:
+    """
+    Get saved ElevenLabs API key.
+
+    Args:
+        auth_repo: Optional AuthRepo instance (defaults to new repo with CREDENTIALS_FILE)
+
+    Returns:
+        Saved key or None
+    """
+    return _get_repo(auth_repo).get_elevenlabs_key()
+
+
+def clear_saved_credentials(auth_repo: AuthRepo | None = None) -> None:
+    """
+    Clear all saved credentials.
+
+    Args:
+        auth_repo: Optional AuthRepo instance (defaults to new repo with CREDENTIALS_FILE)
+    """
+    _get_repo(auth_repo).clear()

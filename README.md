@@ -42,49 +42,82 @@ Full agentic loop. Voice in, action, voice out.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        INTERFACES                               │
-│ ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────────┐│
-│ │ Telegram   │  │    CLI     │  │  REST API  │  │ Future: App  ││
-│ │   App      │  │            │  │            │  │   / SMS      ││
-│ └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  └──────┬───────┘│
-└───────┼──────────────┼───────────────┼───────────────┼─────────┘
-        │              │               │               │
-┌───────▼───────┐  ┌────▼──────────┐  ┌─▼────────────┐   │
-│ Telegram Bot │  │ CLI Interface │  │  REST API    │   │
-│ (koro.interfaces.telegram)      │  │  (koro.api)  │   │
-└───────┬───────┘  └────┬──────────┘  └─┬────────────┘   │
-        └──────────────┴───────────────┴────────────────┘
-                         │
-                  ┌──────▼──────┐
-                  │ Brain Engine│
-                  │ (koro.core) │
-                  └──────┬──────┘
-                         │
-      ┌──────────────────┼───────────────────┐
-      │                  │                   │
-┌─────▼─────┐    ┌──────▼───────┐     ┌─────▼─────┐
-│  Claude   │    │    Voice     │     │   State   │
-│  Agent    │    │   (STT/TTS)  │     │  (SQLite) │
-└───────────┘    └──────────────┘     └───────────┘
+                       EXTERNAL CLIENTS
+       ┌────────────┐   ┌────────────┐   ┌────────────┐
+       │  Telegram  │   │   Mobile   │   │  Terminal  │
+       │    App     │   │    App     │   │            │
+       └─────┬──────┘   └─────┬──────┘   └─────┬──────┘
+             │                │                │
+─────────────┼────────────────┼────────────────┼─────────────
+             │                │                │
+             ▼                ▼                ▼
+┌───────────────────────────────────────────────────────────┐
+│                         KOROMIND                          │
+│                                                           │
+│    ┌────────────┐   ┌────────────┐   ┌────────────┐       │
+│    │  Telegram  │   │  REST API  │   │    CLI     │       │
+│    │    Bot     │   │   Server   │   │            │       │
+│    └─────┬──────┘   └─────┬──────┘   └─────┬──────┘       │
+│          └────────────────┼────────────────┘              │
+│                           │                               │
+│                    ┌──────▼──────┐                        │
+│                    │    Brain    │                        │
+│                    └──────┬──────┘                        │
+│                           │                               │
+│          ┌────────────────┼────────────────┐              │
+│          │                │                │              │
+│    ┌─────▼─────┐   ┌──────▼──────┐   ┌─────▼─────┐        │
+│    │ Providers │   │   Storage   │   │   Vault   │        │
+│    │Claude/11L │   │   SQLite    │   │  Markdown │        │
+│    └───────────┘   └──────┬──────┘   └─────┬─────┘        │
+│                           │                │              │
+└───────────────────────────┼────────────────┼──────────────┘
+                            │                │
+                     ┌──────▼────────────────▼──────┐
+                     │   ~/.koromind/ (shared data) │
+                     └──────────────────────────────┘
 ```
 
-Telegram and CLI call the core library directly; the REST API is just another interface.
+All services share the same data directory. In Docker, this is a mounted volume.
 
 ### Package Structure
 
 ```
 src/koro/
-├── core/                    # Brain engine (library)
+├── core/                    # Brain engine (interface-agnostic)
 │   ├── brain.py             # Main orchestrator
-│   ├── claude.py            # Claude SDK wrapper
-│   ├── voice.py             # STT/TTS engine
-│   ├── state.py             # SQLite state manager
+│   ├── factory.py           # build_brain() wires dependencies
+│   ├── state.py             # State facade over storage repos
+│   ├── sessions.py          # Session business logic
+│   ├── policy.py            # Mode/rate limit rules
+│   ├── approvals.py         # Approval callback tracking
+│   ├── auth.py              # Token logic/policies
 │   ├── types.py             # Shared types
 │   └── config.py            # Configuration
 │
+├── storage/                 # SQLite persistence layer
+│   ├── db.py                # Connection, WAL mode, migrations
+│   ├── migrations/          # SQL migration files
+│   └── repos/               # Data access repositories
+│       ├── sessions_repo.py
+│       ├── settings_repo.py
+│       └── auth_repo.py
+│
+├── vault/                   # Long-term memory (markdown vault)
+│   ├── layout.py            # Folder structure + path helpers
+│   ├── notes.py             # Create/update/move notes (stub)
+│   ├── daily.py             # Daily log (stub)
+│   └── attachments.py       # File blobs (stub)
+│
+├── providers/               # External service wrappers
+│   ├── llm/
+│   │   └── claude.py        # Claude SDK wrapper
+│   └── voice/
+│       └── elevenlabs.py    # ElevenLabs STT/TTS
+│
 ├── api/                     # REST API service
 │   ├── app.py               # FastAPI application
+│   ├── deps.py              # Dependency injection
 │   └── routes/              # API endpoints
 │
 └── interfaces/
@@ -274,11 +307,12 @@ curl -X POST http://localhost:8420/api/v1/messages/text \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `KOROMIND_DATA_DIR` | `~/.koromind` | Data directory |
+| `KOROMIND_VAULT_DIR` | `~/.koromind/vault` | Long-term memory vault |
+| `KOROMIND_SANDBOX_DIR` | `~/.koromind/sandbox` | Write/execute directory |
+| `CLAUDE_WORKING_DIR` | `~` | Read access directory |
 | `PERSONA_NAME` | `Assistant` | Display name |
 | `SYSTEM_PROMPT_FILE` | - | Custom persona prompt |
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | Voice ID |
-| `CLAUDE_WORKING_DIR` | `~` | Read access directory |
-| `CLAUDE_SANDBOX_DIR` | `~/claude-voice-sandbox` | Write/execute directory |
 
 ---
 
@@ -288,7 +322,13 @@ KoroMind stores data in `~/.koromind/` (configurable via `KOROMIND_DATA_DIR`):
 
 ```
 ~/.koromind/
-└── koromind.db     # SQLite database (sessions, settings, memory)
+├── db/
+│   └── koromind.db      # SQLite database (sessions, settings, memory)
+├── vault/               # Long-term memory (markdown + attachments)
+│   ├── 00_INBOX/        # Uncategorized notes
+│   ├── daily/           # Daily logs
+│   └── _templates/      # Note templates
+└── sandbox/             # Working scratchpad for Claude
 ```
 
 Legacy JSON files are automatically migrated on first run.
@@ -329,8 +369,12 @@ pytest --cov=koro --cov-report=term-missing
 
 ## Architecture Decisions
 
+- **Modular Package Structure**: Separates core engine, storage, providers, and interfaces
 - **Core Library Pattern**: `koro.core` is interface-agnostic, enabling multiple frontends
-- **SQLite for State**: Replaces JSON files for better concurrency and querying
+- **Repository Pattern**: Data access isolated in `koro.storage.repos` for testability
+- **Factory Pattern**: `build_brain()` wires all dependencies, preventing drift across processes
+- **SQLite with WAL**: Replaces JSON files for better concurrency and querying
+- **Vault for Long-term Memory**: Human-readable markdown files for durable knowledge
 - **FastAPI for API**: Modern async framework with automatic OpenAPI docs
 - **ElevenLabs Scribe** for STT: Handles accents and ambient noise well
 - **ElevenLabs Turbo v2.5** for TTS: Low latency with expressive voice

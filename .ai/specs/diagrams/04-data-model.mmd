@@ -1,0 +1,58 @@
+erDiagram
+    TENANT {
+        uuid id PK
+        string name
+        datetime created_at
+        boolean active
+    }
+
+    USER {
+        uuid id PK
+        uuid tenant_id FK
+        string telegram_id UK
+        string encrypted_settings
+        datetime created_at
+    }
+
+    DEVICE {
+        uuid id PK
+        uuid user_id FK
+        string device_fingerprint
+        datetime last_seen
+        boolean is_active
+    }
+
+    SESSION {
+        uuid id PK
+        uuid user_id FK
+        uuid device_id FK
+        string claude_session_id
+        datetime started_at
+        datetime ended_at
+        boolean is_active
+    }
+
+    TELEMETRY {
+        uuid id PK
+        uuid session_id FK
+        int input_tokens
+        int output_tokens
+        int tool_calls
+        int tts_characters
+        decimal cost_estimate
+        datetime recorded_at
+    }
+
+    MEMORY {
+        uuid id PK
+        uuid user_id FK
+        blob encrypted_content
+        datetime created_at
+    }
+
+    TENANT ||--o{ USER : has
+    USER ||--o{ DEVICE : owns
+    USER ||--o{ SESSION : has
+    USER ||--o{ MEMORY : stores
+    DEVICE ||--o{ SESSION : runs
+    SESSION ||--o{ TELEMETRY : tracks

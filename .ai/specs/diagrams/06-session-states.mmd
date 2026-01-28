@@ -1,0 +1,9 @@
+stateDiagram-v2
+    [*] --> Created: PIN verified
+    Created --> Active: Worker assigned
+    Active --> Suspended: Timeout or disconnect
+    Suspended --> Active: Reconnect same device
+    Active --> Transferred: New device connects
+    Transferred --> Active: Session continues
+    Active --> Ended: User logout
+    Ended --> [*]

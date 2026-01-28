@@ -1,0 +1,69 @@
+flowchart TB
+    subgraph Clients
+        TG1[Telegram App - Device A]
+        TG2[Telegram App - Device B]
+        CLI[CLI Client]
+        API[REST API Client]
+    end
+
+    subgraph Gateway
+        AUTH[Authentication]
+        RL[Rate Limiter - Redis]
+    end
+
+    subgraph Core
+        BRAIN[Brain Orchestrator]
+        ROUTER[Session Router]
+
+        subgraph Workers
+            W1[Worker 1]
+            W2[Worker 2]
+            W3[Worker N]
+        end
+    end
+
+    subgraph Anthropic
+        KEY1[Max Account 1]
+        KEY2[Max Account 2]
+        KEY3[Max Account 3]
+    end
+
+    EL[ElevenLabs STT/TTS]
+
+    subgraph Storage
+        PG[(PostgreSQL)]
+
+        subgraph UserData
+            US1[User 1 - Encrypted]
+            US2[User 2 - Encrypted]
+            USN[User N - Encrypted]
+        end
+
+        subgraph Sandboxes
+            SB1[/sandbox/user1/]
+            SB2[/sandbox/user2/]
+            SBN[/sandbox/userN/]
+        end
+    end
+
+    TG1 --> AUTH
+    TG2 --> AUTH
+    CLI --> AUTH
+    API --> AUTH
+    AUTH --> RL
+    RL --> BRAIN
+    BRAIN --> ROUTER
+    ROUTER --> W1
+    ROUTER --> W2
+    ROUTER --> W3
+    W1 --> KEY1
+    W2 --> KEY2
+    W3 --> KEY3
+    W1 --> EL
+    W2 --> EL
+    W3 --> EL
+    BRAIN --> PG
+    W1 --> SB1
+    W2 --> SB2
+    W3 --> SBN
+    BRAIN --> UserData

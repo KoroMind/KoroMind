@@ -186,7 +186,7 @@ def get_workspace_tools(sandbox_dir: Path | None = None) -> WorkspaceTools:
         if sandbox_dir is None:
             from koro.core.config import SANDBOX_DIR
 
-            sandbox_dir = SANDBOX_DIR
+            sandbox_dir = Path(SANDBOX_DIR)
         _workspace_tools = WorkspaceTools(sandbox_dir)
     return _workspace_tools
 

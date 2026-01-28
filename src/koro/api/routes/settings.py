@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from koro.core.brain import get_brain
@@ -39,14 +39,15 @@ class UpdateSettingsRequest(BaseModel):
 
 @router.get("/settings", response_model=SettingsResponse)
 async def get_settings(
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> SettingsResponse:
     """
     Get the current settings for the user.
     """
     brain = get_brain()
+    user_id = http_request.state.user_id
 
-    settings = await brain.get_settings(x_user_id)
+    settings = await brain.get_settings(user_id)
 
     return SettingsResponse(
         mode=settings.mode.value,
@@ -59,7 +60,7 @@ async def get_settings(
 @router.put("/settings", response_model=SettingsResponse)
 async def update_settings(
     request: UpdateSettingsRequest,
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> SettingsResponse:
     """
     Update user settings.
@@ -67,6 +68,7 @@ async def update_settings(
     Only the fields provided will be updated.
     """
     brain = get_brain()
+    user_id = http_request.state.user_id
 
     # Build kwargs for update
     kwargs = {}
@@ -79,7 +81,7 @@ async def update_settings(
     if request.watch_enabled is not None:
         kwargs["watch_enabled"] = request.watch_enabled
 
-    settings = await brain.update_settings(x_user_id, **kwargs)
+    settings = await brain.update_settings(user_id, **kwargs)
 
     return SettingsResponse(
         mode=settings.mode.value,
@@ -91,16 +93,17 @@ async def update_settings(
 
 @router.post("/settings/reset", response_model=SettingsResponse)
 async def reset_settings(
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> SettingsResponse:
     """
     Reset user settings to defaults.
     """
     brain = get_brain()
+    user_id = http_request.state.user_id
 
     # Reset by setting all values to defaults
     settings = await brain.update_settings(
-        x_user_id,
+        user_id,
         mode=Mode.GO_ALL,
         audio_enabled=True,
         voice_speed=1.1,

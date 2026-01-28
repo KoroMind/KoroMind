@@ -1,11 +1,14 @@
 """Authentication management for Claude and credentials."""
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
 
 from koro.core.config import CREDENTIALS_FILE
+
+logger = logging.getLogger(__name__)
 
 
 def check_claude_auth() -> tuple[bool, str]:
@@ -37,8 +40,8 @@ def check_claude_auth() -> tuple[bool, str]:
                 # Expired but has refresh token - Claude SDK will handle refresh
                 if oauth.get("refreshToken"):
                     return True, "oauth"
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError, OSError) as exc:
+            logger.debug("Failed to read Claude OAuth credentials: %s", exc)
 
     return False, "none"
 
@@ -49,8 +52,8 @@ def load_credentials() -> dict:
         try:
             with open(CREDENTIALS_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.debug("Failed to load credentials file: %s", exc)
     return {}
 
 

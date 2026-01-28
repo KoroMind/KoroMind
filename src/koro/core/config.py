@@ -85,6 +85,12 @@ RATE_LIMIT_PER_MINUTE = 10
 KOROMIND_API_KEY = get_env("KOROMIND_API_KEY")
 KOROMIND_HOST = get_env("KOROMIND_HOST", "127.0.0.1")
 KOROMIND_PORT = get_env_int("KOROMIND_PORT", 8420)
+KOROMIND_ALLOW_NO_AUTH = get_env_bool("KOROMIND_ALLOW_NO_AUTH", False)
+KOROMIND_CORS_ORIGINS = [
+    origin.strip()
+    for origin in get_env("KOROMIND_CORS_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
 
 # Legacy paths (for backward compatibility during migration)
 # In src layout, repo root is two levels above this file: src/koro/core/config.py

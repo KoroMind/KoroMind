@@ -220,6 +220,7 @@ GET  /api/v1/health            # Health check
 ### Authentication
 
 Set `KOROMIND_API_KEY` in environment. Include in requests as `X-API-Key` header.
+User identity is derived from the API key.
 
 ### Example
 
@@ -227,7 +228,6 @@ Set `KOROMIND_API_KEY` in environment. Include in requests as `X-API-Key` header
 # Process a message
 curl -X POST http://localhost:8420/api/v1/messages/text \
   -H "X-API-Key: your-key" \
-  -H "X-User-ID: user123" \
   -H "Content-Type: application/json" \
   -d '{"text": "What is the weather like?", "include_audio": false}'
 ```
@@ -254,6 +254,8 @@ curl -X POST http://localhost:8420/api/v1/messages/text \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `KOROMIND_API_KEY` | - | API authentication key |
+| `KOROMIND_ALLOW_NO_AUTH` | `false` | Allow unauthenticated API access (dev only) |
+| `KOROMIND_CORS_ORIGINS` | `http://localhost:3000` | Comma-separated CORS allowlist |
 | `KOROMIND_HOST` | `127.0.0.1` | Bind address |
 | `KOROMIND_PORT` | `8420` | API port |
 

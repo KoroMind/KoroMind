@@ -62,8 +62,8 @@ async def error_handler(update, context):
             await update.effective_chat.send_message(
                 "An error occurred while processing your request."
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to send Telegram error message: %s", exc)
 
 
 def run_telegram_bot():

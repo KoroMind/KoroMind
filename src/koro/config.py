@@ -12,6 +12,8 @@ from koro.core.config import (  # noqa: F401
     ELEVENLABS_VOICE_ID,
     PERSONA_NAME,
     SANDBOX_DIR,
+    SETTINGS_FILE,
+    STATE_FILE,
     SYSTEM_PROMPT_FILE,
     VOICE_SETTINGS,
     get_env,

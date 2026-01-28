@@ -1,6 +1,7 @@
 """KoroMind core library - the brain engine."""
 
-from koro.core.brain import Brain
+from typing import TYPE_CHECKING
+
 from koro.core.types import (
     BrainResponse,
     MessageType,
@@ -9,6 +10,9 @@ from koro.core.types import (
     ToolCall,
     UserSettings,
 )
+
+if TYPE_CHECKING:
+    from koro.core.brain import Brain
 
 __all__ = [
     "Brain",
@@ -19,3 +23,11 @@ __all__ = [
     "ToolCall",
     "UserSettings",
 ]
+
+
+def __getattr__(name: str):
+    if name == "Brain":
+        from koro.core.brain import Brain
+
+        return Brain
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

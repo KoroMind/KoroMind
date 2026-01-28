@@ -222,8 +222,8 @@ async def _call_claude_with_settings(
             tool_msg = f"{tool_name}: {detail}" if detail else f"Using: {tool_name}"
             try:
                 await update.message.reply_text(tool_msg)
-            except Exception:
-                pass
+            except Exception as exc:
+                debug(f"Failed to send tool call update: {exc}")
 
     # Approve mode callback
     async def can_use_tool(tool_name: str, tool_input: dict, ctx):

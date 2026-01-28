@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from koro.core.brain import get_brain
@@ -34,7 +34,7 @@ class SwitchSessionRequest(BaseModel):
 
 @router.get("/sessions", response_model=SessionListResponse)
 async def list_sessions(
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> SessionListResponse:
     """
     List all sessions for the user.
@@ -42,9 +42,10 @@ async def list_sessions(
     Sessions are ordered by last_active descending.
     """
     brain = get_brain()
+    user_id = http_request.state.user_id
 
-    sessions = await brain.get_sessions(x_user_id)
-    current = await brain.get_current_session(x_user_id)
+    sessions = await brain.get_sessions(user_id)
+    current = await brain.get_current_session(user_id)
 
     return SessionListResponse(
         sessions=[
@@ -62,7 +63,7 @@ async def list_sessions(
 
 @router.post("/sessions", response_model=SessionResponse)
 async def create_session(
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> SessionResponse:
     """
     Create a new session and set it as current.
@@ -70,8 +71,9 @@ async def create_session(
     Returns the newly created session.
     """
     brain = get_brain()
+    user_id = http_request.state.user_id
 
-    session = await brain.create_session(x_user_id)
+    session = await brain.create_session(user_id)
 
     return SessionResponse(
         id=session.id,
@@ -83,7 +85,7 @@ async def create_session(
 
 @router.get("/sessions/current", response_model=SessionResponse | None)
 async def get_current_session(
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> SessionResponse | None:
     """
     Get the current session for the user.
@@ -91,8 +93,9 @@ async def get_current_session(
     Returns null if no current session exists.
     """
     brain = get_brain()
+    user_id = http_request.state.user_id
 
-    session = await brain.get_current_session(x_user_id)
+    session = await brain.get_current_session(user_id)
 
     if session is None:
         return None
@@ -108,7 +111,7 @@ async def get_current_session(
 @router.put("/sessions/current")
 async def switch_session(
     request: SwitchSessionRequest,
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> dict:
     """
     Switch to a different session.
@@ -116,9 +119,10 @@ async def switch_session(
     The session must belong to the user.
     """
     brain = get_brain()
+    user_id = http_request.state.user_id
 
     # Verify the session exists for this user
-    sessions = await brain.get_sessions(x_user_id)
+    sessions = await brain.get_sessions(user_id)
     session_ids = {s.id for s in sessions}
 
     if request.session_id not in session_ids:
@@ -127,6 +131,6 @@ async def switch_session(
             detail=f"Session {request.session_id} not found for user",
         )
 
-    await brain.switch_session(x_user_id, request.session_id)
+    await brain.switch_session(user_id, request.session_id)
 
     return {"status": "ok", "current_session_id": request.session_id}

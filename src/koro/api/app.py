@@ -6,9 +6,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from koro.api.middleware import api_key_middleware
+from koro.api.middleware import api_key_middleware, rate_limit_middleware
 from koro.api.routes import health, messages, sessions, settings
-from koro.core.config import KOROMIND_HOST, KOROMIND_PORT
+from koro.core.config import (
+    KOROMIND_CORS_ORIGINS,
+    KOROMIND_HOST,
+    KOROMIND_PORT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +37,14 @@ def create_app() -> FastAPI:
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure appropriately for production
+        allow_origins=KOROMIND_CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     # Add API key authentication middleware
+    app.middleware("http")(rate_limit_middleware)
     app.middleware("http")(api_key_middleware)
 
     # Include routers

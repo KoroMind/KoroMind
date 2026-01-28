@@ -24,9 +24,7 @@ class TestMainEntryPoint:
 
             importlib.reload(koro.main)
 
-            from koro.main import main
-
-            main()
+            koro.main.main()
 
             mock_run.assert_called_once()
 
@@ -56,9 +54,7 @@ class TestMainEntryPoint:
 
                 importlib.reload(koro.main)
 
-                from koro.main import main
-
-                main()
+                koro.main.main()
 
                 mock_uvicorn.run.assert_called_once()
 
@@ -75,9 +71,7 @@ class TestMainEntryPoint:
 
                 importlib.reload(koro.main)
 
-                from koro.main import main
-
-                main()
+                koro.main.main()
 
                 call_kwargs = mock_uvicorn.run.call_args[1]
                 assert call_kwargs["port"] == 9000
@@ -95,9 +89,7 @@ class TestMainEntryPoint:
 
                 importlib.reload(koro.main)
 
-                from koro.main import main
-
-                main()
+                koro.main.main()
 
                 call_kwargs = mock_uvicorn.run.call_args[1]
                 assert call_kwargs["host"] == "0.0.0.0"
@@ -118,9 +110,7 @@ class TestMainEntryPoint:
 
             importlib.reload(koro.main)
 
-            from koro.main import main
-
-            main()
+            koro.main.main()
 
             mock_run.assert_called_once()
 

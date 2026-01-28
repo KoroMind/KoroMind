@@ -3,7 +3,7 @@
 import base64
 from typing import Literal
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from koro.core.brain import get_brain
@@ -52,7 +52,7 @@ class MessageResponse(BaseModel):
 @router.post("/messages", response_model=MessageResponse)
 async def process_message(
     request: MessageRequest,
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> MessageResponse:
     """
     Process a text or voice message and return Claude's response.
@@ -60,11 +60,7 @@ async def process_message(
     For voice messages, the content should be base64-encoded audio bytes.
     """
     brain = get_brain()
-
-    # Check rate limit
-    allowed, rate_msg = brain.check_rate_limit(x_user_id)
-    if not allowed:
-        raise HTTPException(status_code=429, detail=rate_msg)
+    user_id = http_request.state.user_id
 
     # Decode voice content if needed
     if request.content_type == "voice":
@@ -82,7 +78,7 @@ async def process_message(
 
     # Process the message
     response = await brain.process_message(
-        user_id=x_user_id,
+        user_id=user_id,
         content=content,
         content_type=message_type,
         session_id=request.session_id,
@@ -118,7 +114,7 @@ class TextMessageRequest(BaseModel):
 @router.post("/messages/text", response_model=MessageResponse)
 async def process_text_message(
     request: TextMessageRequest,
-    x_user_id: str = Header(..., description="User identifier"),
+    http_request: Request,
 ) -> MessageResponse:
     """
     Process a text message (convenience endpoint).
@@ -126,14 +122,10 @@ async def process_text_message(
     This is a simplified version of POST /messages for text-only requests.
     """
     brain = get_brain()
-
-    # Check rate limit
-    allowed, rate_msg = brain.check_rate_limit(x_user_id)
-    if not allowed:
-        raise HTTPException(status_code=429, detail=rate_msg)
+    user_id = http_request.state.user_id
 
     response = await brain.process_text(
-        user_id=x_user_id,
+        user_id=user_id,
         text=request.text,
         session_id=request.session_id,
         include_audio=request.include_audio,

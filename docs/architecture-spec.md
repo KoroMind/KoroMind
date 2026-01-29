@@ -175,46 +175,130 @@ Vault → Backup (snapshots)
 ## Proposed Folder Structure
 
 ```
-src/
-├── koro/
-│   ├── core/                    # Brain & business logic
-│   │   ├── brain.py             # Central orchestrator
-│   │   ├── claude.py            # Claude SDK wrapper
-│   │   ├── voice.py             # Voice generation (TTS)
-│   │   ├── memory.py            # Memory read/write
-│   │   ├── state.py             # Session & settings persistence
-│   │   └── types.py             # Shared types
-│   │
-│   ├── port/                    # Protocol translation layer
-│   │   ├── base.py              # Port interface/ABC
-│   │   ├── telegram.py          # Telegram adapter
-│   │   ├── http.py              # REST API adapter
-│   │   ├── cli.py               # CLI adapter
-│   │   └── discord.py           # Discord adapter (future)
-│   │
-│   ├── vault/                   # Persistence layer
-│   │   ├── db.py                # SQLite operations
-│   │   ├── config.py            # User config (MCP, agents, hooks)
-│   │   └── backup.py            # Snapshot management
-│   │
-│   └── sandbox/                 # Execution environment
-│       ├── manager.py           # Sandbox lifecycle
-│       └── permissions.py       # Access control
+KoroMind/
+├── .ai/                              # AI agent configuration
+│   ├── specs/                        # Service specifications
+│   │   ├── AGENTS.md                 # Spec format guidelines
+│   │   ├── service-*.md              # Service specs
+│   │   └── feature-*.md              # Feature specs
+│   └── skills/                       # Custom skills
+│       └── commit/
+│           └── SKILL.md
 │
-├── prompts/                     # System prompts per persona
-│   ├── koro.md
-│   └── custom/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                    # CI pipeline
 │
-└── tests/
-    ├── unit/
-    └── integration/
+├── docs/                             # Architecture & design docs
+│   ├── architecture-spec.md          # This document
+│   └── *.mmd                         # Mermaid diagrams
+│
+├── deploy/                           # Deployment configs (future)
+│   ├── docker/
+│   └── kubernetes/
+│
+├── src/
+│   ├── koro/
+│   │   ├── __init__.py
+│   │   ├── main.py                   # Entry point, CLI dispatch
+│   │   │
+│   │   ├── core/                     # Brain & business logic
+│   │   │   ├── __init__.py
+│   │   │   ├── brain.py              # Central orchestrator
+│   │   │   ├── claude.py             # Claude SDK wrapper
+│   │   │   ├── voice.py              # Voice generation (TTS + STT)
+│   │   │   ├── memory.py             # Memory read/write (new)
+│   │   │   ├── state.py              # Session & settings persistence
+│   │   │   ├── prompt.py             # System prompt builder
+│   │   │   ├── rate_limit.py         # Rate limiting
+│   │   │   ├── auth.py               # Authentication logic
+│   │   │   ├── config.py             # Configuration loading
+│   │   │   └── types.py              # Shared types & models
+│   │   │
+│   │   ├── port/                     # Protocol translation layer
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py               # Port interface/ABC
+│   │   │   ├── telegram/             # Telegram adapter
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── bot.py            # Bot setup & lifecycle
+│   │   │   │   └── handlers/
+│   │   │   │       ├── __init__.py
+│   │   │   │       ├── commands.py   # /start, /new, /settings, etc.
+│   │   │   │       ├── messages.py   # Text & voice handling
+│   │   │   │       ├── callbacks.py  # Inline keyboard callbacks
+│   │   │   │       └── utils.py      # Telegram-specific helpers
+│   │   │   ├── http/                 # REST API adapter
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── app.py            # FastAPI app
+│   │   │   │   ├── middleware.py     # Auth, rate limit, CORS
+│   │   │   │   └── routes/
+│   │   │   │       ├── __init__.py
+│   │   │   │       ├── messages.py
+│   │   │   │       ├── sessions.py
+│   │   │   │       ├── settings.py
+│   │   │   │       └── health.py
+│   │   │   ├── cli/                  # CLI adapter
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── app.py            # Typer + Rich REPL
+│   │   │   └── discord/              # Discord adapter (future)
+│   │   │       └── __init__.py
+│   │   │
+│   │   ├── vault/                    # Persistence layer
+│   │   │   ├── __init__.py
+│   │   │   ├── db.py                 # SQLite operations
+│   │   │   ├── config.py             # User config (MCP, agents, hooks)
+│   │   │   └── backup.py             # Snapshot management
+│   │   │
+│   │   └── sandbox/                  # Execution environment
+│   │       ├── __init__.py
+│   │       ├── manager.py            # Sandbox lifecycle
+│   │       └── permissions.py        # Access control rules
+│   │
+│   ├── prompts/                      # System prompts per persona
+│   │   ├── koro.md                   # Default persona
+│   │   └── custom/                   # User-defined personas
+│   │
+│   └── tests/
+│       ├── __init__.py
+│       ├── conftest.py               # Pytest fixtures
+│       ├── AGENTS.md                 # Test guidelines
+│       ├── unit/
+│       │   ├── __init__.py
+│       │   ├── test_brain.py
+│       │   ├── test_claude.py
+│       │   ├── test_voice.py
+│       │   ├── test_state.py
+│       │   └── ...
+│       └── integration/
+│           ├── __init__.py
+│           ├── test_e2e.py
+│           ├── test_claude_live.py
+│           └── test_elevenlabs_live.py
+│
+├── AGENTS.md                         # Root agent instructions
+├── CLAUDE.md                         # Claude-specific config
+├── README.md
+├── CONTRIBUTING.md
+├── LICENSE
+├── pyproject.toml                    # Python project config
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
+├── settings.example.json
+├── .pre-commit-config.yaml
+├── .dockerignore
+└── .gitignore
 ```
 
 **Key changes from current structure:**
-- `interfaces/` renamed to `port/` (aligns with architecture)
+- `interfaces/` renamed to `port/` (aligns with architecture naming)
+- `api/` moved under `port/http/` (it's a port adapter)
+- `handlers/` moved under respective port adapters
 - New `vault/` package for all persistence concerns
 - New `sandbox/` package for execution isolation
 - `memory.py` extracted from state (distinct concern)
+- Root-level duplicates removed (auth.py, config.py, etc. only in core/)
+- `deploy/` folder for future deployment configs
 
 ---
 

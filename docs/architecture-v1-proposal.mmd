@@ -8,16 +8,14 @@ graph TD
     subgraph Worker [Worker]
         TelegramBot[Telegram Bot]
         HTTPServer[HTTP Server]
-        KoroMind[KoroMind Brain Engine]
-        ClaudeSDK[Claude SDK]
+        KoroMind[KoroMind Core<br/>thin orchestration]
+        ClaudeSDK[Claude SDK<br/>does the heavy lifting]
         ElevenLabs[ElevenLabs]
-        MCPServers[MCP Servers]
 
         TelegramBot --> KoroMind
         HTTPServer --> KoroMind
-        KoroMind --> ClaudeSDK
+        KoroMind -->|"passes config"| ClaudeSDK
         KoroMind --> ElevenLabs
-        KoroMind --> MCPServers
     end
 
     subgraph Backup [Backup - External]
@@ -25,11 +23,15 @@ graph TD
         ExternalStorage[External Storage]
     end
 
-    subgraph Vault [Vault - User State]
+    subgraph Vault [Vault - User State & Config]
         DotClaude[.claude]
         SQLiteDB[SQLite DB]
         GitRepos[Git Repos]
         SecondBrain[Second Brain]
+        MCPConfig[MCP Servers Config]
+        AgentsConfig[Agent Definitions]
+        HooksConfig[Hooks Config]
+        PermsConfig[Permission Rules]
     end
 
     subgraph Sandbox [Sandbox]
@@ -48,6 +50,7 @@ graph TD
     Backup --> Vault
 
     %% Worker connections
-    Worker <-- "read/write/execute" --> Sandbox
-    Worker -- "read" --> Vault
-    Sandbox -- "sync/commit" --> Vault
+    KoroMind -.->|"loads config"| Vault
+    ClaudeSDK <-->|"read/write/execute"| Sandbox
+    ClaudeSDK -->|"manages"| MCPConfig
+    Sandbox -->|"sync/commit"| Vault

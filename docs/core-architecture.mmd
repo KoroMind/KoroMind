@@ -1,0 +1,96 @@
+flowchart TB
+    subgraph Inputs["Input Layer"]
+        direction LR
+        TEXT["Text Message"]
+        VOICE["Voice Message"]
+    end
+
+    subgraph Core["Core Layer - Thin Orchestration"]
+        BRN["Brain"]
+        BRN_PROC["process_message()"]
+        BRN_SESS["session management"]
+        BRN_SET["settings management"]
+
+        BRN --> BRN_PROC
+        BRN --> BRN_SESS
+        BRN --> BRN_SET
+    end
+
+    subgraph Vault["Vault - User Configuration"]
+        direction TB
+
+        subgraph VaultState["Persistent State"]
+            SQLITE["SQLite DB<br/>sessions, settings, memory"]
+        end
+
+        subgraph VaultConfig["User Config"]
+            MCP_CFG["MCP Servers<br/>user-defined tools"]
+            AGENTS_CFG["Agent Definitions<br/>custom personas"]
+            HOOKS_CFG["Hooks<br/>user callbacks"]
+            PERMS_CFG["Permissions<br/>tool rules"]
+            PROMPTS_CFG["System Prompts<br/>persona files"]
+        end
+    end
+
+    subgraph ClaudeSDK["Claude SDK - Does Everything"]
+        SDK_CLIENT["ClaudeSDKClient"]
+
+        subgraph SDKCapabilities["SDK Handles"]
+            SDK_TOOLS["Tool Execution<br/>Read, Write, Bash, etc."]
+            SDK_MCP["MCP Server Management<br/>stdio, sse, http, sdk"]
+            SDK_HOOKS["Hook System<br/>PreToolUse, PostToolUse, etc."]
+            SDK_PERMS["Permission System<br/>can_use_tool, updates"]
+            SDK_AGENTS["Agent System<br/>custom definitions"]
+            SDK_SESSION["Session Management<br/>resume, fork, continue"]
+            SDK_SANDBOX["Sandbox<br/>bash isolation"]
+        end
+
+        SDK_CLIENT --> SDK_TOOLS
+        SDK_CLIENT --> SDK_MCP
+        SDK_CLIENT --> SDK_HOOKS
+        SDK_CLIENT --> SDK_PERMS
+        SDK_CLIENT --> SDK_AGENTS
+        SDK_CLIENT --> SDK_SESSION
+        SDK_CLIENT --> SDK_SANDBOX
+    end
+
+    subgraph External["External Services"]
+        direction LR
+        CLAUDE_API["Claude API<br/>Anthropic"]
+        ELEVEN["ElevenLabs<br/>TTS/STT"]
+        MCP_SERVERS["MCP Servers<br/>user-defined"]
+    end
+
+    subgraph Sandbox["Sandbox - Ephemeral"]
+        WORK["Working Files"]
+        EXEC["Code Execution"]
+        TEMP["Temp Artifacts"]
+    end
+
+    %% Input Flow
+    TEXT --> BRN_PROC
+    VOICE --> BRN_PROC
+
+    %% Core to Vault (read config)
+    BRN_PROC -->|"load user config"| VaultConfig
+    BRN_SESS --> SQLITE
+    BRN_SET --> SQLITE
+
+    %% Core passes config to SDK
+    BRN_PROC -->|"pass ClaudeAgentOptions"| SDK_CLIENT
+    MCP_CFG -.->|"mcp_servers"| SDK_CLIENT
+    AGENTS_CFG -.->|"agents"| SDK_CLIENT
+    HOOKS_CFG -.->|"hooks"| SDK_CLIENT
+    PERMS_CFG -.->|"can_use_tool"| SDK_CLIENT
+    PROMPTS_CFG -.->|"system_prompt"| SDK_CLIENT
+
+    %% SDK to External
+    SDK_CLIENT --> CLAUDE_API
+    SDK_MCP --> MCP_SERVERS
+
+    %% SDK to Sandbox
+    SDK_TOOLS -->|"cwd"| Sandbox
+    SDK_SANDBOX --> Sandbox
+
+    %% Voice (separate from SDK)
+    BRN_PROC -->|"transcribe/synthesize"| ELEVEN

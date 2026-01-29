@@ -1,56 +1,44 @@
 graph TD
-    subgraph Clients [Clients]
-        TelegramApp[Telegram]
-        MobileApp[Mobile]
+    subgraph Clients[Clients]
+        TG[Telegram]
+        HTTP[HTTP/Mobile]
         CLI[CLI]
+        DISC[Discord]
     end
 
-    subgraph Worker [Worker]
-        TelegramBot[Telegram Bot]
-        HTTPServer[HTTP Server]
-        KoroMind[KoroMind Core<br/>thin orchestration]
-        ClaudeSDK[Claude SDK<br/>does the heavy lifting]
-        ElevenLabs[ElevenLabs]
+    subgraph Worker[Worker]
+        PORT[Port]
+        BRAIN[Brain]
+        SDK[Claude SDK]
+        VOICE[Voice Generation]
 
-        TelegramBot --> KoroMind
-        HTTPServer --> KoroMind
-        KoroMind -->|"passes config"| ClaudeSDK
-        KoroMind --> ElevenLabs
+        PORT --> BRAIN
+        BRAIN --> SDK
+        BRAIN --> VOICE
+        VOICE --> PORT
     end
 
-    subgraph Backup [Backup - External]
-        Snapshots[Volume Snapshots]
-        ExternalStorage[External Storage]
+    subgraph Vault[Vault]
+        STATE[SQLite DB]
+        CONFIG[User Config<br/>MCP, Agents, Hooks]
+        MEMORY[Memory]
     end
 
-    subgraph Vault [Vault - User State & Config]
-        DotClaude[.claude]
-        SQLiteDB[SQLite DB]
-        GitRepos[Git Repos]
-        SecondBrain[Second Brain]
-        MCPConfig[MCP Servers Config]
-        AgentsConfig[Agent Definitions]
-        HooksConfig[Hooks Config]
-        PermsConfig[Permission Rules]
+    subgraph Sandbox[Sandbox]
+        FILES[Working Files]
+        EXEC[Code Execution]
     end
 
-    subgraph Sandbox [Sandbox]
-        direction LR
-        WorkingFiles[Working Files]
-        CodeExecution[Code Execution]
-        TempArtifacts[Temp Artifacts]
+    subgraph Backup[Backup]
+        SNAP[Snapshots]
     end
 
-    %% Client connections
-    TelegramApp --> TelegramBot
-    MobileApp --> HTTPServer
-    CLI --> HTTPServer
+    TG --> PORT
+    HTTP --> PORT
+    CLI --> PORT
+    DISC --> PORT
 
-    %% Layout hints - Backup above Vault
-    Backup --> Vault
-
-    %% Worker connections
-    KoroMind -.->|"loads config"| Vault
-    ClaudeSDK <-->|"read/write/execute"| Sandbox
-    ClaudeSDK -->|"manages"| MCPConfig
-    Sandbox -->|"sync/commit"| Vault
+    BRAIN <-.-> MEMORY
+    SDK <--> Sandbox
+    Sandbox --> Vault
+    Vault --> Backup

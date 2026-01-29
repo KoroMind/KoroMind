@@ -1,9 +1,0 @@
-stateDiagram-v2
-    [*] --> Idle: Worker started
-
-    Idle --> Assigned: User request
-    Assigned --> Processing: Context injected
-    Processing --> Responding: Claude response
-    Responding --> Idle: Response sent
-    Processing --> Error: Exception
-    Error --> Idle: Cleanup

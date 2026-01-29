@@ -68,8 +68,8 @@ validated: 2026-01-29
 
 ## Rules
 
-1. **Max 50 lines** (excluding frontmatter/changelog). Split if larger.
-2. **One concern per file.** No mega-specs.
+1. **Max 50 lines per spec** (excluding frontmatter/changelog). Split if larger.
+2. **One concern per spec.** Multiple related specs can live in one file, separated by `---`.
 3. **Reference code locations**, don't duplicate code.
 4. **Validate regularly.** Update `validated` date when you confirm spec matches reality.
 5. **Link to issues.** Every spec should trace to a GitHub issue.

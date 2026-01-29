@@ -1,0 +1,44 @@
+graph TD
+    subgraph Clients[Clients]
+        TG[Telegram]
+        HTTP[HTTP/Mobile]
+        CLI[CLI]
+        DISC[Discord]
+    end
+
+    subgraph Worker[Worker]
+        PORT[Port]
+        BRAIN[Brain]
+        SDK[Claude SDK]
+        VOICE[Audio Processing]
+
+        PORT <--> VOICE
+        VOICE <--> BRAIN
+        BRAIN --> SDK
+    end
+
+    subgraph Vault[Vault]
+        STATE[SQLite DB]
+        CONFIG[User Config<br/>MCP, Agents, Hooks]
+        MEMORY[Memory]
+    end
+
+    subgraph Sandbox[Sandbox]
+        FILES[Working Files]
+        EXEC[Code Execution]
+    end
+
+    subgraph Backup[Backup]
+        SNAP[Snapshots]
+    end
+
+    TG --> PORT
+    HTTP --> PORT
+    CLI --> PORT
+    DISC --> PORT
+
+    BRAIN <-.-> MEMORY
+    SDK <--> Sandbox
+    SDK <-.-> Vault
+    Sandbox --> Vault
+    Vault --> Backup

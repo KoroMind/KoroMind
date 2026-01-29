@@ -1,0 +1,53 @@
+graph TD
+    subgraph Clients [Clients]
+        TelegramApp[Telegram]
+        MobileApp[Mobile]
+        CLI[CLI]
+    end
+
+    subgraph Worker [Worker]
+        TelegramBot[Telegram Bot]
+        HTTPServer[HTTP Server]
+        KoroMind[KoroMind Brain Engine]
+        ClaudeSDK[Claude SDK]
+        ElevenLabs[ElevenLabs]
+        MCPServers[MCP Servers]
+
+        TelegramBot --> KoroMind
+        HTTPServer --> KoroMind
+        KoroMind --> ClaudeSDK
+        KoroMind --> ElevenLabs
+        KoroMind --> MCPServers
+    end
+
+    subgraph Backup [Backup - External]
+        Snapshots[Volume Snapshots]
+        ExternalStorage[External Storage]
+    end
+
+    subgraph Vault [Vault - User State]
+        DotClaude[.claude]
+        SQLiteDB[SQLite DB]
+        GitRepos[Git Repos]
+        SecondBrain[Second Brain]
+    end
+
+    subgraph Sandbox [Sandbox]
+        direction LR
+        WorkingFiles[Working Files]
+        CodeExecution[Code Execution]
+        TempArtifacts[Temp Artifacts]
+    end
+
+    %% Client connections
+    TelegramApp --> TelegramBot
+    MobileApp --> HTTPServer
+    CLI --> HTTPServer
+
+    %% Layout hints - Backup above Vault
+    Backup --> Vault
+
+    %% Worker connections
+    Worker <-- "read/write/execute" --> Sandbox
+    Worker -- "read" --> Vault
+    Sandbox -- "sync/commit" --> Vault

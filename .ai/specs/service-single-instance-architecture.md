@@ -3,27 +3,26 @@ id: SVC-001
 type: service
 status: draft
 issue: 28
-validated: 2026-01-31
+validated: 2026-01-29
 ---
 
 # Single-Instance Architecture Overview
 
 ## What
-Single-instance deployment architecture for KoroMind with four components: Worker (containing Connectors, Brain, Vault, SDK, Voice), Mount, Sandbox, Backup.
+Single-instance deployment architecture for KoroMind with four components: Worker, Vault, Sandbox, Backup.
 
 ## Why
-Clear separation of concerns: runtime (Worker), persistent data (Mount), ephemeral workspace (Sandbox), disaster recovery (Backup).
+Clear separation of concerns: runtime (Worker), persistent data (Vault), ephemeral workspace (Sandbox), disaster recovery (Backup).
 
 ## How
 - Diagram: `docs/single-instance-architecture.mmd`
 - Brain is thin orchestrator - loads config from Vault, passes to Claude SDK
-- Vault is in-worker state manager bridging Brain to Mount
 - SDK handles complexity: tools, MCP, hooks, permissions, sessions
-- Sandbox is disposable; Mount is portable
+- Sandbox is disposable; Vault is portable
 
 ## Test
-- Worker starts with empty Mount (creates defaults)
-- Worker recovers state after restart from Mount
+- Worker starts with empty Vault (creates defaults)
+- Worker recovers state after restart from Vault
 - Sandbox wipe doesn't affect user data
 
 ---
@@ -32,7 +31,7 @@ id: SVC-002
 type: service
 status: draft
 issue: 28
-validated: 2026-01-31
+validated: 2026-01-29
 ---
 
 # Worker
@@ -45,16 +44,12 @@ Stateless compute that can be replaced/scaled without data loss.
 
 ## How
 Components:
-- **Connectors**: Protocol adapters (Telegram, HTTP/Mobile, Discord)
-- **CLI**: Direct command-line interface to Brain
-- **Brain (Gatekeeper)**: Orchestration - receives input, loads config, calls SDK, returns response
-- **Vault**: In-worker state manager bridging Brain to Mount
-- **Audio Processing**: ElevenLabs/OpenAI STT/TTS
-- **Claude SDK**: Tool execution, MCP management, permissions, Mount access
+- **Port**: Protocol adapters (Telegram bot, HTTP server)
+- **Brain**: Orchestration - receives input, loads config, calls SDK, returns response
+- **Audio**: ElevenLabs STT/TTS
+- **Claude SDK**: Tool execution, MCP management, permissions, Vault access
 
-Flow: Client → Connector → Brain → Vault → Mount
-      Brain → SDK → Sandbox/Mount
-      Brain → Voice → ElevenLabs/OpenAI
+Flow: Client → Port ↔ Audio ↔ Brain → SDK → Response
 
 ## Test
 - Telegram message processed end-to-end
@@ -67,10 +62,10 @@ id: SVC-003
 type: service
 status: draft
 issue: 28
-validated: 2026-01-31
+validated: 2026-01-29
 ---
 
-# Mount
+# Vault
 
 ## What
 Persistent user state and configuration. Docker volume mount.
@@ -80,17 +75,16 @@ Portable user data - can mount to any Worker instance.
 
 ## How
 Contents:
-- **Settings**: User preferences and configuration
-- **mcp.json**: MCP server definitions
-- **Directories**: User data directories (git repos, notes)
-- **Memories**: Long-term memory storage
+- SQLite DB: sessions, settings, memory
+- User config: MCP servers, agents, hooks, permissions, prompts
+- User data: .claude settings, git repos, notes
 
-On startup, Vault (in Worker) hydrates from Mount.
+On startup, Worker hydrates from Vault.
 
 ## Test
 - Config changes persist across restarts
 - Sessions survive Worker replacement
-- Mount can be backed up and restored
+- Vault can be backed up and restored
 
 ---
 
@@ -128,26 +122,25 @@ id: SVC-005
 type: service
 status: draft
 issue: 28
-validated: 2026-01-31
+validated: 2026-01-29
 ---
 
 # Worker Stateless
 
 ## What
-Worker holds no persistent user data. All state lives in Mount. Vault is an in-memory bridge.
+Worker holds no user data. All state lives in Vault.
 
 ## Why
-Security: Worker compromise doesn't leak persistent data. Portability: mount to any Worker.
+Security: Worker compromise doesn't leak persistent data. Portability: mount Vault to any Worker.
 
 ## How
 - No credentials in Worker
 - No conversation history in Worker memory
 - No user config baked into Worker image
-- Vault reads/writes to Mount, holds nothing persistent
-- Everything belongs to user, stored in Mount
+- Everything belongs to user, stored in Vault
 
 ## Test
-- Kill Worker, start new one with same Mount → works
+- Kill Worker, start new one with same Vault → works
 - Worker image contains no user-specific data
 
 ---
@@ -156,24 +149,22 @@ id: SVC-006
 type: service
 status: draft
 issue: 28
-validated: 2026-01-31
+validated: 2026-01-29
 ---
 
 # Unified Protocol
 
 ## What
-All connectors speak one JSON protocol to Brain.
+All connectors speak one JSON protocol to Port.
 
 ## Why
 Telegram was bypassing Brain, calling SDK directly. Business logic duplicated, behavior inconsistent.
 
 ## How
-- External clients connect to their respective Connectors (Telegram→TGW, HTTP→HTTPW, Discord→DISCW)
 - Connectors translate native format → JSON
-- Connectors send JSON to Brain
+- Port receives JSON, routes to Brain
 - Brain processes, returns JSON
 - Connectors translate JSON → native format
-- CLI connects directly to Brain (no connector needed)
 
 ## Test
 - Same JSON request produces same response regardless of connector origin
@@ -185,7 +176,7 @@ id: SVC-007
 type: service
 status: draft
 issue: 28
-validated: 2026-01-31
+validated: 2026-01-29
 ---
 
 # Thin Connectors
@@ -194,60 +185,26 @@ validated: 2026-01-31
 Connectors only translate. They don't think.
 
 ## Why
-No duplication. Test Brain once, not each connector separately.
+No duplication. Test Port once, not each connector separately.
 
 ## How
 Connectors DO:
-- Receive native input from external clients
+- Receive native input
 - Translate to JSON
-- Send to Brain
+- Send to Port
 - Translate response to native output
 
 Connectors do NOT:
-- Call SDK directly
+- Call Brain or SDK directly
 - Manage sessions
 - Store state
 - Implement approval logic
 
 ## Test
 - Connector has no business logic
-- All behavior comes from Brain
-
----
-
-id: SVC-008
-type: service
-status: draft
-issue: 28
-validated: 2026-01-31
----
-
-# Vault (In-Worker)
-
-## What
-In-worker state manager that bridges Brain to Mount.
-
-## Why
-Provides abstraction layer between Brain's in-memory operations and Mount's persistent storage.
-
-## How
-- Loads configuration from Mount on startup
-- Caches frequently accessed data in memory
-- Writes state changes back to Mount
-- SDK also accesses Mount directly for tool operations
-
-## Test
-- Vault initializes correctly from Mount
-- State changes propagate to Mount
-- Cache invalidation works correctly
+- All behavior comes from Port/Brain
 
 ## Changelog
-
-### 2026-01-31
-- Updated architecture: Vault moved inside Worker, Mount as persistent storage
-- Added explicit Connectors subgraph
-- Added Voice connections to ElevenLabs/OpenAI
-- Added SVC-008 Vault (In-Worker) spec
 
 ### 2026-01-29
 - Initial specification from architecture-v1-proposal.md

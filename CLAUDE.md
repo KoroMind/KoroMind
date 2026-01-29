@@ -1,2 +1,2 @@
 @AGENTS.md
-@.ai/specs/AGENTS.md
+@.ai/specs/SPEC_FORMAT.md

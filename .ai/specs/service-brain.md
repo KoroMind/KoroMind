@@ -32,8 +32,6 @@ Input → Brain.process_message() → [STT if voice] → Claude → [Tools] → 
 | Method | Purpose |
 |--------|---------|
 | `process_message()` | Main entry: handles voice/text, returns BrainResponse |
-| `process_message_stream()` | Async generator: yields partial events (`StreamEvent`) |
-| `interrupt()` | Stop current running execution |
 | `process_text()` | Text-only shorthand |
 | `process_voice()` | Voice-only shorthand |
 
@@ -46,35 +44,14 @@ Input → Brain.process_message() → [STT if voice] → Claude → [Tools] → 
 - Enables real-time visibility into Claude's actions
 
 ### Claude Integration
-- **Full SDK Parity**: Supports all `ClaudeAgentOptions` including hooks, MCP servers, subagents, plugins, and sandbox settings
-- **Streaming**: Yields partial messages and events via `query_stream()`
-- **Interrupts**: Allows stopping long-running tasks via `interrupt()`
-- **Extended Metadata**: Captures thinking blocks, token usage, structured output, and cost
-- **Session**: Context preserved via session ID
-- **Tools**: Read, Grep, Glob, WebSearch, WebFetch, Task, Bash, Edit, Write, Skill (plus any MCP tools)
-
-### Advanced Capabilities (New)
-The Brain now exposes the full power of the Claude Agent SDK:
-
-1.  **Hooks**: Inject custom logic at lifecycle events (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, etc.). Allows for logging, policy enforcement, and dynamic behavior modification.
-2.  **MCP Servers**: Connect to external Model Context Protocol servers for extended toolsets and resources. Configured via `mcp_servers` option.
-3.  **Subagents**: Define specialized subagents (`agents` option) with distinct system prompts and tools for complex task delegation.
-4.  **Plugins**: Load local SDK plugins (`plugins` option) to extend functionality.
-5.  **Structured Output**: Request JSON-formatted responses (`output_format` option) validated against a schema.
-6.  **Thinking Blocks**: Access Claude's internal reasoning process (extended thinking) via `metadata["thinking"]`.
-7.  **Usage & Cost**: Detailed token usage and cost tracking in response metadata.
+- Session ID = Claude conversation ID (context preserved)
+- System prompt: sandbox paths, date/time, user context
+- Tools: Read, Grep, Glob, WebSearch, WebFetch, Task, Bash, Edit, Write, Skill
 
 ### Sandbox
 - Write/execute: `CLAUDE_SANDBOX_DIR` (default: ~/claude-voice-sandbox)
 - Read: `CLAUDE_WORKING_DIR` (default: home dir)
-- **Settings**: `SandboxSettings` can be passed dynamically for finer control over network access, shell command restrictions, and file access policies.
 - Claude SDK enforces boundaries
-
-### Streaming Protocol
-`process_message_stream()` yields events:
-- `AssistantMessage`: Standard partial message chunks
-- `StreamEvent`: Detailed events (tool use, content block deltas)
-- `ResultMessage`: Final completion data
 
 ### Dependencies
 - `StateManager` - session/settings persistence
@@ -87,19 +64,8 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - Session continuity across messages
 - Mode switch affects tool approval behavior
 - Rate limit rejection handled gracefully
-- Streaming yields events incrementally
-- Interrupt stops active execution
-- Full SDK options passed correctly to client
-- Thinking blocks captured in metadata
-- Structured output returned when requested
 
 ## Changelog
-
-### 2026-01-31
-- Added full Claude SDK support (Hooks, MCP, Agents, Plugins)
-- Added `process_message_stream()` for streaming responses
-- Added `interrupt()` for task cancellation
-- Added extended metadata support (thinking, usage, structured output)
 
 ### 2026-01-29
 - Initial spec from codebase exploration

@@ -686,3 +686,64 @@ class TestClaudeClientHooks:
 
         assert result["continue_"] is True
         assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+    @pytest.mark.asyncio
+    async def test_hook_handles_callback_exception(self, monkeypatch):
+        """Hooks gracefully handle callback exceptions."""
+        from koro.core.types import BrainCallbacks
+
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        def on_start_raises(name: str, input: dict):
+            raise ValueError("Callback error!")
+
+        callbacks = BrainCallbacks(on_tool_start=on_start_raises)
+        client = claude.ClaudeClient()
+        hooks = client._build_hooks(callbacks, None)
+
+        # Get the hook callback
+        pre_hook = hooks["PreToolUse"][0].hooks[0]
+
+        # Should not raise, should return continue=True
+        result = await pre_hook(
+            {"tool_name": "Bash", "tool_input": {"command": "ls"}},
+            "tool_err",
+            {},
+        )
+
+        assert result["continue_"] is True
+
+    @pytest.mark.asyncio
+    async def test_post_hook_handles_callback_exception(self, monkeypatch):
+        """PostToolUse hook handles callback exceptions gracefully."""
+        from koro.core.types import BrainCallbacks
+
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        def on_end_raises(name: str, input: dict, response: Any):
+            raise RuntimeError("Post callback error!")
+
+        callbacks = BrainCallbacks(on_tool_end=on_end_raises)
+        tool_calls = []
+        client = claude.ClaudeClient()
+        hooks = client._build_hooks(callbacks, tool_calls)
+
+        # Get the hook callback
+        post_hook = hooks["PostToolUse"][0].hooks[0]
+
+        # Should not raise, should return continue=True
+        result = await post_hook(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "/test.txt"},
+                "tool_response": "ok",
+            },
+            "tool_post_err",
+            {},
+        )
+
+        assert result["continue_"] is True
+        # Tool call should still be tracked before callback
+        assert len(tool_calls) == 1

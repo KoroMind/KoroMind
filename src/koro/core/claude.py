@@ -264,22 +264,28 @@ class ClaudeClient:
                 tool_name = input_data["tool_name"]
                 tool_input = input_data.get("tool_input", {})
 
-                # Notify watcher of tool start
-                if callbacks.on_tool_start:
-                    callbacks.on_tool_start(tool_name, tool_input)
+                try:
+                    # Notify watcher of tool start
+                    if callbacks.on_tool_start:
+                        callbacks.on_tool_start(tool_name, tool_input)
 
-                # Handle permission request if in approve mode
-                if callbacks.on_permission_request:
-                    result = await callbacks.on_permission_request(tool_name, tool_input)
-                    return {
-                        "continue_": result.decision != "deny",
-                        "hookSpecificOutput": {
-                            "hookEventName": "PreToolUse",
-                            "permissionDecision": result.decision,
-                            "permissionDecisionReason": result.reason,
-                            "updatedInput": result.updated_input,
-                        },
-                    }
+                    # Handle permission request if in approve mode
+                    if callbacks.on_permission_request:
+                        result = await callbacks.on_permission_request(
+                            tool_name, tool_input
+                        )
+                        return {
+                            "continue_": result.decision != "deny",
+                            "hookSpecificOutput": {
+                                "hookEventName": "PreToolUse",
+                                "permissionDecision": result.decision,
+                                "permissionDecisionReason": result.reason,
+                                "updatedInput": result.updated_input,
+                            },
+                        }
+                except Exception:
+                    # Don't let callback errors break the SDK flow
+                    pass
 
                 return {"continue_": True}
 
@@ -298,22 +304,26 @@ class ClaudeClient:
                 tool_input = input_data.get("tool_input", {})
                 tool_response = input_data.get("tool_response")
 
-                # Track tool call with full data
-                if tool_calls_list is not None:
-                    detail = get_tool_detail(tool_name, tool_input)
-                    tool_calls_list.append(
-                        ToolCall(
-                            name=tool_name,
-                            detail=detail,
-                            tool_input=tool_input,
-                            tool_response=tool_response,
-                            tool_use_id=tool_use_id,
+                try:
+                    # Track tool call with full data
+                    if tool_calls_list is not None:
+                        detail = get_tool_detail(tool_name, tool_input)
+                        tool_calls_list.append(
+                            ToolCall(
+                                name=tool_name,
+                                detail=detail,
+                                tool_input=tool_input,
+                                tool_response=tool_response,
+                                tool_use_id=tool_use_id,
+                            )
                         )
-                    )
 
-                # Notify watcher of tool completion
-                if callbacks and callbacks.on_tool_end:
-                    callbacks.on_tool_end(tool_name, tool_input, tool_response)
+                    # Notify watcher of tool completion
+                    if callbacks and callbacks.on_tool_end:
+                        callbacks.on_tool_end(tool_name, tool_input, tool_response)
+                except Exception:
+                    # Don't let callback errors break the SDK flow
+                    pass
 
                 return {"continue_": True}
 

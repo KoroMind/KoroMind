@@ -155,9 +155,11 @@ async def add_agent(self, user_id: str, name: str, definition: dict) -> None:
 - `src/koro/core/state.py` - Add schema and methods
 
 **Validation:**
-- [ ] New schema created
-- [ ] Config methods work
-- [ ] Default config reasonable
+- [x] New schema created
+- [x] Config methods work
+- [x] Default config reasonable
+
+**Status: COMPLETED** ✓
 
 ---
 
@@ -225,10 +227,12 @@ async def list_agents(self, user_id: str) -> dict[str, dict]
 - `src/koro/core/claude.py` - Simplify, Brain handles options building
 
 **Validation:**
-- [ ] Brain loads config from Vault
-- [ ] ClaudeAgentOptions built correctly
-- [ ] MCP servers passed to SDK
-- [ ] Custom agents work
+- [x] Brain loads config from Vault
+- [x] ClaudeAgentOptions built correctly
+- [x] MCP servers passed to SDK
+- [x] Custom agents work
+
+**Status: COMPLETED** ✓
 
 ---
 
@@ -290,9 +294,11 @@ def _build_hooks(self, callbacks: BrainCallbacks | None) -> dict:
 - `src/koro/core/callbacks.py` - New file for BrainCallbacks
 
 **Validation:**
-- [ ] Hooks build correctly
-- [ ] Tool notifications work through hooks
-- [ ] Watch mode uses SDK hooks
+- [x] Hooks build correctly
+- [x] Tool notifications work through hooks
+- [x] Watch mode uses SDK hooks
+
+**Status: COMPLETED** ✓
 
 ---
 

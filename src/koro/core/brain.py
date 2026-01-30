@@ -9,6 +9,7 @@ from koro.core.types import (
     BrainResponse,
     MessageType,
     Mode,
+    SDKConfig,
     Session,
     ToolCall,
     UserSettings,
@@ -133,13 +134,16 @@ class Brain:
             "watch_enabled": watch_enabled,
         }
 
+        # Load SDK config from Vault
+        sdk_config = await self.state_manager.get_sdk_config(user_id)
+
         # Tool call tracking wrapper
         def _on_tool_call(tool_name: str, detail: str | None):
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if on_tool_call and watch_enabled:
                 on_tool_call(tool_name, detail)
 
-        # Call Claude
+        # Call Claude with SDK config from Vault
         response_text, new_session_id, metadata = await self.claude_client.query(
             prompt=text,
             session_id=session_id,
@@ -148,6 +152,7 @@ class Brain:
             mode=mode.value,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            sdk_config=sdk_config,
         )
 
         # Update session state
@@ -263,6 +268,40 @@ class Brain:
     async def update_settings(self, user_id: str, **kwargs) -> UserSettings:
         """Update settings for a user."""
         return await self.state_manager.update_settings(user_id, **kwargs)
+
+    # SDK Config Management
+
+    async def get_sdk_config(self, user_id: str) -> SDKConfig:
+        """Get SDK config for a user."""
+        return await self.state_manager.get_sdk_config(user_id)
+
+    async def update_sdk_config(self, user_id: str, **kwargs) -> SDKConfig:
+        """Update SDK config for a user."""
+        return await self.state_manager.update_sdk_config(user_id, **kwargs)
+
+    async def add_mcp_server(self, user_id: str, server: dict) -> None:
+        """Add an MCP server to user's config."""
+        await self.state_manager.add_mcp_server(user_id, server)
+
+    async def remove_mcp_server(self, user_id: str, name: str) -> bool:
+        """Remove an MCP server from user's config."""
+        return await self.state_manager.remove_mcp_server(user_id, name)
+
+    async def list_mcp_servers(self, user_id: str) -> list[dict]:
+        """List MCP servers for a user."""
+        return await self.state_manager.get_mcp_servers(user_id)
+
+    async def add_agent(self, user_id: str, name: str, definition: dict) -> None:
+        """Add a custom agent for a user."""
+        await self.state_manager.add_agent(user_id, name, definition)
+
+    async def remove_agent(self, user_id: str, name: str) -> bool:
+        """Remove a custom agent from user's config."""
+        return await self.state_manager.remove_agent(user_id, name)
+
+    async def list_agents(self, user_id: str) -> dict[str, dict]:
+        """List custom agents for a user."""
+        return await self.state_manager.get_agents(user_id)
 
     # Rate Limiting
 

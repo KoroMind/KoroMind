@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import koro.core.claude as claude
+from koro.core.types import SDKConfig
 
 
 @pytest.fixture
@@ -324,3 +325,153 @@ class TestSubprocessShellFalse:
         call_args = mock_subprocess_run.call_args.args[0]
         assert isinstance(call_args, list)
         assert "claude" in call_args
+
+
+class TestClaudeClientSDKConfig:
+    """Tests for ClaudeClient SDK config integration."""
+
+    def test_build_mcp_servers_stdio(self):
+        """_build_mcp_servers creates stdio server configs."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        servers = [
+            {"name": "test-server", "type": "stdio", "command": "test-cmd", "args": ["--flag"]}
+        ]
+
+        result = client._build_mcp_servers(servers)
+
+        assert "test-server" in result
+        # MCP configs are TypedDicts (dicts with type hints)
+        assert result["test-server"]["type"] == "stdio"
+        assert result["test-server"]["command"] == "test-cmd"
+        assert result["test-server"]["args"] == ["--flag"]
+
+    def test_build_mcp_servers_sse(self):
+        """_build_mcp_servers creates SSE server configs."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        servers = [
+            {"name": "sse-server", "type": "sse", "url": "http://localhost:8080", "headers": {"Auth": "token"}}
+        ]
+
+        result = client._build_mcp_servers(servers)
+
+        assert "sse-server" in result
+        # MCP configs are TypedDicts (dicts with type hints)
+        assert result["sse-server"]["type"] == "sse"
+        assert result["sse-server"]["url"] == "http://localhost:8080"
+
+    def test_build_mcp_servers_skips_unnamed(self):
+        """_build_mcp_servers skips servers without name."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        servers = [
+            {"type": "stdio", "command": "test-cmd"},  # No name
+            {"name": "valid", "type": "stdio", "command": "cmd"},
+        ]
+
+        result = client._build_mcp_servers(servers)
+
+        assert len(result) == 1
+        assert "valid" in result
+
+    def test_build_agents(self):
+        """_build_agents creates agent definitions."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        agents = {
+            "test-agent": {
+                "description": "Test agent description",
+                "prompt": "You are a test agent",
+                "tools": ["Read", "Write"],
+                "model": "test-model",
+            }
+        }
+
+        result = client._build_agents(agents)
+
+        assert "test-agent" in result
+        assert result["test-agent"].description == "Test agent description"
+        assert result["test-agent"].prompt == "You are a test agent"
+        assert result["test-agent"].tools == ["Read", "Write"]
+        assert result["test-agent"].model == "test-model"
+
+    def test_build_sdk_options_basic(self):
+        """_build_sdk_options creates basic options."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        config = SDKConfig()
+
+        options = client._build_sdk_options(config, "System prompt", "go_all")
+
+        assert options.system_prompt == "System prompt"
+        assert options.cwd == "/sandbox"
+        assert "/working" in options.add_dirs
+        assert "Read" in options.allowed_tools
+
+    def test_build_sdk_options_with_custom_dirs(self):
+        """_build_sdk_options uses custom dirs from config."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        config = SDKConfig(sandbox_dir="/custom/sandbox", working_dir="/custom/working")
+
+        options = client._build_sdk_options(config, "System prompt", "go_all")
+
+        assert options.cwd == "/custom/sandbox"
+        assert "/custom/working" in options.add_dirs
+
+    def test_build_sdk_options_with_model(self):
+        """_build_sdk_options sets model from config."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        config = SDKConfig(model="claude-sonnet", fallback_model="claude-haiku")
+
+        options = client._build_sdk_options(config, "System prompt", "go_all")
+
+        assert options.model == "claude-sonnet"
+        assert options.fallback_model == "claude-haiku"
+
+    def test_build_sdk_options_approve_mode(self):
+        """_build_sdk_options sets can_use_tool callback in approve mode."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        config = SDKConfig(permission_mode="acceptEdits")
+
+        def my_callback(tool, input, ctx):
+            return True
+
+        options = client._build_sdk_options(config, "System prompt", "approve", my_callback)
+
+        assert options.can_use_tool == my_callback
+        assert options.permission_mode == "acceptEdits"
+
+    def test_build_sdk_options_with_disallowed_tools(self):
+        """_build_sdk_options sets disallowed tools."""
+        client = claude.ClaudeClient(sandbox_dir="/sandbox", working_dir="/working")
+        config = SDKConfig(disallowed_tools=["Bash", "Write"])
+
+        options = client._build_sdk_options(config, "System prompt", "go_all")
+
+        assert "Bash" in options.disallowed_tools
+        assert "Write" in options.disallowed_tools
+
+    @pytest.mark.asyncio
+    async def test_query_with_sdk_config(self, tmp_path, patch_sdk_client):
+        """query uses provided SDK config."""
+        client = claude.ClaudeClient(
+            sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
+        )
+        config = SDKConfig(
+            model="test-model",
+            allowed_tools=["Read", "Write"],
+        )
+
+        await client.query("Hello", sdk_config=config)
+
+        # Query should complete without error using the config
+        patch_sdk_client.query.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_query_without_sdk_config_uses_defaults(self, tmp_path, patch_sdk_client):
+        """query uses default SDKConfig when none provided."""
+        client = claude.ClaudeClient(
+            sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
+        )
+
+        # Call without sdk_config
+        await client.query("Hello")
+
+        # Should complete without error using defaults
+        patch_sdk_client.query.assert_called_once()

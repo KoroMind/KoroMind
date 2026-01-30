@@ -245,3 +245,194 @@ class TestMemoryOperations:
 
         value = await state_manager.recall_memory("12345", "key")
         assert value == "updated"
+
+
+class TestSDKConfig:
+    """Tests for SDK configuration storage."""
+
+    @pytest.mark.asyncio
+    async def test_get_sdk_config_creates_default(self, state_manager):
+        """get_sdk_config creates default config for new user."""
+        config = await state_manager.get_sdk_config("12345")
+
+        assert config.permission_mode == "default"
+        assert config.mcp_servers == []
+        assert config.agents == {}
+        assert "Read" in config.allowed_tools
+        assert "Bash" in config.allowed_tools
+        assert config.disallowed_tools == []
+
+    @pytest.mark.asyncio
+    async def test_get_sdk_config_persists(self, state_manager):
+        """get_sdk_config returns same config on subsequent calls."""
+        config1 = await state_manager.get_sdk_config("12345")
+        config2 = await state_manager.get_sdk_config("12345")
+
+        assert config1.to_dict() == config2.to_dict()
+
+    @pytest.mark.asyncio
+    async def test_update_sdk_config(self, state_manager):
+        """update_sdk_config updates specific fields."""
+        await state_manager.get_sdk_config("12345")  # Create default
+
+        updated = await state_manager.update_sdk_config(
+            "12345",
+            permission_mode="acceptEdits",
+            model="claude-sonnet-4-20250514",
+        )
+
+        assert updated.permission_mode == "acceptEdits"
+        assert updated.model == "claude-sonnet-4-20250514"
+
+        # Verify persisted
+        config = await state_manager.get_sdk_config("12345")
+        assert config.permission_mode == "acceptEdits"
+        assert config.model == "claude-sonnet-4-20250514"
+
+    @pytest.mark.asyncio
+    async def test_update_sdk_config_preserves_other_fields(self, state_manager):
+        """update_sdk_config preserves fields not being updated."""
+        await state_manager.update_sdk_config(
+            "12345",
+            permission_mode="plan",
+            model="test-model",
+        )
+
+        await state_manager.update_sdk_config(
+            "12345",
+            permission_mode="default",
+        )
+
+        config = await state_manager.get_sdk_config("12345")
+        assert config.permission_mode == "default"
+        assert config.model == "test-model"  # Should be preserved
+
+    @pytest.mark.asyncio
+    async def test_add_mcp_server(self, state_manager):
+        """add_mcp_server adds a server to config."""
+        server = {
+            "name": "test-server",
+            "type": "stdio",
+            "command": "test-cmd",
+            "args": ["--flag"],
+        }
+
+        await state_manager.add_mcp_server("12345", server)
+
+        servers = await state_manager.get_mcp_servers("12345")
+        assert len(servers) == 1
+        assert servers[0]["name"] == "test-server"
+        assert servers[0]["command"] == "test-cmd"
+
+    @pytest.mark.asyncio
+    async def test_add_mcp_server_replaces_same_name(self, state_manager):
+        """add_mcp_server replaces server with same name."""
+        server1 = {"name": "test", "type": "stdio", "command": "cmd1"}
+        server2 = {"name": "test", "type": "stdio", "command": "cmd2"}
+
+        await state_manager.add_mcp_server("12345", server1)
+        await state_manager.add_mcp_server("12345", server2)
+
+        servers = await state_manager.get_mcp_servers("12345")
+        assert len(servers) == 1
+        assert servers[0]["command"] == "cmd2"
+
+    @pytest.mark.asyncio
+    async def test_remove_mcp_server(self, state_manager):
+        """remove_mcp_server removes a server by name."""
+        await state_manager.add_mcp_server("12345", {"name": "server1", "type": "stdio", "command": "cmd1"})
+        await state_manager.add_mcp_server("12345", {"name": "server2", "type": "stdio", "command": "cmd2"})
+
+        result = await state_manager.remove_mcp_server("12345", "server1")
+
+        assert result is True
+        servers = await state_manager.get_mcp_servers("12345")
+        assert len(servers) == 1
+        assert servers[0]["name"] == "server2"
+
+    @pytest.mark.asyncio
+    async def test_remove_mcp_server_nonexistent(self, state_manager):
+        """remove_mcp_server returns False for nonexistent server."""
+        result = await state_manager.remove_mcp_server("12345", "nonexistent")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_add_agent(self, state_manager):
+        """add_agent adds a custom agent."""
+        definition = {
+            "description": "Test agent",
+            "prompt": "You are a test agent",
+            "tools": ["Read", "Write"],
+        }
+
+        await state_manager.add_agent("12345", "test-agent", definition)
+
+        agents = await state_manager.get_agents("12345")
+        assert "test-agent" in agents
+        assert agents["test-agent"]["description"] == "Test agent"
+
+    @pytest.mark.asyncio
+    async def test_add_agent_replaces_same_name(self, state_manager):
+        """add_agent replaces agent with same name."""
+        await state_manager.add_agent("12345", "agent", {"description": "Old"})
+        await state_manager.add_agent("12345", "agent", {"description": "New"})
+
+        agents = await state_manager.get_agents("12345")
+        assert agents["agent"]["description"] == "New"
+
+    @pytest.mark.asyncio
+    async def test_remove_agent(self, state_manager):
+        """remove_agent removes an agent by name."""
+        await state_manager.add_agent("12345", "agent1", {"description": "Agent 1"})
+        await state_manager.add_agent("12345", "agent2", {"description": "Agent 2"})
+
+        result = await state_manager.remove_agent("12345", "agent1")
+
+        assert result is True
+        agents = await state_manager.get_agents("12345")
+        assert "agent1" not in agents
+        assert "agent2" in agents
+
+    @pytest.mark.asyncio
+    async def test_remove_agent_nonexistent(self, state_manager):
+        """remove_agent returns False for nonexistent agent."""
+        result = await state_manager.remove_agent("12345", "nonexistent")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_sdk_config_persists_across_instances(self, tmp_path):
+        """SDK config persists across StateManager instances."""
+        db_file = tmp_path / "test.db"
+
+        manager1 = StateManager(db_path=db_file)
+        await manager1.update_sdk_config(
+            "12345",
+            permission_mode="bypassPermissions",
+            model="test-model",
+        )
+        await manager1.add_mcp_server("12345", {"name": "server", "type": "stdio", "command": "cmd"})
+        await manager1.add_agent("12345", "agent", {"description": "Test"})
+
+        # Create new instance with same db
+        manager2 = StateManager(db_path=db_file)
+        config = await manager2.get_sdk_config("12345")
+
+        assert config.permission_mode == "bypassPermissions"
+        assert config.model == "test-model"
+        assert len(config.mcp_servers) == 1
+        assert "agent" in config.agents
+
+    @pytest.mark.asyncio
+    async def test_sdk_config_to_dict(self, state_manager):
+        """SDKConfig.to_dict returns complete dictionary."""
+        config = await state_manager.get_sdk_config("12345")
+        d = config.to_dict()
+
+        assert "mcp_servers" in d
+        assert "agents" in d
+        assert "permission_mode" in d
+        assert "allowed_tools" in d
+        assert "disallowed_tools" in d
+        assert "sandbox_settings" in d
+        assert "model" in d
+        assert "working_dir" in d

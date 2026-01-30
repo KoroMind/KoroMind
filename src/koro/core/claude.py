@@ -5,9 +5,12 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk import AgentDefinition, ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import (
     AssistantMessage,
+    McpStdioServerConfig,
+    McpSSEServerConfig,
+    McpHttpServerConfig,
     ResultMessage,
     TextBlock,
     ToolUseBlock,
@@ -15,6 +18,7 @@ from claude_agent_sdk.types import (
 
 from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
 from koro.core.prompt import get_prompt_manager
+from koro.core.types import SDKConfig
 
 
 def load_megg_context(working_dir: str = None) -> str:
@@ -102,6 +106,125 @@ class ClaudeClient:
         self.working_dir = working_dir or CLAUDE_WORKING_DIR
         self.prompt_manager = get_prompt_manager()
 
+    def _build_mcp_servers(self, servers: list[dict]) -> dict[str, Any]:
+        """
+        Build MCP server configs from Vault config.
+
+        Args:
+            servers: List of server config dicts from Vault
+
+        Returns:
+            Dict mapping server names to config objects for ClaudeAgentOptions
+        """
+        result = {}
+        for server in servers:
+            name = server.get("name")
+            if not name:
+                continue
+
+            server_type = server.get("type", "stdio")
+
+            if server_type == "stdio":
+                result[name] = McpStdioServerConfig(
+                    type="stdio",
+                    command=server.get("command", ""),
+                    args=server.get("args", []),
+                    env=server.get("env", {}),
+                )
+            elif server_type == "sse":
+                result[name] = McpSSEServerConfig(
+                    type="sse",
+                    url=server.get("url", ""),
+                    headers=server.get("headers", {}),
+                )
+            elif server_type == "http":
+                result[name] = McpHttpServerConfig(
+                    type="http",
+                    url=server.get("url", ""),
+                    headers=server.get("headers", {}),
+                )
+
+        return result
+
+    def _build_agents(self, agents: dict[str, dict]) -> dict[str, AgentDefinition]:
+        """
+        Build agent definitions from Vault config.
+
+        Args:
+            agents: Dict mapping agent names to definition dicts
+
+        Returns:
+            Dict mapping agent names to AgentDefinition objects
+        """
+        result = {}
+        for name, definition in agents.items():
+            result[name] = AgentDefinition(
+                description=definition.get("description", ""),
+                prompt=definition.get("prompt", ""),
+                tools=definition.get("tools"),
+                model=definition.get("model"),
+            )
+        return result
+
+    def _build_sdk_options(
+        self,
+        sdk_config: SDKConfig,
+        system_prompt: str,
+        mode: str,
+        can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+    ) -> ClaudeAgentOptions:
+        """
+        Build ClaudeAgentOptions from SDK config.
+
+        Args:
+            sdk_config: SDKConfig from Vault
+            system_prompt: System prompt to use
+            mode: Execution mode ("go_all" or "approve")
+            can_use_tool: Callback for tool approval
+
+        Returns:
+            Fully configured ClaudeAgentOptions
+        """
+        # Determine working directories
+        sandbox = sdk_config.sandbox_dir or self.sandbox_dir
+        working = sdk_config.working_dir or self.working_dir
+        add_dirs = sdk_config.add_dirs or [working]
+
+        # Build MCP servers and agents
+        mcp_servers = self._build_mcp_servers(sdk_config.mcp_servers)
+        agents = self._build_agents(sdk_config.agents)
+
+        # Base options
+        options = ClaudeAgentOptions(
+            system_prompt=system_prompt,
+            cwd=sandbox,
+            add_dirs=add_dirs,
+            model=sdk_config.model,
+            fallback_model=sdk_config.fallback_model,
+            disallowed_tools=sdk_config.disallowed_tools,
+        )
+
+        # Add MCP servers if any
+        if mcp_servers:
+            options.mcp_servers = mcp_servers
+
+        # Add custom agents if any
+        if agents:
+            options.agents = agents
+
+        # Add sandbox settings if configured
+        if sdk_config.sandbox_settings:
+            options.sandbox = sdk_config.sandbox_settings
+
+        # Handle permission mode
+        if mode == "approve" and can_use_tool:
+            options.can_use_tool = can_use_tool
+            options.permission_mode = sdk_config.permission_mode
+        else:
+            options.allowed_tools = sdk_config.allowed_tools
+
+        return options
+
     async def query(
         self,
         prompt: str,
@@ -112,6 +235,7 @@ class ClaudeClient:
         mode: str = "go_all",
         on_tool_call: Callable[[str, dict], None] = None,
         can_use_tool: Callable[[str, dict, Any], Any] = None,
+        sdk_config: SDKConfig | None = None,
     ) -> tuple[str, str, dict]:
         """
         Query Claude and return response.
@@ -125,50 +249,34 @@ class ClaudeClient:
             mode: "go_all" or "approve"
             on_tool_call: Callback when tool is called (for watch mode)
             can_use_tool: Callback for tool approval (for approve mode)
+            sdk_config: SDK configuration from Vault (optional, uses defaults if None)
 
         Returns:
             (response_text, session_id, metadata)
         """
+        # Use default config if none provided
+        if sdk_config is None:
+            sdk_config = SDKConfig()
+
+        # Determine sandbox directory
+        sandbox = sdk_config.sandbox_dir or self.sandbox_dir
+        working = sdk_config.working_dir or self.working_dir
+
         # Ensure sandbox exists
-        Path(self.sandbox_dir).mkdir(parents=True, exist_ok=True)
+        Path(sandbox).mkdir(parents=True, exist_ok=True)
 
         # Build prompt with megg context for new sessions
         full_prompt = prompt
         if include_megg and not continue_last and not session_id:
-            megg_ctx = load_megg_context(self.working_dir)
+            megg_ctx = load_megg_context(working)
             if megg_ctx:
                 full_prompt = f"<context>\n{megg_ctx}\n</context>\n\n{prompt}"
 
         # Get dynamic system prompt
         system_prompt = self.prompt_manager.get_prompt(user_settings)
 
-        # Build SDK options
-        if mode == "approve" and can_use_tool:
-            options = ClaudeAgentOptions(
-                system_prompt=system_prompt,
-                cwd=self.sandbox_dir,
-                can_use_tool=can_use_tool,
-                permission_mode="default",
-                add_dirs=[self.working_dir],
-            )
-        else:
-            options = ClaudeAgentOptions(
-                system_prompt=system_prompt,
-                allowed_tools=[
-                    "Read",
-                    "Grep",
-                    "Glob",
-                    "WebSearch",
-                    "WebFetch",
-                    "Task",
-                    "Bash",
-                    "Edit",
-                    "Write",
-                    "Skill",
-                ],
-                cwd=self.sandbox_dir,
-                add_dirs=[self.working_dir],
-            )
+        # Build SDK options from config
+        options = self._build_sdk_options(sdk_config, system_prompt, mode, can_use_tool)
 
         # Handle session continuation
         if continue_last:

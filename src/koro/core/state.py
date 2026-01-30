@@ -10,7 +10,7 @@ from typing import Generator
 from uuid import uuid4
 
 from koro.core.config import DATABASE_PATH, SETTINGS_FILE, STATE_FILE, VOICE_SETTINGS
-from koro.core.types import Mode, Session, UserSettings
+from koro.core.types import DEFAULT_ALLOWED_TOOLS, Mode, SDKConfig, Session, UserSettings
 
 # Maximum number of sessions to keep per user (FIFO eviction)
 MAX_SESSIONS = 100
@@ -75,6 +75,23 @@ class StateManager:
                 CREATE TABLE IF NOT EXISTS migration_status (
                     name TEXT PRIMARY KEY,
                     completed_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS sdk_config (
+                    user_id TEXT PRIMARY KEY,
+                    mcp_servers JSON DEFAULT '[]',
+                    agents JSON DEFAULT '{}',
+                    permission_mode TEXT DEFAULT 'default',
+                    allowed_tools JSON DEFAULT '["Read", "Grep", "Glob", "WebSearch", "WebFetch", "Task", "Bash", "Edit", "Write", "Skill"]',
+                    disallowed_tools JSON DEFAULT '[]',
+                    sandbox_settings JSON DEFAULT NULL,
+                    model TEXT DEFAULT NULL,
+                    fallback_model TEXT DEFAULT NULL,
+                    working_dir TEXT DEFAULT NULL,
+                    sandbox_dir TEXT DEFAULT NULL,
+                    add_dirs JSON DEFAULT '[]',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
                 );
             """)
 
@@ -446,6 +463,204 @@ class StateManager:
                 (user_id,),
             ).fetchall()
             return [row["key"] for row in rows]
+
+    # SDK Config Management
+
+    async def get_sdk_config(self, user_id: str) -> SDKConfig:
+        """
+        Get Claude SDK config for a user, creating defaults if not exists.
+
+        Returns:
+            SDKConfig object ready to build ClaudeAgentOptions
+        """
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT mcp_servers, agents, permission_mode, allowed_tools,
+                       disallowed_tools, sandbox_settings, model, fallback_model,
+                       working_dir, sandbox_dir, add_dirs
+                FROM sdk_config WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+
+            if row:
+                return SDKConfig(
+                    mcp_servers=json.loads(row["mcp_servers"] or "[]"),
+                    agents=json.loads(row["agents"] or "{}"),
+                    permission_mode=row["permission_mode"] or "default",
+                    allowed_tools=json.loads(row["allowed_tools"] or "[]"),
+                    disallowed_tools=json.loads(row["disallowed_tools"] or "[]"),
+                    sandbox_settings=json.loads(row["sandbox_settings"])
+                    if row["sandbox_settings"]
+                    else None,
+                    model=row["model"],
+                    fallback_model=row["fallback_model"],
+                    working_dir=row["working_dir"],
+                    sandbox_dir=row["sandbox_dir"],
+                    add_dirs=json.loads(row["add_dirs"] or "[]"),
+                )
+
+            # Create default config
+            now = datetime.now().isoformat()
+            default_config = SDKConfig()
+            conn.execute(
+                """
+                INSERT INTO sdk_config (
+                    user_id, mcp_servers, agents, permission_mode, allowed_tools,
+                    disallowed_tools, sandbox_settings, model, fallback_model,
+                    working_dir, sandbox_dir, add_dirs, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    json.dumps(default_config.mcp_servers),
+                    json.dumps(default_config.agents),
+                    default_config.permission_mode,
+                    json.dumps(default_config.allowed_tools),
+                    json.dumps(default_config.disallowed_tools),
+                    json.dumps(default_config.sandbox_settings)
+                    if default_config.sandbox_settings
+                    else None,
+                    default_config.model,
+                    default_config.fallback_model,
+                    default_config.working_dir,
+                    default_config.sandbox_dir,
+                    json.dumps(default_config.add_dirs),
+                    now,
+                    now,
+                ),
+            )
+            return default_config
+
+    async def update_sdk_config(self, user_id: str, **kwargs) -> SDKConfig:
+        """
+        Update SDK config for a user.
+
+        Args:
+            user_id: User identifier
+            **kwargs: Fields to update (mcp_servers, agents, permission_mode, etc.)
+
+        Returns:
+            Updated SDKConfig
+        """
+        # Get current config first (creates default if not exists)
+        current = await self.get_sdk_config(user_id)
+
+        # Apply updates
+        for key, value in kwargs.items():
+            if hasattr(current, key):
+                setattr(current, key, value)
+
+        # Save to database
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE sdk_config SET
+                    mcp_servers = ?, agents = ?, permission_mode = ?,
+                    allowed_tools = ?, disallowed_tools = ?, sandbox_settings = ?,
+                    model = ?, fallback_model = ?, working_dir = ?,
+                    sandbox_dir = ?, add_dirs = ?, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (
+                    json.dumps(current.mcp_servers),
+                    json.dumps(current.agents),
+                    current.permission_mode,
+                    json.dumps(current.allowed_tools),
+                    json.dumps(current.disallowed_tools),
+                    json.dumps(current.sandbox_settings)
+                    if current.sandbox_settings
+                    else None,
+                    current.model,
+                    current.fallback_model,
+                    current.working_dir,
+                    current.sandbox_dir,
+                    json.dumps(current.add_dirs),
+                    now,
+                    user_id,
+                ),
+            )
+
+        return current
+
+    async def add_mcp_server(self, user_id: str, server: dict) -> None:
+        """
+        Add an MCP server to user's config.
+
+        Args:
+            user_id: User identifier
+            server: Server config dict with keys: name, type, command/url, etc.
+        """
+        config = await self.get_sdk_config(user_id)
+
+        # Remove existing server with same name if present
+        config.mcp_servers = [s for s in config.mcp_servers if s.get("name") != server.get("name")]
+        config.mcp_servers.append(server)
+
+        await self.update_sdk_config(user_id, mcp_servers=config.mcp_servers)
+
+    async def remove_mcp_server(self, user_id: str, name: str) -> bool:
+        """
+        Remove an MCP server from user's config.
+
+        Args:
+            user_id: User identifier
+            name: Server name to remove
+
+        Returns:
+            True if server was found and removed, False otherwise
+        """
+        config = await self.get_sdk_config(user_id)
+        original_count = len(config.mcp_servers)
+        config.mcp_servers = [s for s in config.mcp_servers if s.get("name") != name]
+
+        if len(config.mcp_servers) < original_count:
+            await self.update_sdk_config(user_id, mcp_servers=config.mcp_servers)
+            return True
+        return False
+
+    async def get_mcp_servers(self, user_id: str) -> list[dict]:
+        """Get MCP server configs for a user."""
+        config = await self.get_sdk_config(user_id)
+        return config.mcp_servers
+
+    async def add_agent(self, user_id: str, name: str, definition: dict) -> None:
+        """
+        Add a custom agent for a user.
+
+        Args:
+            user_id: User identifier
+            name: Agent name
+            definition: Agent definition dict with keys: description, prompt, tools, model
+        """
+        config = await self.get_sdk_config(user_id)
+        config.agents[name] = definition
+        await self.update_sdk_config(user_id, agents=config.agents)
+
+    async def remove_agent(self, user_id: str, name: str) -> bool:
+        """
+        Remove a custom agent from user's config.
+
+        Args:
+            user_id: User identifier
+            name: Agent name to remove
+
+        Returns:
+            True if agent was found and removed, False otherwise
+        """
+        config = await self.get_sdk_config(user_id)
+        if name in config.agents:
+            del config.agents[name]
+            await self.update_sdk_config(user_id, agents=config.agents)
+            return True
+        return False
+
+    async def get_agents(self, user_id: str) -> dict[str, dict]:
+        """Get custom agent definitions for a user."""
+        config = await self.get_sdk_config(user_id)
+        return config.agents
 
     # Backward Compatibility Methods
 

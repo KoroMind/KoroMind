@@ -96,3 +96,87 @@ class UserSettings:
             voice_speed=data.get("voice_speed", 1.1),
             watch_enabled=data.get("watch_enabled", False),
         )
+
+
+# Default tools for Claude Code SDK
+DEFAULT_ALLOWED_TOOLS = [
+    "Read",
+    "Grep",
+    "Glob",
+    "WebSearch",
+    "WebFetch",
+    "Task",
+    "Bash",
+    "Edit",
+    "Write",
+    "Skill",
+]
+
+
+@dataclass
+class SDKConfig:
+    """Configuration for Claude Code SDK.
+
+    This holds all the settings that get passed to ClaudeAgentOptions.
+    Stored in Vault (SQLite) per user.
+    """
+
+    # MCP Servers - list of server configs
+    # Format: [{"name": "server1", "type": "stdio", "command": "...", "args": [...]}]
+    mcp_servers: list[dict[str, Any]] = field(default_factory=list)
+
+    # Custom agents - dict of agent definitions
+    # Format: {"agent_name": {"description": "...", "prompt": "...", "tools": [...]}}
+    agents: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    # Permission mode: "default", "acceptEdits", "plan", "bypassPermissions"
+    permission_mode: str = "default"
+
+    # Tool permissions
+    allowed_tools: list[str] = field(default_factory=lambda: DEFAULT_ALLOWED_TOOLS.copy())
+    disallowed_tools: list[str] = field(default_factory=list)
+
+    # Sandbox settings (optional)
+    sandbox_settings: dict[str, Any] | None = None
+
+    # Model preferences
+    model: str | None = None
+    fallback_model: str | None = None
+
+    # Working directories
+    working_dir: str | None = None
+    sandbox_dir: str | None = None
+    add_dirs: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "mcp_servers": self.mcp_servers,
+            "agents": self.agents,
+            "permission_mode": self.permission_mode,
+            "allowed_tools": self.allowed_tools,
+            "disallowed_tools": self.disallowed_tools,
+            "sandbox_settings": self.sandbox_settings,
+            "model": self.model,
+            "fallback_model": self.fallback_model,
+            "working_dir": self.working_dir,
+            "sandbox_dir": self.sandbox_dir,
+            "add_dirs": self.add_dirs,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SDKConfig":
+        """Create from dictionary."""
+        return cls(
+            mcp_servers=data.get("mcp_servers", []),
+            agents=data.get("agents", {}),
+            permission_mode=data.get("permission_mode", "default"),
+            allowed_tools=data.get("allowed_tools", DEFAULT_ALLOWED_TOOLS.copy()),
+            disallowed_tools=data.get("disallowed_tools", []),
+            sandbox_settings=data.get("sandbox_settings"),
+            model=data.get("model"),
+            fallback_model=data.get("fallback_model"),
+            working_dir=data.get("working_dir"),
+            sandbox_dir=data.get("sandbox_dir"),
+            add_dirs=data.get("add_dirs", []),
+        )

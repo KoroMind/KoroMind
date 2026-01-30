@@ -50,7 +50,7 @@ class TestFullPipeline:
         assert len(transcription) > 0
 
         # 3. Send to Claude
-        response, session_id, metadata = await claude.query(
+        response, session_id, metadata, tool_calls = await claude.query(
             transcription, include_megg=False
         )
         assert len(response) > 0
@@ -69,13 +69,13 @@ class TestFullPipeline:
         (tmp_path / "sandbox").mkdir()
 
         # First interaction
-        _, session_id, _ = await claude.query(
+        _, session_id, _, _ = await claude.query(
             "My favorite color is purple. Remember this.", include_megg=False
         )
         assert session_id
 
         # Second interaction using same session
-        response, _, _ = await claude.query(
+        response, _, _, _ = await claude.query(
             "What is my favorite color?", session_id=session_id, include_megg=False
         )
 
@@ -93,7 +93,7 @@ class TestFullPipeline:
         test_file = tmp_path / "data.txt"
         test_file.write_text("The secret code is: ALPHA123")
 
-        response, _, metadata = await claude.query(
+        response, _, metadata, tool_calls = await claude.query(
             f"Read the file at {test_file} and tell me the secret code.",
             include_megg=False,
         )
@@ -125,7 +125,7 @@ class TestErrorHandling:
         (tmp_path / "sandbox").mkdir()
 
         # Ask for a longer response
-        response, _, _ = await claude.query(
+        response, _, _, _ = await claude.query(
             "List the first 10 prime numbers with a brief explanation of each.",
             include_megg=False,
         )

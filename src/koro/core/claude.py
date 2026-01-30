@@ -8,9 +8,12 @@ from typing import Any, Callable
 from claude_agent_sdk import AgentDefinition, ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import (
     AssistantMessage,
+    HookMatcher,
     McpStdioServerConfig,
     McpSSEServerConfig,
     McpHttpServerConfig,
+    PostToolUseHookInput,
+    PreToolUseHookInput,
     ResultMessage,
     TextBlock,
     ToolUseBlock,
@@ -18,7 +21,7 @@ from claude_agent_sdk.types import (
 
 from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
 from koro.core.prompt import get_prompt_manager
-from koro.core.types import SDKConfig
+from koro.core.types import BrainCallbacks, SDKConfig, ToolCall
 
 
 def load_megg_context(working_dir: str = None) -> str:
@@ -225,6 +228,99 @@ class ClaudeClient:
 
         return options
 
+    def _build_hooks(
+        self,
+        callbacks: BrainCallbacks | None,
+        tool_calls_list: list[ToolCall] | None = None,
+    ) -> dict[str, list[HookMatcher]] | None:
+        """
+        Build SDK hooks from BrainCallbacks.
+
+        This maps the Brain's callback interface to the SDK's hook system,
+        providing pre and post tool execution notifications.
+
+        Args:
+            callbacks: BrainCallbacks from the Brain
+            tool_calls_list: List to append ToolCall records to
+
+        Returns:
+            Dict of hook matchers for ClaudeAgentOptions, or None
+        """
+        if not callbacks and tool_calls_list is None:
+            return None
+
+        hooks: dict[str, list[HookMatcher]] = {}
+
+        # Always track tool calls if list provided
+        # PreToolUse: Called BEFORE tool execution
+        if callbacks and (callbacks.on_tool_start or callbacks.on_permission_request):
+
+            async def pre_tool_hook(
+                input_data: PreToolUseHookInput,
+                tool_use_id: str | None,
+                ctx: Any,
+            ) -> dict[str, Any]:
+                """Handle pre-tool execution."""
+                tool_name = input_data["tool_name"]
+                tool_input = input_data.get("tool_input", {})
+
+                # Notify watcher of tool start
+                if callbacks.on_tool_start:
+                    callbacks.on_tool_start(tool_name, tool_input)
+
+                # Handle permission request if in approve mode
+                if callbacks.on_permission_request:
+                    result = await callbacks.on_permission_request(tool_name, tool_input)
+                    return {
+                        "continue_": result.decision != "deny",
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": result.decision,
+                            "permissionDecisionReason": result.reason,
+                            "updatedInput": result.updated_input,
+                        },
+                    }
+
+                return {"continue_": True}
+
+            hooks["PreToolUse"] = [HookMatcher(hooks=[pre_tool_hook])]
+
+        # PostToolUse: Called AFTER tool execution
+        if (callbacks and callbacks.on_tool_end) or tool_calls_list is not None:
+
+            async def post_tool_hook(
+                input_data: PostToolUseHookInput,
+                tool_use_id: str | None,
+                ctx: Any,
+            ) -> dict[str, Any]:
+                """Handle post-tool execution."""
+                tool_name = input_data["tool_name"]
+                tool_input = input_data.get("tool_input", {})
+                tool_response = input_data.get("tool_response")
+
+                # Track tool call with full data
+                if tool_calls_list is not None:
+                    detail = get_tool_detail(tool_name, tool_input)
+                    tool_calls_list.append(
+                        ToolCall(
+                            name=tool_name,
+                            detail=detail,
+                            tool_input=tool_input,
+                            tool_response=tool_response,
+                            tool_use_id=tool_use_id,
+                        )
+                    )
+
+                # Notify watcher of tool completion
+                if callbacks and callbacks.on_tool_end:
+                    callbacks.on_tool_end(tool_name, tool_input, tool_response)
+
+                return {"continue_": True}
+
+            hooks["PostToolUse"] = [HookMatcher(hooks=[post_tool_hook])]
+
+        return hooks if hooks else None
+
     async def query(
         self,
         prompt: str,
@@ -236,7 +332,8 @@ class ClaudeClient:
         on_tool_call: Callable[[str, dict], None] = None,
         can_use_tool: Callable[[str, dict, Any], Any] = None,
         sdk_config: SDKConfig | None = None,
-    ) -> tuple[str, str, dict]:
+        callbacks: BrainCallbacks | None = None,
+    ) -> tuple[str, str, dict, list[ToolCall]]:
         """
         Query Claude and return response.
 
@@ -247,12 +344,13 @@ class ClaudeClient:
             include_megg: Whether to include megg context
             user_settings: User settings dict
             mode: "go_all" or "approve"
-            on_tool_call: Callback when tool is called (for watch mode)
+            on_tool_call: Legacy callback when tool is called (for watch mode)
             can_use_tool: Callback for tool approval (for approve mode)
             sdk_config: SDK configuration from Vault (optional, uses defaults if None)
+            callbacks: BrainCallbacks for hook-based tool notifications (preferred)
 
         Returns:
-            (response_text, session_id, metadata)
+            (response_text, session_id, metadata, tool_calls)
         """
         # Use default config if none provided
         if sdk_config is None:
@@ -284,6 +382,14 @@ class ClaudeClient:
         elif session_id:
             options.resume = session_id
 
+        # Track tool calls using hooks
+        tool_calls: list[ToolCall] = []
+
+        # Build hooks from callbacks
+        hooks = self._build_hooks(callbacks, tool_calls)
+        if hooks:
+            options.hooks = hooks
+
         result_text = ""
         new_session_id = session_id
         metadata = {}
@@ -299,6 +405,7 @@ class ClaudeClient:
                                 result_text += block.text
                             elif isinstance(block, ToolUseBlock):
                                 tool_count += 1
+                                # Legacy callback support (deprecated)
                                 if on_tool_call:
                                     tool_input = block.input or {}
                                     detail = get_tool_detail(block.name, tool_input)
@@ -317,10 +424,10 @@ class ClaudeClient:
                             metadata["duration_ms"] = message.duration_ms
 
             metadata["tool_count"] = tool_count
-            return result_text, new_session_id, metadata
+            return result_text, new_session_id, metadata, tool_calls
 
         except Exception as e:
-            return f"Error calling Claude: {e}", session_id, {}
+            return f"Error calling Claude: {e}", session_id, {}, tool_calls
 
     def health_check(self) -> tuple[bool, str]:
         """

@@ -55,7 +55,7 @@ class TestClaudeQuery:
     @pytest.mark.asyncio
     async def test_simple_query(self, claude_client):
         """Simple query returns response."""
-        response, session_id, metadata = await claude_client.query(
+        response, session_id, metadata, tool_calls = await claude_client.query(
             "Say exactly: 'Hello test'", include_megg=False
         )
 
@@ -65,7 +65,7 @@ class TestClaudeQuery:
     @pytest.mark.asyncio
     async def test_query_returns_session_id(self, claude_client):
         """Query returns session ID for continuation."""
-        response, session_id, metadata = await claude_client.query(
+        response, session_id, metadata, tool_calls = await claude_client.query(
             "Remember this number: 42", include_megg=False
         )
 
@@ -76,12 +76,12 @@ class TestClaudeQuery:
     async def test_session_continuation(self, claude_client):
         """Session continuation preserves context."""
         # First message
-        _, session_id, _ = await claude_client.query(
+        _, session_id, _, _ = await claude_client.query(
             "Remember this secret word: banana", include_megg=False
         )
 
         # Continue session
-        response, _, _ = await claude_client.query(
+        response, _, _, _ = await claude_client.query(
             "What was the secret word I told you?",
             session_id=session_id,
             include_megg=False,
@@ -101,7 +101,7 @@ class TestClaudeToolUse:
         test_file = tmp_path / "test.txt"
         test_file.write_text("This is test content 12345")
 
-        response, _, metadata = await claude_client.query(
+        response, _, metadata, tool_calls = await claude_client.query(
             f"Read the file at {test_file} and tell me what number is in it.",
             include_megg=False,
         )

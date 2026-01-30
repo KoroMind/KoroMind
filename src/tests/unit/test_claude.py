@@ -1,5 +1,6 @@
 """Tests for koro.claude module."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -296,10 +297,11 @@ class TestClaudeClientQuery:
         client = claude.ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
-        result, session_id, metadata = await client.query("Hello")
+        result, session_id, metadata, tool_calls = await client.query("Hello")
 
         assert "Error" in result
         assert "SDK error" in result
+        assert tool_calls == []  # No tool calls on error
 
 
 class TestSubprocessShellFalse:
@@ -475,3 +477,212 @@ class TestClaudeClientSDKConfig:
 
         # Should complete without error using defaults
         patch_sdk_client.query.assert_called_once()
+
+
+class TestClaudeClientHooks:
+    """Tests for ClaudeClient hooks integration."""
+
+    def test_build_hooks_returns_none_without_callbacks(self, monkeypatch):
+        """_build_hooks returns None when no callbacks provided."""
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        client = claude.ClaudeClient()
+        result = client._build_hooks(None, None)
+
+        assert result is None
+
+    def test_build_hooks_with_tool_calls_list(self, monkeypatch):
+        """_build_hooks creates PostToolUse hook to track calls."""
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        client = claude.ClaudeClient()
+        tool_calls = []
+        result = client._build_hooks(None, tool_calls)
+
+        assert result is not None
+        assert "PostToolUse" in result
+        assert len(result["PostToolUse"]) == 1
+
+    def test_build_hooks_with_on_tool_start(self, monkeypatch):
+        """_build_hooks creates PreToolUse hook for on_tool_start callback."""
+        from koro.core.types import BrainCallbacks
+
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        received = {}
+
+        def on_start(name: str, input: dict):
+            received["name"] = name
+            received["input"] = input
+
+        callbacks = BrainCallbacks(on_tool_start=on_start)
+        client = claude.ClaudeClient()
+        result = client._build_hooks(callbacks, None)
+
+        assert result is not None
+        assert "PreToolUse" in result
+
+    def test_build_hooks_with_on_tool_end(self, monkeypatch):
+        """_build_hooks creates PostToolUse hook for on_tool_end callback."""
+        from koro.core.types import BrainCallbacks
+
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        received = {}
+
+        def on_end(name: str, input: dict, response: Any):
+            received["name"] = name
+            received["response"] = response
+
+        callbacks = BrainCallbacks(on_tool_end=on_end)
+        client = claude.ClaudeClient()
+        result = client._build_hooks(callbacks, None)
+
+        assert result is not None
+        assert "PostToolUse" in result
+
+    @pytest.mark.asyncio
+    async def test_pre_tool_hook_calls_on_tool_start(self, monkeypatch):
+        """PreToolUse hook invokes on_tool_start callback."""
+        from koro.core.types import BrainCallbacks
+
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        received = {}
+
+        def on_start(name: str, input: dict):
+            received["name"] = name
+            received["input"] = input
+
+        callbacks = BrainCallbacks(on_tool_start=on_start)
+        client = claude.ClaudeClient()
+        hooks = client._build_hooks(callbacks, None)
+
+        # Get the hook callback
+        pre_hook = hooks["PreToolUse"][0].hooks[0]
+
+        # Simulate calling the hook
+        result = await pre_hook(
+            {"tool_name": "Read", "tool_input": {"file_path": "/test.txt"}},
+            "tool_123",
+            {},
+        )
+
+        assert received["name"] == "Read"
+        assert received["input"]["file_path"] == "/test.txt"
+        assert result["continue_"] is True
+
+    @pytest.mark.asyncio
+    async def test_post_tool_hook_calls_on_tool_end(self, monkeypatch):
+        """PostToolUse hook invokes on_tool_end callback."""
+        from koro.core.types import BrainCallbacks
+
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        received = {}
+
+        def on_end(name: str, input: dict, response: Any):
+            received["name"] = name
+            received["input"] = input
+            received["response"] = response
+
+        callbacks = BrainCallbacks(on_tool_end=on_end)
+        client = claude.ClaudeClient()
+        hooks = client._build_hooks(callbacks, None)
+
+        # Get the hook callback
+        post_hook = hooks["PostToolUse"][0].hooks[0]
+
+        # Simulate calling the hook
+        result = await post_hook(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls"},
+                "tool_response": "file1.txt\nfile2.txt",
+            },
+            "tool_456",
+            {},
+        )
+
+        assert received["name"] == "Bash"
+        assert received["input"]["command"] == "ls"
+        assert received["response"] == "file1.txt\nfile2.txt"
+        assert result["continue_"] is True
+
+    @pytest.mark.asyncio
+    async def test_post_tool_hook_tracks_tool_calls(self, monkeypatch):
+        """PostToolUse hook appends to tool_calls list."""
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        tool_calls = []
+        client = claude.ClaudeClient()
+        hooks = client._build_hooks(None, tool_calls)
+
+        # Get the hook callback
+        post_hook = hooks["PostToolUse"][0].hooks[0]
+
+        # Simulate calling the hook
+        await post_hook(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "/out.txt", "content": "hello"},
+                "tool_response": "Success",
+            },
+            "tool_789",
+            {},
+        )
+
+        assert len(tool_calls) == 1
+        assert tool_calls[0].name == "Write"
+        assert tool_calls[0].detail == "/out.txt"
+        assert tool_calls[0].tool_input["content"] == "hello"
+        assert tool_calls[0].tool_response == "Success"
+        assert tool_calls[0].tool_use_id == "tool_789"
+
+    @pytest.mark.asyncio
+    async def test_permission_request_hook(self, monkeypatch):
+        """PreToolUse hook handles permission requests."""
+        from koro.core.types import BrainCallbacks, PermissionResult
+
+        monkeypatch.setattr(claude, "SANDBOX_DIR", "/test/sandbox")
+        monkeypatch.setattr(claude, "CLAUDE_WORKING_DIR", "/test/working")
+
+        async def on_permission(name: str, input: dict) -> PermissionResult:
+            if name == "Bash":
+                return PermissionResult(decision="deny", reason="Bash not allowed")
+            return PermissionResult(decision="allow")
+
+        callbacks = BrainCallbacks(on_permission_request=on_permission)
+        client = claude.ClaudeClient()
+        hooks = client._build_hooks(callbacks, None)
+
+        # Get the hook callback
+        pre_hook = hooks["PreToolUse"][0].hooks[0]
+
+        # Test deny case
+        result = await pre_hook(
+            {"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}},
+            "tool_danger",
+            {},
+        )
+
+        assert result["continue_"] is False
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "not allowed" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+        # Test allow case
+        result = await pre_hook(
+            {"tool_name": "Read", "tool_input": {"file_path": "/safe.txt"}},
+            "tool_safe",
+            {},
+        )
+
+        assert result["continue_"] is True
+        assert result["hookSpecificOutput"]["permissionDecision"] == "allow"

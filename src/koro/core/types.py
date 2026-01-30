@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Awaitable, Callable, Literal
 
 
 class MessageType(Enum):
@@ -20,12 +20,54 @@ class Mode(Enum):
     APPROVE = "approve"
 
 
-@dataclass(frozen=True)
+@dataclass
 class ToolCall:
-    """Record of a tool call during processing."""
+    """Record of a tool call during processing.
+
+    Enhanced to capture full tool information from SDK hooks.
+    """
 
     name: str
     detail: str | None = None
+    tool_input: dict[str, Any] | None = None
+    tool_response: Any = None
+    tool_use_id: str | None = None
+
+
+# Permission decision for tool approval
+PermissionDecision = Literal["allow", "deny", "ask"]
+
+
+@dataclass
+class PermissionResult:
+    """Result of a permission check for tool use."""
+
+    decision: PermissionDecision
+    reason: str | None = None
+    updated_input: dict[str, Any] | None = None
+
+
+@dataclass
+class BrainCallbacks:
+    """Callbacks for connectors to receive tool events.
+
+    These map to SDK hooks (PreToolUse, PostToolUse) and provide
+    a clean interface for connectors like Telegram, CLI, API.
+    """
+
+    # Called before tool execution (maps to PreToolUse hook)
+    on_tool_start: Callable[[str, dict[str, Any]], None] | None = None
+
+    # Called after tool execution (maps to PostToolUse hook)
+    on_tool_end: Callable[[str, dict[str, Any], Any], None] | None = None
+
+    # Called to request permission for tool use (approve mode)
+    on_permission_request: (
+        Callable[[str, dict[str, Any]], Awaitable[PermissionResult]] | None
+    ) = None
+
+    # Called when session stops
+    on_stop: Callable[[str | None], None] | None = None
 
 
 @dataclass(frozen=True)

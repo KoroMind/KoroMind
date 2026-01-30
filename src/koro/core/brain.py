@@ -6,6 +6,7 @@ from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
 from koro.core.state import StateManager, get_state_manager
 from koro.core.types import (
+    BrainCallbacks,
     BrainResponse,
     MessageType,
     Mode,
@@ -81,6 +82,7 @@ class Brain:
         watch_enabled: bool = False,
         on_tool_call: Callable[[str, str | None], None] | None = None,
         can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        callbacks: BrainCallbacks | None = None,
     ) -> BrainResponse:
         """
         Process a message and return response.
@@ -93,15 +95,14 @@ class Brain:
             mode: Execution mode (GO_ALL or APPROVE)
             include_audio: Whether to include TTS audio in response
             voice_speed: Voice speed for TTS (0.7-1.2)
-            watch_enabled: Whether to call on_tool_call for each tool
-            on_tool_call: Callback when tool is called (for watch mode)
+            watch_enabled: Whether to call on_tool_call for each tool (legacy)
+            on_tool_call: Legacy callback when tool is called (for watch mode)
             can_use_tool: Callback for tool approval (for approve mode)
+            callbacks: BrainCallbacks for hook-based tool notifications (preferred)
 
         Returns:
             BrainResponse with text, optional audio, and metadata
         """
-        tool_calls: list[ToolCall] = []
-
         # Transcribe voice if needed
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
@@ -137,22 +138,30 @@ class Brain:
         # Load SDK config from Vault
         sdk_config = await self.state_manager.get_sdk_config(user_id)
 
-        # Tool call tracking wrapper
-        def _on_tool_call(tool_name: str, detail: str | None):
-            tool_calls.append(ToolCall(name=tool_name, detail=detail))
-            if on_tool_call and watch_enabled:
+        # Build callbacks - wrap legacy on_tool_call into BrainCallbacks if needed
+        effective_callbacks = callbacks
+        if not callbacks and on_tool_call and watch_enabled:
+            # Create callbacks wrapper for legacy on_tool_call
+            def legacy_on_tool_start(tool_name: str, tool_input: dict[str, Any]):
+                from koro.core.claude import get_tool_detail
+
+                detail = get_tool_detail(tool_name, tool_input)
                 on_tool_call(tool_name, detail)
 
-        # Call Claude with SDK config from Vault
-        response_text, new_session_id, metadata = await self.claude_client.query(
-            prompt=text,
-            session_id=session_id,
-            continue_last=continue_last,
-            user_settings=user_settings,
-            mode=mode.value,
-            on_tool_call=_on_tool_call if watch_enabled else None,
-            can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
-            sdk_config=sdk_config,
+            effective_callbacks = BrainCallbacks(on_tool_start=legacy_on_tool_start)
+
+        # Call Claude with SDK config from Vault and callbacks
+        response_text, new_session_id, metadata, tool_calls = (
+            await self.claude_client.query(
+                prompt=text,
+                session_id=session_id,
+                continue_last=continue_last,
+                user_settings=user_settings,
+                mode=mode.value,
+                can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+                sdk_config=sdk_config,
+                callbacks=effective_callbacks,
+            )
         )
 
         # Update session state

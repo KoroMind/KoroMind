@@ -1,80 +1,92 @@
-# Specs Folder Guidelines
+# Specs
 
-This folder contains Architecture Decision Records (ADR) and feature specifications that serve as the source of truth for design decisions and module behavior.
+Specifications for KoroMind services, features, and issues.
 
-## Purpose
+## Core Principle
 
-The `.ai/specs/` folder is the central repository for:
-- **Feature specifications**: Detailed descriptions of module functionality, API contracts, and data models
-- **Architecture decisions**: Rationale behind design choices and implementation approaches
-- **Implementation reference**: Living documentation that stays synchronized with the codebase
+**Specs describe services and usecases, NOT files.**
 
-## File Naming
+Bad: one spec per source file (`voice.md` for `voice.py`)
+Good: one spec per mental model (`service-voice.md` for voice capability)
 
-Spec files follow the pattern `<module-name>.md`:
-- `voice-module.md` – Voice processing (STT/TTS) specification
-- `claude-integration.md` – Claude Agent SDK integration specification
-- `session-management.md` – Session and state persistence specification
+### The Litmus Test
 
-## Spec File Structure
+> Can a new developer understand this capability by reading ONE spec?
 
-Each spec should include:
+If the answer is "no, read 3 specs and piece it together" - wrong granularity.
 
-1. **Overview** – What the module/feature does and its purpose
-2. **Architecture** – High-level design and component relationships
-3. **Data Models** – Entity definitions, relationships, and database schema
-4. **API Contracts** – Endpoints, request/response schemas, and examples
-5. **UI/UX** – Frontend components and user interactions (if applicable)
-6. **Configuration** – Environment variables, feature flags, and settings
-7. **Changelog** – Version history with dates and summaries
+## Granularity Hierarchy
 
-### Changelog Format
-
-Every spec must maintain a changelog at the bottom:
-
-```markdown
-## Changelog
-
-### 2026-01-23
-- Added streaming support for voice responses
-- Updated configuration options
-
-### 2026-01-15
-- Initial specification
+```
+service (default)  →  feature (rare)  →  bug/security (temporary)
 ```
 
-## Workflow
+| Type | When to use | Example |
+|------|-------------|---------|
+| `service-*` | Major capability, answers "how does X work?" | `service-voice.md` |
+| `feature-*` | Distinct sub-capability with own lifecycle | `feature-voice-streaming.md` |
+| `bug-*` | Specific issue being tracked | `bug-rate-limit-bypass.md` |
+| `security-*` | Security concern or vulnerability | `security-sandbox-escape.md` |
+| `refactor-*` | Planned structural change | `refactor-handler-consolidation.md` |
 
-### Before Coding
-1. Check if a spec exists for the module you're modifying
-2. Read the spec to understand design intent and constraints
-3. Identify gaps or outdated sections
+**Most specs are services. Split only when genuinely necessary.**
 
-### When Adding Features
-1. Update the corresponding spec file with:
-   - New functionality description
-   - API changes
-   - Data model updates
-2. Add a changelog entry with the date and summary
+## Format
 
-### When Creating New Modules
-1. Create a new spec file at `.ai/specs/<module-name>.md`
-2. Document the initial design before or alongside implementation
-3. Include a changelog entry for the initial specification
+```markdown
+---
+id: SVC-001
+type: service | feature | bug | security | refactor
+status: draft | active | done | obsolete
+severity: critical | high | medium | low
+issue: 22
+validated: 2026-01-29
+---
 
-### After Coding
-Even when not explicitly asked to update specs:
-- Generate or update the spec when implementing significant changes
-- Keep specs synchronized with actual implementation
-- Document architectural decisions made during development
+# Title
 
-## For AI Agents
+## What
+- One sentence: what capability/problem this covers
+- Scope boundary: what's included, what's NOT
 
-AI agents working on this codebase should:
-1. **Always check** for existing specs before making changes
-2. **Reference specs** to understand module behavior and constraints
-3. **Update specs** when implementing features, even if not explicitly requested
-4. **Create specs** for new modules or significant features
-5. **Maintain changelogs** with clear, dated entries
+## Why
+- Business reason this exists
+- What breaks without it
 
-This ensures the `.ai/specs/` folder remains a reliable reference for understanding module behavior and evolution over time.
+## How
+- Key components involved (reference `src/path:lines`)
+- Data flow or sequence (brief)
+- Configuration options
+
+## Test
+- Key scenarios to verify (one line each)
+- Edge cases that matter
+
+## Changelog
+- YYYY-MM-DD: Change summary
+```
+
+## Rules
+
+1. **Max 50 lines per spec** (excluding frontmatter/changelog). Split if larger.
+2. **One concern per spec.** Multiple related specs can live in one file, separated by `---`.
+3. **Reference code locations**, don't duplicate code.
+4. **Validate regularly.** Update `validated` date when you confirm spec matches reality.
+5. **Link to issues.** Every spec should trace to a GitHub issue.
+
+## ID Prefixes
+
+| Prefix | Type |
+|--------|------|
+| SVC | Service |
+| FEA | Feature |
+| BUG | Bug |
+| SEC | Security |
+| REF | Refactor |
+
+## Anti-Patterns
+
+- **Spec mirrors file structure** - Coupling docs to implementation
+- **Prose essays** - Nobody reads walls of text
+- **Spec diverges from code** - Lies waiting to mislead
+- **Orphan specs** - No linked issue, no owner, no validation

@@ -12,14 +12,14 @@ graph TD
     end
 
     subgraph Worker[Worker]
-        PORT[Port]
-        BRAIN[Brain]
+        BRAIN[Brain <br> Gatekeeper]
         SDK[Claude SDK]
         VOICE[Audio Processing]
 
-        PORT <--> VOICE
-        VOICE <--> BRAIN
-        BRAIN --> SDK
+        BRAIN <--> VOICE
+        API <--> BRAIN
+
+        BRAIN <--> SDK
     end
 
     subgraph Vault[Vault]
@@ -28,24 +28,23 @@ graph TD
         MEMORY[Memory]
     end
 
-    subgraph Sandbox[Sandbox]
-        FILES[Working Files]
-        EXEC[Code Execution]
-    end
-
     subgraph Backup[Backup]
         SNAP[Snapshots]
     end
 
-    TG --> PORT
-    HTTP --> PORT
-    CLI --> PORT
-    DISC --> PORT
+    subgraph Sandbox[Sandbox]
+        TOOLS[Tools]
+        TMP[Temporary <br> Experiments]
+    end
 
-    BRAIN <-.-> MEMORY
-    SDK <--> Sandbox
+    TG --> API
+    HTTP --> API
+    CLI --> API
+    DISC --> API
+
+    BRAIN <--> Vault
+    BRAIN <--> Sandbox
     SDK <-.-> Vault
-    Sandbox --> Vault
     Vault --> Backup
 ```
 

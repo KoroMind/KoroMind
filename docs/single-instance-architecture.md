@@ -52,8 +52,8 @@ graph TD
 
 | Component | Role |
 |-----------|------|
-| **Port** | Single entry point, routes requests, protocol translation |
-| **Brain** | Thin orchestrator—loads config, calls SDK, handles voice |
+| **API** | Single entry point, routes requests, protocol translation |
+| **Brain (Gatekeeper)** | Central orchestrator—loads config, calls SDK, handles voice, manages all component communication |
 | **Audio** | ElevenLabs STT/TTS |
 | **Claude SDK** | Tool execution, MCP, permissions, sessions, Vault access |
 | **Vault** | Persistent user state and config (Docker volume) |
@@ -74,12 +74,12 @@ graph TD
 
 Telegram was bypassing Brain entirely—calling Claude SDK directly, managing its own `pending_approvals`, implementing its own `can_use_tool` callback, its own watch mode. Business logic duplicated, behavior inconsistent, hard to add new connectors.
 
-**Decision**: One protocol. All connectors speak it. Port handles everything.
+**Decision**: One protocol. All connectors speak it. API routes to Brain, Brain handles everything.
 
 ```
-Connector → JSON Request → Port → Brain → SDK
-                           ↓
-Connector ← JSON Response ← Port
+Connector → JSON Request → API → Brain → SDK
+                            ↓
+Connector ← JSON Response ← API
 ```
 
 **Value**: Single source of truth. Add Discord? Just translate its messages to JSON. Same logic, same behavior.
@@ -93,7 +93,7 @@ Connector ← JSON Response ← Port
 Connector responsibilities:
 1. Receive native input (Telegram update, HTTP request)
 2. Translate to JSON
-3. Send to Port
+3. Send to API
 4. Receive JSON response
 5. Translate to native output
 
@@ -104,7 +104,7 @@ Connectors do NOT:
 - Store state
 - Implement approval logic
 
-**Value**: No duplication. Test Port once, not each connector separately.
+**Value**: No duplication. Test API and Brain once, not each connector separately.
 
 ---
 
@@ -113,7 +113,7 @@ Connectors do NOT:
 **Insight**: The Claude SDK already solves the hard problems—tool execution, MCP server management, hooks, permissions, session continuity.
 
 Brain's job:
-1. Receive input from Port
+1. Receive input from API
 2. Transcribe voice if needed
 3. Load user config from Vault
 4. Build `ClaudeAgentOptions`, pass to SDK
@@ -225,14 +225,14 @@ The architecture supports multi-tenancy later—Vault is portable, Worker is sta
 
 ```
 1. Client sends message (Telegram/HTTP/CLI)
-2. Connector translates to JSON, sends to Port
-3. Port routes to Brain
+2. Connector translates to JSON, sends to API
+3. API routes to Brain
 4. Brain loads user config from Vault
 5. Brain passes ClaudeAgentOptions to SDK
 6. SDK executes (tools run in Sandbox, can access Vault)
 7. Brain updates state in Vault
 8. Brain synthesizes audio if requested
-9. Port returns JSON response
+9. API returns JSON response
 10. Connector translates to native output
 ```
 

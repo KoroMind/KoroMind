@@ -1,8 +1,11 @@
 """The Brain - central orchestration layer for KoroMind."""
 
+import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
@@ -46,6 +49,15 @@ class Brain:
         self._claude_client = claude_client
         self._voice_engine = voice_engine
         self._rate_limiter = rate_limiter
+
+        if self._vault:
+            logger.info(f"Brain initialized with vault: {vault_path}")
+            if self._vault.exists:
+                logger.debug(f"Vault config found at: {self._vault.config_file}")
+            else:
+                logger.warning(f"Vault path set but no config found: {vault_path}")
+        else:
+            logger.debug("Brain initialized without vault")
 
     @property
     def vault(self) -> Vault | None:
@@ -167,6 +179,15 @@ class Brain:
         # Explicit kwargs take precedence over vault config
         vault_config = self._vault.load() if self._vault else {}
         merged_kwargs = {**vault_config, **kwargs}
+
+        if vault_config:
+            logger.debug(
+                f"Vault config loaded: model={vault_config.get('model')}, "
+                f"max_turns={vault_config.get('max_turns')}, "
+                f"cwd={vault_config.get('cwd')}"
+            )
+        if kwargs:
+            logger.debug(f"Explicit kwargs override: {list(kwargs.keys())}")
 
         # Call Claude
         response_text, new_session_id, metadata = await self.claude_client.query(

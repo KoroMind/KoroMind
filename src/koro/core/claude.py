@@ -1,10 +1,13 @@
 """Claude SDK wrapper for agent interactions."""
 
 import json
+import logging
 import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, CLIConnectionError, CLINotFoundError, ProcessError
 from claude_agent_sdk.types import (
@@ -130,6 +133,10 @@ class ClaudeClient:
         user_settings: dict | None,
         mode: str,
         can_use_tool: CanUseTool | None,
+        # Vault config options
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
+        system_prompt_file: str | None = None,
         # Full SDK options
         hooks: dict[HookEvent, list[HookMatcher]] | None = None,
         mcp_servers: dict[str, McpServerConfig] | None = None,
@@ -145,14 +152,31 @@ class ClaudeClient:
         enable_file_checkpointing: bool = False,
     ) -> ClaudeAgentOptions:
         """Build SDK options from parameters."""
-        # Get dynamic system prompt
-        system_prompt = self.prompt_manager.get_prompt(user_settings)
+        # Determine system prompt: vault file > prompt manager
+        if system_prompt_file:
+            prompt_path = Path(system_prompt_file)
+            if prompt_path.exists():
+                system_prompt = prompt_path.read_text()
+                logger.debug(f"Loaded system prompt from vault: {system_prompt_file}")
+            else:
+                logger.warning(f"System prompt file not found: {system_prompt_file}")
+                system_prompt = self.prompt_manager.get_prompt(user_settings)
+        else:
+            system_prompt = self.prompt_manager.get_prompt(user_settings)
+
+        # Determine cwd: vault > sandbox_dir
+        effective_cwd = cwd or self.sandbox_dir
+        logger.debug(f"Using cwd: {effective_cwd}")
+
+        # Determine add_dirs: vault > working_dir
+        effective_add_dirs = add_dirs or [self.working_dir]
+        logger.debug(f"Using add_dirs: {effective_add_dirs}")
 
         # Base options
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
-            cwd=self.sandbox_dir,
-            add_dirs=[self.working_dir],
+            cwd=effective_cwd,
+            add_dirs=effective_add_dirs,
             # Pass through new options
             hooks=hooks,
             mcp_servers=mcp_servers,
@@ -167,6 +191,8 @@ class ClaudeClient:
             include_partial_messages=include_partial_messages,
             enable_file_checkpointing=enable_file_checkpointing,
         )
+
+        logger.debug(f"Built options: model={model}, max_turns={max_turns}")
 
         # Set permission mode and tools based on mode
         if mode == "approve" and can_use_tool:
@@ -198,7 +224,11 @@ class ClaudeClient:
         mode: str = "go_all",
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
-        # New options
+        # Vault config options
+        cwd: str | None = None,
+        add_dirs: list[str] | None = None,
+        system_prompt_file: str | None = None,
+        # Full SDK options
         hooks: dict[HookEvent, list[HookMatcher]] | None = None,
         mcp_servers: dict[str, McpServerConfig] | None = None,
         agents: dict[str, AgentDefinition] | None = None,
@@ -215,6 +245,8 @@ class ClaudeClient:
         """
         Query Claude and return response.
         """
+        logger.debug(f"Query starting: mode={mode}, session={session_id}")
+
         # Ensure sandbox exists
         Path(self.sandbox_dir).mkdir(parents=True, exist_ok=True)
 
@@ -224,12 +256,16 @@ class ClaudeClient:
             megg_ctx = load_megg_context(self.working_dir)
             if megg_ctx:
                 full_prompt = f"<context>\n{megg_ctx}\n</context>\n\n{prompt}"
+                logger.debug("Added megg context to prompt")
 
         # Build options
         options = self._build_options(
             user_settings=user_settings,
             mode=mode,
             can_use_tool=can_use_tool,
+            cwd=cwd,
+            add_dirs=add_dirs,
+            system_prompt_file=system_prompt_file,
             hooks=hooks,
             mcp_servers=mcp_servers,
             agents=agents,
@@ -298,27 +334,37 @@ class ClaudeClient:
             metadata["tool_count"] = tool_count
             if thinking_content:
                 metadata["thinking"] = thinking_content
+
+            logger.debug(
+                f"Query complete: tools={tool_count}, "
+                f"cost=${metadata.get('cost', 0):.4f}, "
+                f"turns={metadata.get('num_turns', 0)}"
+            )
             return result_text, new_session_id, metadata
 
         except CLINotFoundError:
+            logger.error("Claude CLI not found")
             return (
                 "Error: Claude CLI not found. Please install claude-code.",
                 session_id or "",
                 {"error": "cli_not_found"},
             )
         except CLIConnectionError as e:
+            logger.error(f"Claude CLI connection failed: {e}")
             return (
                 f"Error: Failed to connect to Claude CLI: {e}",
                 session_id or "",
                 {"error": "connection_failed"},
             )
         except ProcessError as e:
+            logger.error(f"Claude process failed: exit={e.exit_code}")
             return (
                 f"Error: Claude process failed (exit {e.exit_code}): {e}",
                 session_id or "",
                 {"error": "process_error", "exit_code": e.exit_code},
             )
         except Exception as e:
+            logger.exception(f"Unexpected error calling Claude: {e}")
             return f"Error calling Claude: {e}", session_id or "", {"error": str(e)}
 
     async def query_stream(
@@ -336,9 +382,11 @@ class ClaudeClient:
         """
         Query Claude and yield events (StreamEvent or messages).
         """
+        logger.debug(f"Query stream starting: mode={mode}, session={session_id}")
+
         # Ensure partial messages are enabled for streaming
         kwargs["include_partial_messages"] = True
-        
+
         # Ensure sandbox exists
         Path(self.sandbox_dir).mkdir(parents=True, exist_ok=True)
 

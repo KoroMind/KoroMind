@@ -4,10 +4,13 @@ The Vault loads configuration from vault-config.yaml and provides it
 as a dict that passes directly to the Claude SDK via Brain.
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class VaultError(Exception):
@@ -52,28 +55,39 @@ class Vault:
             VaultError: If config file exists but is invalid YAML.
         """
         if self._config is not None:
+            logger.debug("Returning cached config")
             return self._config
 
         if not self.config_file.exists():
+            logger.debug(f"No config file at {self.config_file}")
             self._config = {}
             return self._config
+
+        logger.debug(f"Loading config from {self.config_file}")
 
         try:
             with open(self.config_file) as f:
                 raw = yaml.safe_load(f)
         except yaml.YAMLError as e:
+            logger.error(f"Invalid YAML in {self.config_file}: {e}")
             raise VaultError(f"Invalid YAML in {self.config_file}: {e}") from e
 
         if raw is None:
+            logger.debug("Config file is empty or null")
             self._config = {}
             return self._config
 
         if not isinstance(raw, dict):
+            logger.error(f"Config must be a mapping, got {type(raw).__name__}")
             raise VaultError(
                 f"vault-config.yaml must be a mapping, got {type(raw).__name__}"
             )
 
         self._config = self._resolve_paths(raw)
+        logger.info(
+            f"Vault config loaded: {len(self._config)} keys, "
+            f"model={self._config.get('model')}"
+        )
         return self._config
 
     def reload(self) -> dict[str, Any]:

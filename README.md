@@ -334,6 +334,27 @@ pytest --cov=koro --cov-report=term-missing
 
 ---
 
+## Deployment
+
+### Server Setup (GCP/AWS/VPS)
+
+One-liner setup on a fresh Ubuntu 24.04 VM:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/main/scripts/setup.sh | bash
+```
+
+This installs dependencies, creates the venv, and sets up a systemd service. Then edit `.env` and start:
+
+```bash
+nano ~/KoroMind/.env          # Add your API keys
+sudo systemctl enable --now koromind-telegram
+```
+
+See [docs/local-server-setup.md](docs/local-server-setup.md) for the full guide.
+
+---
+
 ## Architecture Decisions
 
 - **Core Library Pattern**: `koro.core` is interface-agnostic, enabling multiple frontends

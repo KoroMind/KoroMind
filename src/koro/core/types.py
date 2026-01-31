@@ -1,12 +1,10 @@
 """Shared types and data structures for KoroMind."""
 
-from __future__ import annotations
-
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, StrEnum
-from typing import Any, Literal, Protocol
+from enum import Enum
+from typing import Any, Literal, TypedDict
 
 from claude_agent_sdk import SdkMcpTool
 from claude_agent_sdk.types import (
@@ -25,8 +23,6 @@ from claude_agent_sdk.types import (
     ThinkingBlock,
     ToolPermissionContext,
 )
-from pydantic import BaseModel, Field, field_validator
-from typing_extensions import TypedDict
 
 
 class OutputFormat(TypedDict):
@@ -36,60 +32,22 @@ class OutputFormat(TypedDict):
     schema: dict[str, Any]
 
 
-class CanUseTool(Protocol):
-    """Callback signature for SDK tool permission checks."""
-
-    def __call__(
-        self,
-        tool_name: str,
-        tool_input: dict[str, Any],
-        context: ToolPermissionContext,
-    ) -> Awaitable[PermissionResult]:
-        pass
-
-
-class OnToolCall(Protocol):
-    """Callback signature for tool call notifications."""
-
-    def __call__(self, tool_name: str, detail: str | None) -> Awaitable[None]:
-        pass
-
-
-class ClaudeTools(StrEnum):
-    """Claude tool names for allowed tool lists."""
-
-    READ = "Read"
-    GREP = "Grep"
-    GLOB = "Glob"
-    WEBSEARCH = "WebSearch"
-    WEBFETCH = "WebFetch"
-    TASK = "Task"
-    BASH = "Bash"
-    EDIT = "Edit"
-    WRITE = "Write"
-    SKILL = "Skill"
-
-
-DEFAULT_CLAUDE_TOOLS = [
-    ClaudeTools.READ,
-    ClaudeTools.GREP,
-    ClaudeTools.GLOB,
-    ClaudeTools.WEBSEARCH,
-    ClaudeTools.WEBFETCH,
-    ClaudeTools.TASK,
-    ClaudeTools.BASH,
-    ClaudeTools.EDIT,
-    ClaudeTools.WRITE,
-    ClaudeTools.SKILL,
+# Type alias for tool permission callback (SDK-compatible)
+# Signature: (tool_name, tool_input, context) -> PermissionResult
+CanUseTool = Callable[
+    [str, dict[str, Any], ToolPermissionContext],
+    Awaitable[PermissionResult],
 ]
+
+# Type alias for tool call notification callback
+# Signature: (tool_name, detail) -> None
+OnToolCall = Callable[[str, str | None], None]
 
 # Re-export SDK types for convenience
 __all__ = [
     "AgentDefinition",
     "BrainResponse",
     "CanUseTool",
-    "ClaudeTools",
-    "DEFAULT_CLAUDE_TOOLS",
     "HookCallback",
     "HookContext",
     "HookEvent",
@@ -111,7 +69,6 @@ __all__ = [
     "ThinkingBlock",
     "ToolCall",
     "ToolPermissionContext",
-    "QueryConfig",
     "UserSettings",
 ]
 
@@ -128,15 +85,6 @@ class Mode(Enum):
 
     GO_ALL = "go_all"
     APPROVE = "approve"
-
-
-class UserSettings(BaseModel, frozen=True):
-    """User preferences and settings."""
-
-    mode: Mode = Mode.GO_ALL
-    audio_enabled: bool = True
-    voice_speed: float = 1.1
-    watch_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -187,62 +135,42 @@ class Session:
         )
 
 
-class ProjectConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):
+@dataclass
+class ProjectConfig:
     """Project-level configuration (hooks, mcp, agents, etc)."""
 
-    hooks: dict[HookEvent, list[HookMatcher]] = {}
-    mcp_servers: dict[str, McpServerConfig] = {}
-    agents: dict[str, AgentDefinition] = {}
-    plugins: list[SdkPluginConfig] = []
+    hooks: dict[HookEvent, list[HookMatcher]] | None = None
+    mcp_servers: dict[str, McpServerConfig] | None = None
+    agents: dict[str, AgentDefinition] | None = None
+    plugins: list[SdkPluginConfig] | None = None
     sandbox: SandboxSettings | None = None
 
 
-class QueryConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):
-    """Configuration for Claude SDK queries."""
+@dataclass
+class UserSettings:
+    """User preferences and settings."""
 
-    prompt: str
-    session_id: str | None = None
-    continue_last: bool = False
-    include_megg: bool = True
-    user_settings: UserSettings = Field(default_factory=UserSettings)
     mode: Mode = Mode.GO_ALL
-    # Protocol types can't be validated by Pydantic, use Any
-    on_tool_call: Any | None = None  # OnToolCall
-    can_use_tool: Any | None = None  # CanUseTool
-    hooks: dict[HookEvent, list[HookMatcher]] = {}
-    mcp_servers: dict[str, McpServerConfig] = {}
-    agents: dict[str, AgentDefinition] = {}
-    plugins: list[SdkPluginConfig] = []
-    sandbox: SandboxSettings | None = None
-    output_format: OutputFormat | None = None
-    max_turns: int | None = None
-    max_budget_usd: float | None = None
-    model: str | None = None
-    fallback_model: str | None = None
-    include_partial_messages: bool = False
-    enable_file_checkpointing: bool = False
+    audio_enabled: bool = True
+    voice_speed: float = 1.1
+    watch_enabled: bool = False
 
-    @field_validator("max_turns")
-    @classmethod
-    def _validate_max_turns(cls, value: int | None) -> int | None:
-        if value is None:
-            return value
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise TypeError(f"max_turns must be int, got {type(value)}")
-        return value
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        return {
+            "mode": self.mode.value,
+            "audio_enabled": self.audio_enabled,
+            "voice_speed": self.voice_speed,
+            "watch_enabled": self.watch_enabled,
+        }
 
-    @field_validator("max_budget_usd")
     @classmethod
-    def _validate_max_budget_usd(cls, value: float | None) -> float | None:
-        if value is None:
-            return value
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise TypeError(f"max_budget_usd must be float, got {type(value)}")
-        return float(value)
-
-    @field_validator("include_partial_messages", "enable_file_checkpointing")
-    @classmethod
-    def _validate_bool_flags(cls, value: bool) -> bool:
-        if not isinstance(value, bool):
-            raise TypeError(f"Value must be bool, got {type(value)}")
-        return value
+    def from_dict(cls, data: dict) -> "UserSettings":
+        """Create from dictionary."""
+        mode_value = data.get("mode", "go_all")
+        return cls(
+            mode=Mode(mode_value) if isinstance(mode_value, str) else mode_value,
+            audio_enabled=data.get("audio_enabled", True),
+            voice_speed=data.get("voice_speed", 1.1),
+            watch_enabled=data.get("watch_enabled", False),
+        )

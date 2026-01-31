@@ -3,8 +3,8 @@ id: SVC-004
 type: service
 status: active
 severity: critical
-issue: null
-validated: 2026-01-29
+issue: 35
+validated: 2026-02-01
 ---
 
 # Brain Service
@@ -76,7 +76,14 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - `StreamEvent`: Detailed events (tool use, content block deltas)
 - `ResultMessage`: Final completion data
 
+### Vault Integration
+- `Brain(vault_path=...)` loads config from vault directory
+- Vault config merged with explicit kwargs (kwargs take precedence)
+- Supports: model, max_turns, cwd, add_dirs, system_prompt_file, hooks, mcp_servers, agents, sandbox
+- See `service-vault.md` for details
+
 ### Dependencies
+- `Vault` - configuration loading (optional)
 - `StateManager` - session/settings persistence
 - `VoiceEngine` - STT/TTS (optional)
 - `RateLimiter` - per-user throttling
@@ -94,6 +101,11 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - Structured output returned when requested
 
 ## Changelog
+
+### 2026-02-01
+- Added vault integration for stateless configuration
+- Config merging: vault config + explicit kwargs
+- Added debug logging throughout
 
 ### 2026-01-31
 - Added full Claude SDK support (Hooks, MCP, Agents, Plugins)

@@ -1,6 +1,7 @@
 """The Brain - central orchestration layer for KoroMind."""
 
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any, Callable
 
 from koro.core.claude import ClaudeClient, get_claude_client
@@ -14,6 +15,7 @@ from koro.core.types import (
     ToolCall,
     UserSettings,
 )
+from koro.core.vault import Vault
 from koro.core.voice import VoiceEngine, get_voice_engine
 
 
@@ -22,6 +24,7 @@ class Brain:
 
     def __init__(
         self,
+        vault_path: Path | str | None = None,
         state_manager: StateManager | None = None,
         claude_client: ClaudeClient | None = None,
         voice_engine: VoiceEngine | None = None,
@@ -31,15 +34,23 @@ class Brain:
         Initialize the brain with optional dependency injection.
 
         Args:
+            vault_path: Path to vault directory containing vault-config.yaml.
+                If provided, configuration is loaded and passed to Claude SDK.
             state_manager: State manager instance (defaults to global)
             claude_client: Claude client instance (defaults to global)
             voice_engine: Voice engine instance (defaults to global)
             rate_limiter: Rate limiter instance (defaults to global)
         """
+        self._vault = Vault(vault_path) if vault_path else None
         self._state_manager = state_manager
         self._claude_client = claude_client
         self._voice_engine = voice_engine
         self._rate_limiter = rate_limiter
+
+    @property
+    def vault(self) -> Vault | None:
+        """Get vault instance if configured."""
+        return self._vault
 
     @property
     def state_manager(self) -> StateManager:
@@ -152,6 +163,11 @@ class Brain:
             if on_tool_call and watch_enabled:
                 on_tool_call(tool_name, detail)
 
+        # Load vault config if available, merge with explicit kwargs
+        # Explicit kwargs take precedence over vault config
+        vault_config = self._vault.load() if self._vault else {}
+        merged_kwargs = {**vault_config, **kwargs}
+
         # Call Claude
         response_text, new_session_id, metadata = await self.claude_client.query(
             prompt=text,
@@ -161,7 +177,7 @@ class Brain:
             mode=mode.value,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
-            **kwargs,
+            **merged_kwargs,
         )
 
         # Update session state
@@ -230,6 +246,10 @@ class Brain:
             if on_tool_call and watch_enabled:
                 on_tool_call(tool_name, detail)
 
+        # Load vault config if available, merge with explicit kwargs
+        vault_config = self._vault.load() if self._vault else {}
+        merged_kwargs = {**vault_config, **kwargs}
+
         # Yield events from Claude
         async for event in self.claude_client.query_stream(
             prompt=text,
@@ -239,7 +259,7 @@ class Brain:
             mode=mode.value,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
-            **kwargs,
+            **merged_kwargs,
         ):
             yield event
 

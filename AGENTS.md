@@ -141,7 +141,7 @@ Legacy JSON files (`sessions_state.json`, `user_settings.json`) are auto-migrate
 
 ## Documentation and Specifications
 
-This project follows **spec-driven development**: define the specification first, then implement. Spec files live in `.ai/specs/` and serve as the source of truth for design decisions. See `.ai/specs/AGENTS.md` for full guidelines.
+This project follows **spec-driven development**: define the specification first, then implement. Spec files live in `.ai/specs/` and serve as the source of truth for design decisions. See `.ai/specs/AGENTS.md` for format guidelines.
 
 ### Workflow
 

@@ -1,0 +1,58 @@
+graph TD
+    subgraph Clients[Clients - External]
+        TG[Telegram]
+        HTTP[HTTP/Mobile]
+        DISC[Discord]
+    end
+
+    subgraph Worker[Worker]
+        subgraph Connectors[Connectors]
+            TGW[Telegram]
+            HTTPW[HTTP/Mobile]
+            DISCW[Discord]
+        end
+        CLI[CLI]
+        BRAIN[Brain <br> Gatekeeper]
+        SDK[Claude SDK]
+        VOICE[Audio Processing]
+        VAULT[Vault]
+    end
+
+    subgraph Mount[Mount]
+        SETTINGS[Settings]
+        MCP[mcp.json]
+        DIR[Directories]
+        MEM[Memeories]
+    end
+
+    subgraph Backup[Backup]
+        SNAP[Snapshots]
+    end
+
+    subgraph Sandbox[Sandbox]
+        TOOLS[Tools]
+        TMP[Temporary <br> Experiments]
+    end
+
+    
+    TG --> TGW
+    HTTP --> HTTPW
+    DISC --> DISCW
+    CLI --> BRAIN
+
+    TGW --> BRAIN
+    HTTPW --> BRAIN
+    DISCW --> BRAIN
+    BRAIN --> VAULT
+
+    BRAIN --> SDK
+    BRAIN --> VOICE
+    SDK --> Sandbox
+
+    SDK --> Mount
+
+    VAULT --> Mount
+    VOICE --> ElevenLabs
+    VOICE --> OpenAI
+
+    Mount --> Backup

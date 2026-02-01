@@ -9,7 +9,6 @@ from claude_agent_sdk.types import (
     StreamEvent,
     TextBlock,
     ThinkingBlock,
-    ToolUseBlock,
 )
 
 from koro.core.claude import ClaudeClient

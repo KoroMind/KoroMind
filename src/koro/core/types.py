@@ -6,7 +6,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from typing_extensions import TypedDict
 
@@ -47,14 +47,14 @@ class CanUseTool(Protocol):
         tool_input: dict[str, Any],
         context: ToolPermissionContext,
     ) -> Awaitable[PermissionResult]:
-        ...
+        pass
 
 
 class OnToolCall(Protocol):
     """Callback signature for tool call notifications."""
 
     def __call__(self, tool_name: str, detail: str | None) -> None:
-        ...
+        pass
 
 
 class ClaudeTools(StrEnum):

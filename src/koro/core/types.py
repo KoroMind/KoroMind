@@ -43,9 +43,30 @@ CanUseTool = Callable[
 # Signature: (tool_name, detail) -> None
 OnToolCall = Callable[[str, str | None], None]
 
+
+@dataclass
+class BrainCallbacks:
+    """Callbacks for Brain operations (Decision 4 from architecture)."""
+
+    on_tool_use: Callable[[str, str | None], None] | None = None
+    """Called when a tool is used (watch mode). Args: tool_name, detail."""
+
+    on_tool_approval: (
+        Callable[
+            [str, dict[str, Any], ToolPermissionContext], Awaitable[PermissionResult]
+        ]
+        | None
+    ) = None
+    """Called to approve tool use (approve mode). SDK-compatible signature."""
+
+    on_progress: Callable[[str], None] | None = None
+    """Called with progress updates during processing."""
+
+
 # Re-export SDK types for convenience
 __all__ = [
     "AgentDefinition",
+    "BrainCallbacks",
     "BrainResponse",
     "CanUseTool",
     "HookCallback",

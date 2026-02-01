@@ -2,7 +2,7 @@
 name = "koromind"
 version = "2.0.0"
 description = "Multi-interface personal AI assistant with voice and agentic capabilities"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "python-telegram-bot>=20.0,<22.0",
     "elevenlabs>=1.0.0,<2.0.0",
@@ -54,7 +54,7 @@ filterwarnings = [
 
 [tool.black]
 line-length = 88
-target-version = ["py311"]
+target-version = ["py312"]
 
 [tool.isort]
 profile = "black"
@@ -62,7 +62,7 @@ line_length = 88
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 
 [tool.coverage.run]
 source = ["koro"]

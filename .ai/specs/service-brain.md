@@ -3,7 +3,7 @@ id: SVC-004
 type: service
 status: active
 severity: critical
-issue: 35
+issue: 38
 validated: 2026-02-01
 ---
 
@@ -41,9 +41,22 @@ Input → Brain.process_message() → [STT if voice] → Claude → [Tools] → 
 - **GO_ALL**: Auto-execute all tool calls
 - **APPROVE**: Call `can_use_tool` callback for each tool (interface shows UI)
 
-### Watch Mode
-- `on_tool_call` callback streams tool executions to interface
-- Enables real-time visibility into Claude's actions
+### Callbacks Pattern (Decision 4)
+Structured callbacks for interface integration:
+
+```python
+@dataclass
+class BrainCallbacks:
+    on_tool_use: Callable[[str, str | None], None] | None = None      # Watch mode
+    on_tool_approval: CanUseTool | None = None                         # Approve mode
+    on_progress: Callable[[str], None] | None = None                   # Progress updates
+```
+
+- `on_tool_use`: Called when tools execute (watch mode visibility)
+- `on_tool_approval`: Called to approve tool use (SDK-compatible)
+- `on_progress`: Called with status updates during processing
+- None callback = feature disabled gracefully
+- Legacy `on_tool_call` and `can_use_tool` params still work (deprecated)
 
 ### Claude Integration
 - **Full SDK Parity**: Supports all `ClaudeAgentOptions` including hooks, MCP servers, subagents, plugins, and sandbox settings
@@ -101,6 +114,15 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - Structured output returned when requested
 
 ## Changelog
+
+### 2026-02-01 (Issue #38)
+- Added `BrainCallbacks` dataclass for structured event handling
+- Callbacks: on_tool_use, on_tool_approval, on_progress
+- None callback = graceful feature disabling
+- Backward compatible with legacy params (deprecated)
+- Added live integration tests (9 tests)
+- Added agent-evaluated quality tests (5 tests)
+- Enhanced DEBUG logging throughout
 
 ### 2026-02-01
 - Added vault integration for stateless configuration

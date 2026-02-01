@@ -11,6 +11,7 @@ from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
 from koro.core.state import StateManager, get_state_manager
 from koro.core.types import (
+    BrainCallbacks,
     BrainResponse,
     MessageType,
     Mode,
@@ -113,6 +114,7 @@ class Brain:
         watch_enabled: bool = False,
         on_tool_call: Callable[[str, str | None], None] | None = None,
         can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        callbacks: BrainCallbacks | None = None,
         **kwargs,
     ) -> BrainResponse:
         """
@@ -127,8 +129,9 @@ class Brain:
             include_audio: Whether to include TTS audio in response
             voice_speed: Voice speed for TTS (0.7-1.2)
             watch_enabled: Whether to call on_tool_call for each tool
-            on_tool_call: Callback when tool is called (for watch mode)
-            can_use_tool: SDK-compatible callback for tool approval (for approve mode)
+            on_tool_call: Callback when tool is called (for watch mode) [DEPRECATED: use callbacks]
+            can_use_tool: SDK-compatible callback for tool approval (for approve mode) [DEPRECATED: use callbacks]
+            callbacks: Structured callbacks for progress, tool use, and approval
             **kwargs: Additional arguments passed to ClaudeClient.query
                 (hooks, mcp_servers, agents, plugins, sandbox, output_format, etc.)
 
@@ -137,6 +140,13 @@ class Brain:
         """
         tool_calls: list[ToolCall] = []
 
+        # Prefer callbacks over individual params
+        tool_use_callback = callbacks.on_tool_use if callbacks else on_tool_call
+        tool_approval_callback = (
+            callbacks.on_tool_approval if callbacks else can_use_tool
+        )
+        progress_callback = callbacks.on_progress if callbacks else None
+
         # Transcribe voice if needed
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
@@ -144,7 +154,11 @@ class Brain:
                     text="Error: Voice content must be bytes",
                     session_id=session_id or "",
                 )
+            if progress_callback:
+                progress_callback("Transcribing voice input...")
+            logger.debug("Starting voice transcription")
             text = await self.voice_engine.transcribe(content)
+            logger.debug(f"Transcription complete: {len(text)} chars")
             if text.startswith("[Transcription error") or text.startswith("[Error"):
                 return BrainResponse(
                     text=text,
@@ -172,11 +186,13 @@ class Brain:
         # Tool call tracking wrapper
         def _on_tool_call(tool_name: str, detail: str | None):
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
-            if on_tool_call and watch_enabled:
-                on_tool_call(tool_name, detail)
+            if tool_use_callback and watch_enabled:
+                tool_use_callback(tool_name, detail)
 
         # Load vault config if available, merge with explicit kwargs
         # Explicit kwargs take precedence over vault config
+        if progress_callback:
+            progress_callback("Loading configuration...")
         vault_config = self._vault.load() if self._vault else {}
         merged_kwargs = {**vault_config, **kwargs}
 
@@ -190,6 +206,11 @@ class Brain:
             logger.debug(f"Explicit kwargs override: {list(kwargs.keys())}")
 
         # Call Claude
+        if progress_callback:
+            progress_callback("Processing with Claude SDK...")
+        logger.debug(
+            f"Calling Claude SDK with session_id={session_id}, mode={mode.value}"
+        )
         response_text, new_session_id, metadata = await self.claude_client.query(
             prompt=text,
             session_id=session_id,
@@ -197,8 +218,11 @@ class Brain:
             user_settings=user_settings,
             mode=mode.value,
             on_tool_call=_on_tool_call if watch_enabled else None,
-            can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
             **merged_kwargs,
+        )
+        logger.debug(
+            f"Claude SDK response complete: {len(response_text)} chars, new_session_id={new_session_id}"
         )
 
         # Update session state
@@ -207,12 +231,18 @@ class Brain:
         # Generate TTS if requested
         audio_bytes: bytes | None = None
         if include_audio:
+            if progress_callback:
+                progress_callback("Generating voice response...")
             # Note: We only TTS the main text response, not structured output or thinking
+            logger.debug("Starting TTS generation")
             audio_buffer = await self.voice_engine.text_to_speech(
                 response_text, speed=voice_speed
             )
             if audio_buffer:
                 audio_bytes = audio_buffer.read()
+            logger.debug(
+                f"TTS complete: {len(audio_bytes) if audio_bytes else 0} bytes"
+            )
 
         return BrainResponse(
             text=response_text,
@@ -232,6 +262,7 @@ class Brain:
         watch_enabled: bool = False,
         on_tool_call: Callable[[str, str | None], None] | None = None,
         can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        callbacks: BrainCallbacks | None = None,
         **kwargs,
     ) -> AsyncIterator[Any]:
         """
@@ -239,13 +270,25 @@ class Brain:
 
         Args:
             Same as process_message, but returns an iterator.
+            callbacks: Structured callbacks for progress, tool use, and approval
         """
+        # Prefer callbacks over individual params
+        tool_use_callback = callbacks.on_tool_use if callbacks else on_tool_call
+        tool_approval_callback = (
+            callbacks.on_tool_approval if callbacks else can_use_tool
+        )
+        progress_callback = callbacks.on_progress if callbacks else None
+
         # Transcribe voice if needed (blocking step before stream starts)
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
                 yield {"error": "Voice content must be bytes"}
                 return
+            if progress_callback:
+                progress_callback("Transcribing voice input...")
+            logger.debug("Starting voice transcription for stream")
             text = await self.voice_engine.transcribe(content)
+            logger.debug(f"Transcription complete: {len(text)} chars")
             if text.startswith("[Transcription error") or text.startswith("[Error"):
                 yield {"error": text}
                 return
@@ -264,14 +307,26 @@ class Brain:
         }
 
         def _on_tool_call(tool_name: str, detail: str | None):
-            if on_tool_call and watch_enabled:
-                on_tool_call(tool_name, detail)
+            if tool_use_callback and watch_enabled:
+                tool_use_callback(tool_name, detail)
 
         # Load vault config if available, merge with explicit kwargs
+        if progress_callback:
+            progress_callback("Loading configuration...")
         vault_config = self._vault.load() if self._vault else {}
         merged_kwargs = {**vault_config, **kwargs}
 
+        if vault_config:
+            logger.debug(f"Vault config loaded for stream: {list(vault_config.keys())}")
+        if kwargs:
+            logger.debug(f"Explicit kwargs override for stream: {list(kwargs.keys())}")
+
         # Yield events from Claude
+        if progress_callback:
+            progress_callback("Streaming from Claude SDK...")
+        logger.debug(
+            f"Starting Claude SDK stream with session_id={session_id}, mode={mode.value}"
+        )
         async for event in self.claude_client.query_stream(
             prompt=text,
             session_id=session_id,
@@ -279,7 +334,7 @@ class Brain:
             user_settings=user_settings,
             mode=mode.value,
             on_tool_call=_on_tool_call if watch_enabled else None,
-            can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
             **merged_kwargs,
         ):
             yield event
@@ -296,8 +351,8 @@ class Brain:
                 # ResultMessage or StreamEvent might have session_id
                 # Only update if it's different/new
                 if event.session_id != session_id:
-                     await self.state_manager.update_session(user_id, event.session_id)
-                     session_id = event.session_id # Update local var
+                    await self.state_manager.update_session(user_id, event.session_id)
+                    session_id = event.session_id  # Update local var
 
     async def process_text(
         self,

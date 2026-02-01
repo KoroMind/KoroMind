@@ -10,10 +10,8 @@ These tests verify the complete vault experience:
 import os
 from pathlib import Path
 
-import pytest
 
 from koro.core.vault import Vault
-
 
 # Path to test vault fixture
 TEST_VAULT = Path(__file__).parent.parent / "fixtures" / "test-vault"

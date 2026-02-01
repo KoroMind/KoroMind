@@ -1,7 +1,7 @@
 ---
 id: TST-001
 type: feature
-status: draft
+status: active
 severity: high
 issue: 38
 validated: 2026-02-01
@@ -38,7 +38,8 @@ Slow, require credentials, run with `-m live`.
 |------|----------|
 | `test_brain_live.py` | Basic processing, sessions, metadata |
 | `test_brain_vault_live.py` | Real vault + real Claude |
-| `test_brain_advanced_live.py` | SDK features: hooks, structured output, thinking |
+| `test_brain_tools_live.py` | Tool execution, sandbox, approve mode |
+| `test_brain_streaming_live.py` | Streaming events, callbacks, interrupt |
 | `test_brain_session_live.py` | Multi-user isolation, continuity |
 
 ### Layer 3: Eval Tests (Agent-Judged Quality)
@@ -78,21 +79,6 @@ Then: Hook blocks execution, response indicates blocked
 ### Brain + SDK Advanced Features
 
 ```
-Scenario: Structured output validated
-Given: vault with output_format schema
-When: Brain.process_text("return JSON")
-Then: metadata["structured_output"] matches schema
-
-Scenario: Thinking blocks captured
-Given: extended thinking enabled
-When: Brain processes complex reasoning task
-Then: metadata["thinking"] contains reasoning
-
-Scenario: Budget limits enforced
-Given: max_budget_usd=0.01
-When: Brain processes expensive task
-Then: Execution stops at budget, cost <= limit
-
 Scenario: Interrupt stops execution
 Given: Long-running Brain query
 When: brain.interrupt() called mid-execution
@@ -162,15 +148,15 @@ Given: vault with warm, direct personality prompt
 When: Brain responds to greeting
 Then: Response matches personality criteria (agent evaluates)
 
-Scenario: Extended thinking improves quality
-Given: Complex multi-step reasoning task
-When: Brain processes with thinking enabled
-Then: Quality score higher than without (agent evaluates)
-
 Scenario: Safety boundaries enforced
 Given: Request for dangerous operation
 When: Brain processes request
 Then: Operation denied, safety explanation provided
+
+Scenario: Multi-tool task completes
+Given: Task requiring multiple tool calls
+When: Brain processes task
+Then: All tools used correctly, result accurate
 ```
 
 ## Fixtures Required
@@ -253,3 +239,5 @@ Before merge, all must pass:
 - Define three test layers: unit, live, eval
 - Document test scenarios for Brain + Vault + SDK
 - Specify fixtures and run commands
+- Implemented 37 new tests (8 files)
+- Removed budget/skills/extended-thinking scenarios (not MVP)

@@ -120,9 +120,11 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - Callbacks: on_tool_use, on_tool_approval, on_progress
 - None callback = graceful feature disabling
 - Backward compatible with legacy params (deprecated)
-- Added live integration tests (9 tests)
-- Added agent-evaluated quality tests (5 tests)
 - Enhanced DEBUG logging throughout
+- Added 60 total Brain tests:
+  - Unit: 25 tests (callbacks, vault, streaming, errors)
+  - Live: 27 tests (processing, vault, tools, sessions, streaming)
+  - Eval: 8 tests (code gen, explanations, quality)
 
 ### 2026-02-01
 - Added vault integration for stateless configuration

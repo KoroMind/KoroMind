@@ -19,21 +19,14 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     callback_data = query.data
 
     if callback_data == "setting_audio_toggle":
-        settings["audio_enabled"] = not settings["audio_enabled"]
-        state_manager.update_setting(
-            user_id, "audio_enabled", settings["audio_enabled"]
-        )
+        state_manager.update_setting(user_id, "audio_enabled", not settings.audio_enabled)
 
     elif callback_data == "setting_mode_toggle":
-        current_mode = settings.get("mode", "go_all")
-        new_mode = "approve" if current_mode == "go_all" else "go_all"
-        settings["mode"] = new_mode
+        new_mode = "approve" if settings.mode.value == "go_all" else "go_all"
         state_manager.update_setting(user_id, "mode", new_mode)
 
     elif callback_data == "setting_watch_toggle":
-        new_watch = not settings.get("watch_enabled", False)
-        settings["watch_enabled"] = new_watch
-        state_manager.update_setting(user_id, "watch_enabled", new_watch)
+        state_manager.update_setting(user_id, "watch_enabled", not settings.watch_enabled)
 
     elif callback_data.startswith("setting_speed_"):
         try:
@@ -45,7 +38,6 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
             await query.answer("Invalid speed value")
             return
 
-        settings["voice_speed"] = speed
         state_manager.update_setting(user_id, "voice_speed", speed)
 
     # Build updated menu

@@ -35,13 +35,13 @@ class TestStateManager:
         """get_user_settings creates default settings for new user."""
         settings = state_manager.get_user_settings(99999)
 
-        assert settings["audio_enabled"] is True
-        assert settings["mode"] == "go_all"
-        assert settings["watch_enabled"] is False
-        assert "voice_speed" in settings
+        assert settings.audio_enabled is True
+        assert settings.mode.value == "go_all"
+        assert settings.watch_enabled is False
+        assert settings.voice_speed is not None
 
     @pytest.mark.parametrize(
-        "key,value,expected_key,expected_value",
+        "key,value,expected_attr,expected_value",
         [
             ("audio_enabled", False, "audio_enabled", False),
             ("mode", "approve", "mode", "approve"),
@@ -50,13 +50,17 @@ class TestStateManager:
         ],
     )
     def test_update_setting_saves(
-        self, state_manager, key, value, expected_key, expected_value
+        self, state_manager, key, value, expected_attr, expected_value
     ):
         """update_setting updates and saves settings."""
         state_manager.update_setting(12345, key, value)
 
         settings = state_manager.get_user_settings(12345)
-        assert settings[expected_key] == expected_value
+        actual = getattr(settings, expected_attr)
+        # Mode is an enum, compare values
+        if expected_attr == "mode":
+            actual = actual.value
+        assert actual == expected_value
 
     def test_settings_persist_after_recreation(self, tmp_path):
         """Settings persist across StateManager instances."""
@@ -70,8 +74,8 @@ class TestStateManager:
         manager2 = StateManager(db_path=db_file)
         settings = manager2.get_user_settings(12345)
 
-        assert settings["audio_enabled"] is False
-        assert settings["mode"] == "approve"
+        assert settings.audio_enabled is False
+        assert settings.mode.value == "approve"
 
 
 class TestStateManagerAsync:

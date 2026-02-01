@@ -229,8 +229,9 @@ class QueryConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):
     include_megg: bool = True
     user_settings: UserSettings | None = None
     mode: Mode = Mode.GO_ALL
-    on_tool_call: OnToolCall | None = None
-    can_use_tool: CanUseTool | None = None
+    # Protocol types can't be validated by Pydantic, use Any
+    on_tool_call: Any | None = None  # OnToolCall
+    can_use_tool: Any | None = None  # CanUseTool
     hooks: dict[HookEvent, list[HookMatcher]] = {}
     mcp_servers: dict[str, McpServerConfig] = {}
     agents: dict[str, AgentDefinition] = {}

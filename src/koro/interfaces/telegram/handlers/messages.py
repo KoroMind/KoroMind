@@ -179,10 +179,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_long_message(update, processing_msg, response)
 
         # Voice response if enabled
-        if settings["audio_enabled"]:
+        if settings.audio_enabled:
             voice_engine = get_voice_engine()
             audio = await voice_engine.text_to_speech(
-                response, speed=settings["voice_speed"]
+                response, speed=settings.voice_speed
             )
             if audio:
                 await update.message.reply_voice(voice=audio)

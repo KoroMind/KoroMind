@@ -619,7 +619,7 @@ class TestCallbackHandlers:
         await callbacks.handle_settings_callback(update, MagicMock())
 
         settings = state_manager.get_user_settings(12345)
-        assert settings["audio_enabled"] is False
+        assert settings.audio_enabled is False
 
     @pytest.mark.asyncio
     async def test_settings_toggle_mode(
@@ -637,7 +637,7 @@ class TestCallbackHandlers:
         await callbacks.handle_settings_callback(update, MagicMock())
 
         settings = state_manager.get_user_settings(12345)
-        assert settings["mode"] == "approve"
+        assert settings.mode.value == "approve"
 
     @pytest.mark.asyncio
     async def test_settings_set_speed(
@@ -655,7 +655,7 @@ class TestCallbackHandlers:
         await callbacks.handle_settings_callback(update, MagicMock())
 
         settings = state_manager.get_user_settings(12345)
-        assert settings["voice_speed"] == 0.9
+        assert settings.voice_speed == 0.9
 
     @pytest.mark.asyncio
     async def test_settings_rejects_invalid_speed(
@@ -673,7 +673,7 @@ class TestCallbackHandlers:
         await callbacks.handle_settings_callback(update, MagicMock())
 
         settings = state_manager.get_user_settings(12345)
-        assert settings["voice_speed"] == 1.0
+        assert settings.voice_speed == 1.0
         query.answer.assert_called_with("Invalid speed range")
 
 

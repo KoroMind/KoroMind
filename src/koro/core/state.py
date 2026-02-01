@@ -478,9 +478,9 @@ class StateManager:
                 "sessions": [row["id"] for row in session_rows],
             }
 
-    def get_user_settings(self, user_id: int) -> dict:
+    def get_user_settings(self, user_id: int) -> UserSettings:
         """
-        Get user settings in legacy format.
+        Get user settings.
 
         Deprecated: Use async get_settings instead.
         """
@@ -492,20 +492,15 @@ class StateManager:
             ).fetchone()
 
             if row:
-                return {
-                    "mode": row["mode"],
-                    "audio_enabled": bool(row["audio_enabled"]),
-                    "voice_speed": row["voice_speed"],
-                    "watch_enabled": bool(row["watch_enabled"]),
-                }
+                return UserSettings(
+                    mode=Mode(row["mode"]),
+                    audio_enabled=bool(row["audio_enabled"]),
+                    voice_speed=row["voice_speed"],
+                    watch_enabled=bool(row["watch_enabled"]),
+                )
 
             # Create default settings
-            default_settings = {
-                "mode": "go_all",
-                "audio_enabled": True,
-                "voice_speed": VOICE_SETTINGS["speed"],
-                "watch_enabled": False,
-            }
+            default_settings = UserSettings()
             conn.execute(
                 """
                 INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled)
@@ -513,10 +508,10 @@ class StateManager:
                 """,
                 (
                     user_id_str,
-                    default_settings["mode"],
-                    1,
-                    default_settings["voice_speed"],
-                    0,
+                    default_settings.mode.value,
+                    1 if default_settings.audio_enabled else 0,
+                    default_settings.voice_speed,
+                    1 if default_settings.watch_enabled else 0,
                 ),
             )
             return default_settings

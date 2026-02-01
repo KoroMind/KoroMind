@@ -210,11 +210,11 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state_manager = get_state_manager()
     settings = state_manager.get_user_settings(user_id)
 
-    audio_status = "ON" if settings["audio_enabled"] else "OFF"
-    speed = settings["voice_speed"]
-    mode = settings.get("mode", "go_all")
+    audio_status = "ON" if settings.audio_enabled else "OFF"
+    speed = settings.voice_speed
+    mode = settings.mode.value
     mode_display = "Go All" if mode == "go_all" else "Approve"
-    watch_status = "ON" if settings.get("watch_enabled", False) else "OFF"
+    watch_status = "ON" if settings.watch_enabled else "OFF"
 
     message = (
         f"Settings:\n\n"

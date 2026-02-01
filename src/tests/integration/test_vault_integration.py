@@ -10,7 +10,6 @@ These tests verify the complete vault experience:
 import os
 from pathlib import Path
 
-
 from koro.core.vault import Vault
 
 # Path to test vault fixture

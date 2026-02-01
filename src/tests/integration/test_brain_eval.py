@@ -14,7 +14,6 @@ import pytest
 from dotenv import load_dotenv
 
 from koro.core.brain import Brain
-from koro.core.types import MessageType
 
 # Load environment variables
 load_dotenv()
@@ -176,7 +175,9 @@ class TestBrainCodeGeneration:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
     @pytest.mark.asyncio
     async def test_generates_function_with_edge_cases(self, brain):
@@ -201,7 +202,9 @@ class TestBrainCodeGeneration:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
 
 class TestBrainExplanation:
@@ -230,7 +233,9 @@ class TestBrainExplanation:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
 
 class TestBrainFileOperations:
@@ -269,7 +274,9 @@ class TestBrainFileOperations:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
 
 class TestBrainMultiStep:
@@ -306,4 +313,6 @@ class TestBrainMultiStep:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"

@@ -68,12 +68,12 @@ mcp_servers:
   # sqlite:
   #   command: "uvx"
   #   args: ["mcp-server-sqlite", "--db-path", "./data.db"]
-  
+
   # Filesystem access (already provided by default)
   # filesystem:
   #   command: "npx"
   #   args: ["-y", "@anthropic/mcp-filesystem", "."]
-  
+
   # GitHub integration
   # github:
   #   command: "npx"
@@ -98,7 +98,7 @@ agents:
   #   model: "claude-sonnet-4-20250514"
   #   system_prompt: "You are a research assistant. Focus on gathering accurate information."
   #   allowed_tools: ["WebSearch", "WebFetch", "Read"]
-  
+
   # Example: Code reviewer
   # reviewer:
   #   model: "claude-sonnet-4-20250514"
@@ -126,7 +126,7 @@ hooks:
   #     hooks:
   #       - type: command
   #         command: "./hooks/validate-bash.sh"
-  
+
   # Example: Format code after editing
   # PostToolUse:
   #   - matcher: "Write|Edit"
@@ -142,15 +142,15 @@ hooks:
 sandbox:
   # Enable sandboxing (macOS/Linux only)
   enabled: false
-  
+
   # Auto-approve bash when sandboxed
   autoAllowBashIfSandboxed: true
-  
+
   # Commands that bypass the sandbox
   excludedCommands:
     - "git"
     - "docker"
-  
+
   # Network settings within sandbox
   # network:
   #   allowUnixSockets: []

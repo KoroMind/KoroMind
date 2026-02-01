@@ -100,7 +100,9 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = "Sessions:\n"
     for i, sess in enumerate(sessions[:10], 1):
-        current = " (current)" if current_session and sess.id == current_session.id else ""
+        current = (
+            " (current)" if current_session and sess.id == current_session.id else ""
+        )
         display_name = sess.name if sess.name else f"{sess.id[:8]}..."
         msg += f"{i}. {display_name}{current}\n"
 

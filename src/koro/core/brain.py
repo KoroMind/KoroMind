@@ -5,8 +5,6 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Callable
 
-logger = logging.getLogger(__name__)
-
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
 from koro.core.state import StateManager, get_state_manager
@@ -21,6 +19,8 @@ from koro.core.types import (
 )
 from koro.core.vault import Vault
 from koro.core.voice import VoiceEngine, get_voice_engine
+
+logger = logging.getLogger(__name__)
 
 
 class Brain:
@@ -172,7 +172,9 @@ class Brain:
                     text="Error: Image content must be bytes",
                     session_id=session_id or "",
                 )
-            logger.debug(f"Image received: {len(content)} bytes (vision not yet implemented)")
+            logger.debug(
+                f"Image received: {len(content)} bytes (vision not yet implemented)"
+            )
             return BrainResponse(
                 text="Image support is coming soon! For now, please describe the image in text.",
                 session_id=session_id or "",

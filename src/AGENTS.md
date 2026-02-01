@@ -1,9 +1,9 @@
-# Agent Guidelines (Mirror)
+# Source Code Guidelines
 
-Source of truth: `../AGENTS.md`.
-Update the root file first and sync this copy if you change guardrails.
+Coding rules and guardrails for working in the `src/` directory.
 
-## Agentic Coding Guardrails
+## Coding Guardrails
+
 - Avoid `hasattr`/`setattr` in core logic; use typed models with known attributes
 - Prefer `@dataclass(frozen=True)` unless mutation is required and explicit
 - Avoid optional containers for `list`/`dict`; use empty defaults instead
@@ -12,3 +12,108 @@ Update the root file first and sync this copy if you change guardrails.
 - Extract shared logic to helpers to avoid duplication
 - Raise exceptions for invalid inputs in core paths; don't yield error dicts
 - Use Pydantic models when parsing external JSON or user-provided config
+
+## Python Best Practices
+
+### Asyncio / Non-Blocking I/O
+
+- Use `aiofiles` for file operations in async contexts
+- Use async HTTP clients (`httpx.AsyncClient`) instead of `requests`
+- Use `asyncio.sleep()` instead of `time.sleep()` in async functions
+- Load static resources (prompts, config files) at app startup, not per-request
+
+### Exception Handling
+
+- Catch specific exceptions (`ValueError`, `KeyError`, `httpx.HTTPError`), never bare `except Exception`
+- Keep try blocks small and focused around the specific operation that may fail
+- Let exceptions propagate to framework handlers when you can't meaningfully handle them
+- Don't wrap entire function bodies in try/except—isolate the risky operation
+
+### Code Organization
+
+- Keep all imports at module top level, not inside functions
+- Return new objects instead of mutating parameters as side effects, use immutable structures (frozen=True) if possible
+- If mutation is unavoidable, make it explicit in the function name (e.g., `append_to_list()`)
+
+### Defensive Programming
+
+- Validate inputs at system boundaries (user input, external APIs)
+- Trust internal code and framework guarantees—don't over-validate
+- Make function behavior explicit through clear naming
+
+## Refactoring Learnings
+
+These learnings come from actual mistakes made in this codebase. Follow them to avoid repeat issues.
+
+### Complete the Refactoring Chain
+
+When changing a return type or data structure, update **all** consumers:
+
+```python
+# BAD: Changed get_user_settings() to return UserSettings, but handlers still do:
+settings["audio_enabled"]  # TypeError: UserSettings is not subscriptable
+
+# GOOD: Update all consumers to use attribute access:
+settings.audio_enabled
+```
+
+**Checklist when changing a function's return type:**
+1. Find all callers with grep/search
+2. Update each caller's access pattern
+3. Update tests to use the new type (not the old one)
+4. Re-fetch after mutations—don't read stale local copies
+
+### Avoid Stale Data After Mutations
+
+```python
+# BAD: Mutate local variable, then read from it after DB update
+settings = state_manager.get_user_settings(user_id)
+state_manager.update_setting(user_id, "audio_enabled", not settings.audio_enabled)
+# settings still has OLD value here!
+audio_status = "ON" if settings.audio_enabled else "OFF"  # Wrong!
+
+# GOOD: Re-fetch after mutation
+state_manager.update_setting(user_id, "audio_enabled", not settings.audio_enabled)
+settings = state_manager.get_user_settings(user_id)  # Fresh data
+audio_status = "ON" if settings.audio_enabled else "OFF"  # Correct
+```
+
+### Pydantic + Type Compatibility
+
+Pydantic has limitations with certain Python types:
+
+```python
+# BAD: Protocol types can't be validated by Pydantic
+class QueryConfig(BaseModel):
+    on_tool_call: OnToolCall | None = None  # Pydantic can't validate Protocol
+
+# GOOD: Use Any with type comment
+class QueryConfig(BaseModel):
+    on_tool_call: Any | None = None  # OnToolCall type
+
+# BAD: SDK TypedDict requires Python 3.12+ for Pydantic validation
+hooks: dict[HookEvent, list[HookMatcher]] = {}
+
+# GOOD: Use Any for SDK types when supporting older Python
+hooks: dict[str, Any] = Field(default_factory=dict)
+```
+
+### Test Data Must Match Production Types
+
+```python
+# BAD: Tests pass dicts when production code expects dataclass
+settings = {"audio_enabled": False}  # Test fixture
+result = build_dynamic_prompt(base, settings)  # Fails if function expects UserSettings
+
+# GOOD: Tests use the same types as production
+settings = UserSettings(audio_enabled=False)
+result = build_dynamic_prompt(base, settings)
+```
+
+### Python Version Awareness
+
+Before using a feature, verify it works with the project's minimum Python version:
+
+- `typing.TypedDict` + Pydantic validation requires Python 3.12+
+- `from __future__ import annotations` can break Protocol + Pydantic combos
+- When in doubt, check `pyproject.toml` for `requires-python`

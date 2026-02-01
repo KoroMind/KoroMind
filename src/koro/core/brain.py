@@ -164,6 +164,19 @@ class Brain:
                     text=text,
                     session_id=session_id or "",
                 )
+        elif content_type == MessageType.IMAGE:
+            # TODO: Implement proper Claude vision API support
+            # For now, return a placeholder message
+            if not isinstance(content, bytes):
+                return BrainResponse(
+                    text="Error: Image content must be bytes",
+                    session_id=session_id or "",
+                )
+            logger.debug(f"Image received: {len(content)} bytes (vision not yet implemented)")
+            return BrainResponse(
+                text="Image support is coming soon! For now, please describe the image in text.",
+                session_id=session_id or "",
+            )
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -408,9 +421,9 @@ class Brain:
         """Get all sessions for a user."""
         return await self.state_manager.get_sessions(user_id)
 
-    async def create_session(self, user_id: str) -> Session:
+    async def create_session(self, user_id: str, name: str | None = None) -> Session:
         """Create a new session for a user."""
-        return await self.state_manager.create_session(user_id)
+        return await self.state_manager.create_session(user_id, name)
 
     async def get_current_session(self, user_id: str) -> Session | None:
         """Get the current session for a user."""

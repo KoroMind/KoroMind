@@ -144,9 +144,12 @@ class TestCommandHandlers:
     async def test_cmd_new_creates_session(
         self, make_update, allow_all_commands, state_manager, monkeypatch
     ):
-        """cmd_new resets current session."""
+        """cmd_new creates a new session."""
+        from koro.core.brain import Brain
+
         await state_manager.update_session("12345", "old_session")
-        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+        brain = Brain(state_manager=state_manager)
+        monkeypatch.setattr(commands, "get_brain", lambda: brain)
 
         update = make_update(user_id=12345, chat_id=12345)
         context = MagicMock()
@@ -154,8 +157,12 @@ class TestCommandHandlers:
 
         await commands.cmd_new(update, context)
 
-        state = state_manager.get_user_state(12345)
-        assert state["current_session"] is None
+        # Should have created a new session
+        sessions = await state_manager.get_sessions("12345")
+        assert len(sessions) == 2  # old_session + new session
+        current = await state_manager.get_current_session("12345")
+        assert current is not None
+        assert current.id != "old_session"
         update.message.reply_text.assert_called_once()
 
     @pytest.mark.asyncio
@@ -163,7 +170,10 @@ class TestCommandHandlers:
         self, make_update, allow_all_commands, state_manager, monkeypatch
     ):
         """cmd_new with name shows session name."""
-        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+        from koro.core.brain import Brain
+
+        brain = Brain(state_manager=state_manager)
+        monkeypatch.setattr(commands, "get_brain", lambda: brain)
 
         update = make_update(user_id=12345, chat_id=12345)
         context = MagicMock()
@@ -173,6 +183,11 @@ class TestCommandHandlers:
 
         call_text = update.message.reply_text.call_args.args[0]
         assert "my session" in call_text
+
+        # Verify session was created with name
+        sessions = await state_manager.get_sessions("12345")
+        assert len(sessions) == 1
+        assert sessions[0].name == "my session"
 
     @pytest.mark.asyncio
     async def test_cmd_continue_with_session(
@@ -205,10 +220,16 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_sessions_empty(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_commands, tmp_path, monkeypatch
     ):
         """cmd_sessions shows empty message when no sessions."""
-        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+        from koro.core.brain import Brain
+        from koro.state import StateManager
+
+        # Use a fresh state manager for this test
+        state_manager = StateManager(db_path=tmp_path / "sessions_empty.db")
+        brain = Brain(state_manager=state_manager)
+        monkeypatch.setattr(commands, "get_brain", lambda: brain)
 
         update = make_update(user_id=12345, chat_id=12345)
 
@@ -219,12 +240,19 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_sessions_lists_sessions(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_commands, tmp_path, monkeypatch
     ):
         """cmd_sessions lists available sessions."""
+        from koro.core.brain import Brain
+        from koro.state import StateManager
+
+        # Use a fresh state manager for this test
+        state_manager = StateManager(db_path=tmp_path / "sessions_list.db")
+        brain = Brain(state_manager=state_manager)
+        monkeypatch.setattr(commands, "get_brain", lambda: brain)
+
         await state_manager.update_session("12345", "sess1-abcdef")
         await state_manager.update_session("12345", "sess2-fedcba")
-        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
 
         update = make_update(user_id=12345, chat_id=12345)
 
@@ -248,12 +276,19 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_switch_finds_session(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_commands, tmp_path, monkeypatch
     ):
         """cmd_switch switches to matching session."""
+        from koro.core.brain import Brain
+        from koro.state import StateManager
+
+        # Use a fresh state manager for this test
+        state_manager = StateManager(db_path=tmp_path / "switch_find.db")
+        brain = Brain(state_manager=state_manager)
+        monkeypatch.setattr(commands, "get_brain", lambda: brain)
+
         await state_manager.update_session("12345", "abc123456789")
         await state_manager.clear_current_session("12345")
-        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
 
         update = make_update(user_id=12345, chat_id=12345)
         context = MagicMock()
@@ -261,16 +296,23 @@ class TestCommandHandlers:
 
         await commands.cmd_switch(update, context)
 
-        state = state_manager.get_user_state(12345)
-        assert state["current_session"] == "abc123456789"
+        current = await state_manager.get_current_session("12345")
+        assert current.id == "abc123456789"
 
     @pytest.mark.asyncio
     async def test_cmd_switch_not_found(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_commands, tmp_path, monkeypatch
     ):
         """cmd_switch shows error when session not found."""
+        from koro.core.brain import Brain
+        from koro.state import StateManager
+
+        # Use a fresh state manager for this test
+        state_manager = StateManager(db_path=tmp_path / "switch_notfound.db")
+        brain = Brain(state_manager=state_manager)
+        monkeypatch.setattr(commands, "get_brain", lambda: brain)
+
         await state_manager.update_session("12345", "abc123")
-        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
 
         update = make_update(user_id=12345, chat_id=12345)
         context = MagicMock()
@@ -570,9 +612,9 @@ class TestMessageHandlers:
         self, make_update, allow_all_messages, monkeypatch
     ):
         """handle_voice respects rate limits."""
-        limiter = MagicMock()
-        limiter.check.return_value = (False, "Please wait")
-        monkeypatch.setattr(messages, "get_rate_limiter", lambda: limiter)
+        brain = MagicMock()
+        brain.check_rate_limit.return_value = (False, "Please wait")
+        monkeypatch.setattr(messages, "get_brain", lambda: brain)
 
         update = make_update(user_id=12345, chat_id=12345)
 
@@ -587,9 +629,9 @@ class TestMessageHandlers:
         self, make_update, allow_all_messages, monkeypatch
     ):
         """handle_text respects rate limits."""
-        limiter = MagicMock()
-        limiter.check.return_value = (False, "Rate limit reached")
-        monkeypatch.setattr(messages, "get_rate_limiter", lambda: limiter)
+        brain = MagicMock()
+        brain.check_rate_limit.return_value = (False, "Rate limit reached")
+        monkeypatch.setattr(messages, "get_brain", lambda: brain)
 
         update = make_update(user_id=12345, chat_id=12345, text="Hello")
 

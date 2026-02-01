@@ -37,6 +37,7 @@ from koro.interfaces.telegram.handlers import (
     cmd_status,
     cmd_switch,
     handle_approval_callback,
+    handle_photo,
     handle_settings_callback,
     handle_text,
     handle_voice,
@@ -130,6 +131,7 @@ def run_telegram_bot():
 
     # Register message handlers
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     # Register error handler

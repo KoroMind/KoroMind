@@ -99,6 +99,7 @@ class MessageType(Enum):
 
     TEXT = "text"
     VOICE = "voice"
+    IMAGE = "image"
 
 
 class Mode(Enum):
@@ -135,6 +136,7 @@ class Session:
     user_id: str
     created_at: datetime
     last_active: datetime
+    name: str | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
@@ -143,6 +145,7 @@ class Session:
             "user_id": self.user_id,
             "created_at": self.created_at.isoformat(),
             "last_active": self.last_active.isoformat(),
+            "name": self.name,
         }
 
     @classmethod
@@ -153,6 +156,7 @@ class Session:
             user_id=data["user_id"],
             created_at=datetime.fromisoformat(data["created_at"]),
             last_active=datetime.fromisoformat(data["last_active"]),
+            name=data.get("name"),
         )
 
 

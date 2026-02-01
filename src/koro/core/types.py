@@ -1,10 +1,10 @@
 """Shared types and data structures for KoroMind."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, Protocol, TypedDict
 
 from claude_agent_sdk import SdkMcpTool
 from claude_agent_sdk.types import (
@@ -32,16 +32,21 @@ class OutputFormat(TypedDict):
     schema: dict[str, Any]
 
 
-# Type alias for tool permission callback (SDK-compatible)
-# Signature: (tool_name, tool_input, context) -> PermissionResult
-CanUseTool = Callable[
-    [str, dict[str, Any], ToolPermissionContext],
-    Awaitable[PermissionResult],
-]
+class CanUseTool(Protocol):
+    """Callback signature for SDK tool permission checks."""
 
-# Type alias for tool call notification callback
-# Signature: (tool_name, detail) -> None
-OnToolCall = Callable[[str, str | None], None]
+    def __call__(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        context: ToolPermissionContext,
+    ) -> Awaitable[PermissionResult]: ...
+
+
+class OnToolCall(Protocol):
+    """Callback signature for tool call notifications."""
+
+    def __call__(self, tool_name: str, detail: str | None) -> None: ...
 
 # Re-export SDK types for convenience
 __all__ = [
@@ -69,6 +74,7 @@ __all__ = [
     "ThinkingBlock",
     "ToolCall",
     "ToolPermissionContext",
+    "QueryConfig",
     "UserSettings",
 ]
 
@@ -135,15 +141,41 @@ class Session:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProjectConfig:
     """Project-level configuration (hooks, mcp, agents, etc)."""
 
-    hooks: dict[HookEvent, list[HookMatcher]] | None = None
-    mcp_servers: dict[str, McpServerConfig] | None = None
-    agents: dict[str, AgentDefinition] | None = None
-    plugins: list[SdkPluginConfig] | None = None
+    hooks: dict[HookEvent, list[HookMatcher]] = field(default_factory=dict)
+    mcp_servers: dict[str, McpServerConfig] = field(default_factory=dict)
+    agents: dict[str, AgentDefinition] = field(default_factory=dict)
+    plugins: list[SdkPluginConfig] = field(default_factory=list)
     sandbox: SandboxSettings | None = None
+
+
+@dataclass(frozen=True)
+class QueryConfig:
+    """Configuration for Claude SDK queries."""
+
+    prompt: str
+    session_id: str | None = None
+    continue_last: bool = False
+    include_megg: bool = True
+    user_settings: dict[str, Any] | None = None
+    mode: str = "go_all"
+    on_tool_call: OnToolCall | None = None
+    can_use_tool: CanUseTool | None = None
+    hooks: dict[HookEvent, list[HookMatcher]] = field(default_factory=dict)
+    mcp_servers: dict[str, McpServerConfig] = field(default_factory=dict)
+    agents: dict[str, AgentDefinition] = field(default_factory=dict)
+    plugins: list[SdkPluginConfig] = field(default_factory=list)
+    sandbox: SandboxSettings | None = None
+    output_format: OutputFormat | None = None
+    max_turns: int | None = None
+    max_budget_usd: float | None = None
+    model: str | None = None
+    fallback_model: str | None = None
+    include_partial_messages: bool = False
+    enable_file_checkpointing: bool = False
 
 
 @dataclass

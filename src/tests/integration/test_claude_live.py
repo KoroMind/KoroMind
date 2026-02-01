@@ -3,9 +3,11 @@
 import os
 
 import pytest
+from claude_agent_sdk.types import ResultMessage
 from dotenv import load_dotenv
 
 from koro.claude import ClaudeClient
+from koro.core.types import QueryConfig
 
 # Load environment variables
 load_dotenv()
@@ -55,9 +57,8 @@ class TestClaudeQuery:
     @pytest.mark.asyncio
     async def test_simple_query(self, claude_client):
         """Simple query returns response."""
-        response, session_id, metadata = await claude_client.query(
-            "Say exactly: 'Hello test'", include_megg=False
-        )
+        config = QueryConfig(prompt="Say exactly: 'Hello test'", include_megg=False)
+        response, session_id, metadata = await claude_client.query(config)
 
         assert response
         assert len(response) > 0
@@ -65,9 +66,8 @@ class TestClaudeQuery:
     @pytest.mark.asyncio
     async def test_query_returns_session_id(self, claude_client):
         """Query returns session ID for continuation."""
-        response, session_id, metadata = await claude_client.query(
-            "Remember this number: 42", include_megg=False
-        )
+        config = QueryConfig(prompt="Remember this number: 42", include_megg=False)
+        response, session_id, metadata = await claude_client.query(config)
 
         assert session_id is not None
         assert len(session_id) > 0
@@ -76,16 +76,19 @@ class TestClaudeQuery:
     async def test_session_continuation(self, claude_client):
         """Session continuation preserves context."""
         # First message
-        _, session_id, _ = await claude_client.query(
-            "Remember this secret word: banana", include_megg=False
+        first_config = QueryConfig(
+            prompt="Remember this secret word: banana",
+            include_megg=False,
         )
+        _, session_id, _ = await claude_client.query(first_config)
 
         # Continue session
-        response, _, _ = await claude_client.query(
-            "What was the secret word I told you?",
+        followup_config = QueryConfig(
+            prompt="What was the secret word I told you?",
             session_id=session_id,
             include_megg=False,
         )
+        response, _, _ = await claude_client.query(followup_config)
 
         assert "banana" in response.lower()
 
@@ -102,8 +105,10 @@ class TestClaudeToolUse:
         test_file.write_text("This is test content 12345")
 
         response, _, metadata = await claude_client.query(
-            f"Read the file at {test_file} and tell me what number is in it.",
-            include_megg=False,
+            QueryConfig(
+                prompt=f"Read the file at {test_file} and tell me what number is in it.",
+                include_megg=False,
+            )
         )
 
         assert "12345" in response
@@ -119,9 +124,12 @@ class TestClaudeToolUse:
         def on_tool(name, detail):
             tools_called.append(name)
 
-        await claude_client.query(
-            f"Read {test_file}", include_megg=False, on_tool_call=on_tool
+        config = QueryConfig(
+            prompt=f"Read {test_file}",
+            include_megg=False,
+            on_tool_call=on_tool,
         )
+        await claude_client.query(config)
 
         assert "Read" in tools_called
 
@@ -134,7 +142,8 @@ class TestClaudeStreaming:
     async def test_stream_yields_events(self, claude_client):
         """Streaming yields multiple events."""
         events = []
-        async for event in claude_client.query_stream("Say hello", include_megg=False):
+        config = QueryConfig(prompt="Say hello", include_megg=False)
+        async for event in claude_client.query_stream(config):
             events.append(type(event).__name__)
 
         # Should have at least AssistantMessage and ResultMessage
@@ -145,10 +154,11 @@ class TestClaudeStreaming:
     async def test_stream_result_contains_text(self, claude_client):
         """Streaming result contains response text."""
         result_text = None
-        async for event in claude_client.query_stream(
-            "Say exactly: 'streaming works'", include_megg=False
-        ):
-            if hasattr(event, "result"):
+        config = QueryConfig(
+            prompt="Say exactly: 'streaming works'", include_megg=False
+        )
+        async for event in claude_client.query_stream(config):
+            if isinstance(event, ResultMessage):
                 result_text = event.result
 
         assert result_text is not None
@@ -162,7 +172,8 @@ class TestClaudeMetadata:
     @pytest.mark.asyncio
     async def test_metadata_includes_cost(self, claude_client):
         """Response metadata includes cost."""
-        _, _, metadata = await claude_client.query("Say OK", include_megg=False)
+        config = QueryConfig(prompt="Say OK", include_megg=False)
+        _, _, metadata = await claude_client.query(config)
 
         assert "cost" in metadata
         assert metadata["cost"] > 0
@@ -170,7 +181,8 @@ class TestClaudeMetadata:
     @pytest.mark.asyncio
     async def test_metadata_includes_turns(self, claude_client):
         """Response metadata includes turn count."""
-        _, _, metadata = await claude_client.query("Say OK", include_megg=False)
+        config = QueryConfig(prompt="Say OK", include_megg=False)
+        _, _, metadata = await claude_client.query(config)
 
         assert "num_turns" in metadata
         assert metadata["num_turns"] >= 1
@@ -181,9 +193,8 @@ class TestClaudeMetadata:
         test_file = tmp_path / "tool_count.txt"
         test_file.write_text("test")
 
-        _, _, metadata = await claude_client.query(
-            f"Read {test_file}", include_megg=False
-        )
+        config = QueryConfig(prompt=f"Read {test_file}", include_megg=False)
+        _, _, metadata = await claude_client.query(config)
 
         assert "tool_count" in metadata
         assert metadata["tool_count"] >= 1

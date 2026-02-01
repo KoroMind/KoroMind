@@ -7,6 +7,7 @@ import pytest
 from dotenv import load_dotenv
 
 from koro.claude import ClaudeClient
+from koro.core.types import QueryConfig
 from koro.voice import VoiceEngine
 
 # Load environment variables
@@ -50,9 +51,8 @@ class TestFullPipeline:
         assert len(transcription) > 0
 
         # 3. Send to Claude
-        response, session_id, metadata = await claude.query(
-            transcription, include_megg=False
-        )
+        config = QueryConfig(prompt=transcription, include_megg=False)
+        response, session_id, metadata = await claude.query(config)
         assert len(response) > 0
 
         # 4. Convert response to speech
@@ -69,15 +69,20 @@ class TestFullPipeline:
         (tmp_path / "sandbox").mkdir()
 
         # First interaction
-        _, session_id, _ = await claude.query(
-            "My favorite color is purple. Remember this.", include_megg=False
+        first_config = QueryConfig(
+            prompt="My favorite color is purple. Remember this.",
+            include_megg=False,
         )
+        _, session_id, _ = await claude.query(first_config)
         assert session_id
 
         # Second interaction using same session
-        response, _, _ = await claude.query(
-            "What is my favorite color?", session_id=session_id, include_megg=False
+        followup_config = QueryConfig(
+            prompt="What is my favorite color?",
+            session_id=session_id,
+            include_megg=False,
         )
+        response, _, _ = await claude.query(followup_config)
 
         assert "purple" in response.lower()
 
@@ -93,10 +98,11 @@ class TestFullPipeline:
         test_file = tmp_path / "data.txt"
         test_file.write_text("The secret code is: ALPHA123")
 
-        response, _, metadata = await claude.query(
-            f"Read the file at {test_file} and tell me the secret code.",
+        config = QueryConfig(
+            prompt=f"Read the file at {test_file} and tell me the secret code.",
             include_megg=False,
         )
+        response, _, metadata = await claude.query(config)
 
         assert "ALPHA123" in response
 
@@ -125,10 +131,11 @@ class TestErrorHandling:
         (tmp_path / "sandbox").mkdir()
 
         # Ask for a longer response
-        response, _, _ = await claude.query(
-            "List the first 10 prime numbers with a brief explanation of each.",
+        config = QueryConfig(
+            prompt="List the first 10 prime numbers with a brief explanation of each.",
             include_megg=False,
         )
+        response, _, _ = await claude.query(config)
 
         # Should handle the response
         assert len(response) > 100

@@ -5,21 +5,16 @@ import logging
 import os
 import subprocess
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, CLIConnectionError, CLINotFoundError, ProcessError
 
 logger = logging.getLogger(__name__)
 from claude_agent_sdk.types import (
-    AgentDefinition,
     AssistantMessage,
-    HookEvent,
-    HookMatcher,
-    McpServerConfig,
     ResultMessage,
-    SandboxSettings,
-    SdkPluginConfig,
     StreamEvent,
     TextBlock,
     ThinkingBlock,
@@ -28,7 +23,7 @@ from claude_agent_sdk.types import (
 
 from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
 from koro.core.prompt import get_prompt_manager
-from koro.core.types import CanUseTool, OnToolCall, OutputFormat
+from koro.core.types import QueryConfig
 
 
 def load_megg_context(working_dir: str = None) -> str:
@@ -135,28 +130,10 @@ class ClaudeClient:
             return True
         return False
 
-    def _build_options(
-        self,
-        user_settings: dict | None,
-        mode: str,
-        can_use_tool: CanUseTool | None,
-        # Full SDK options
-        hooks: dict[HookEvent, list[HookMatcher]] | None = None,
-        mcp_servers: dict[str, McpServerConfig] | None = None,
-        agents: dict[str, AgentDefinition] | None = None,
-        plugins: list[SdkPluginConfig] | None = None,
-        sandbox: SandboxSettings | None = None,
-        output_format: OutputFormat | None = None,
-        max_turns: int | None = None,
-        max_budget_usd: float | None = None,
-        model: str | None = None,
-        fallback_model: str | None = None,
-        include_partial_messages: bool = False,
-        enable_file_checkpointing: bool = False,
-    ) -> ClaudeAgentOptions:
-        """Build SDK options from parameters."""
+    def _build_options(self, config: QueryConfig) -> ClaudeAgentOptions:
+        """Build SDK options from config."""
         # Get dynamic system prompt
-        system_prompt = self.prompt_manager.get_prompt(user_settings)
+        system_prompt = self.prompt_manager.get_prompt(config.user_settings)
 
         # Base options
         options = ClaudeAgentOptions(
@@ -164,23 +141,23 @@ class ClaudeClient:
             cwd=self.sandbox_dir,
             add_dirs=[self.working_dir],
             # Pass through new options
-            hooks=hooks,
-            mcp_servers=mcp_servers,
-            agents=agents,
-            plugins=plugins,
-            sandbox=sandbox,
-            output_format=output_format,
-            max_turns=max_turns,
-            max_budget_usd=max_budget_usd,
-            model=model,
-            fallback_model=fallback_model,
-            include_partial_messages=include_partial_messages,
-            enable_file_checkpointing=enable_file_checkpointing,
+            hooks=config.hooks,
+            mcp_servers=config.mcp_servers,
+            agents=config.agents,
+            plugins=config.plugins,
+            sandbox=config.sandbox,
+            output_format=config.output_format,
+            max_turns=config.max_turns,
+            max_budget_usd=config.max_budget_usd,
+            model=config.model,
+            fallback_model=config.fallback_model,
+            include_partial_messages=config.include_partial_messages,
+            enable_file_checkpointing=config.enable_file_checkpointing,
         )
 
         # Set permission mode and tools based on mode
-        if mode == "approve" and can_use_tool:
-            options.can_use_tool = can_use_tool
+        if config.mode == "approve" and config.can_use_tool:
+            options.can_use_tool = config.can_use_tool
             options.permission_mode = "default"
         else:
             options.allowed_tools = [
@@ -197,80 +174,45 @@ class ClaudeClient:
             ]
 
         logger.debug(
-            f"Built options: model={model}, max_turns={max_turns}, "
-            f"cwd={self.sandbox_dir}, mode={mode}, "
-            f"hooks={bool(hooks)}, mcp_servers={bool(mcp_servers)}"
+            f"Built options: model={config.model}, max_turns={config.max_turns}, "
+            f"cwd={self.sandbox_dir}, mode={config.mode}, "
+            f"hooks={bool(config.hooks)}, mcp_servers={bool(config.mcp_servers)}"
         )
         return options
 
     async def query(
         self,
-        prompt: str,
-        session_id: str | None = None,
-        continue_last: bool = False,
-        include_megg: bool = True,
-        user_settings: dict | None = None,
-        mode: str = "go_all",
-        on_tool_call: OnToolCall | None = None,
-        can_use_tool: CanUseTool | None = None,
-        # New options
-        hooks: dict[HookEvent, list[HookMatcher]] | None = None,
-        mcp_servers: dict[str, McpServerConfig] | None = None,
-        agents: dict[str, AgentDefinition] | None = None,
-        plugins: list[SdkPluginConfig] | None = None,
-        sandbox: SandboxSettings | None = None,
-        output_format: OutputFormat | None = None,
-        max_turns: int | None = None,
-        max_budget_usd: float | None = None,
-        model: str | None = None,
-        fallback_model: str | None = None,
-        include_partial_messages: bool = False,
-        enable_file_checkpointing: bool = False,
+        config: QueryConfig,
     ) -> tuple[str, str, dict]:
         """
         Query Claude and return response.
         """
         logger.debug(
-            f"Query starting: session_id={session_id}, continue_last={continue_last}, "
-            f"mode={mode}, model={model}"
+            f"Query starting: session_id={config.session_id}, "
+            f"continue_last={config.continue_last}, mode={config.mode}, "
+            f"model={config.model}"
         )
         # Ensure sandbox exists
         Path(self.sandbox_dir).mkdir(parents=True, exist_ok=True)
 
         # Build prompt with megg context
-        full_prompt = prompt
-        if include_megg and not continue_last and not session_id:
+        full_prompt = config.prompt
+        if config.include_megg and not config.continue_last and not config.session_id:
             megg_ctx = load_megg_context(self.working_dir)
             if megg_ctx:
-                full_prompt = f"<context>\n{megg_ctx}\n</context>\n\n{prompt}"
+                full_prompt = f"<context>\n{megg_ctx}\n</context>\n\n{config.prompt}"
 
         # Build options
-        options = self._build_options(
-            user_settings=user_settings,
-            mode=mode,
-            can_use_tool=can_use_tool,
-            hooks=hooks,
-            mcp_servers=mcp_servers,
-            agents=agents,
-            plugins=plugins,
-            sandbox=sandbox,
-            output_format=output_format,
-            max_turns=max_turns,
-            max_budget_usd=max_budget_usd,
-            model=model,
-            fallback_model=fallback_model,
-            include_partial_messages=include_partial_messages,
-            enable_file_checkpointing=enable_file_checkpointing,
-        )
+        options = self._build_options(config)
 
         # Handle session continuation
-        if continue_last:
+        if config.continue_last:
             options.continue_conversation = True
-        elif session_id:
-            options.resume = session_id
+        elif config.session_id:
+            options.resume = config.session_id
 
         result_text = ""
-        new_session_id = session_id
+        new_session_id = config.session_id
         metadata = {}
         tool_count = 0
         thinking_content = ""
@@ -287,29 +229,29 @@ class ClaudeClient:
                                     result_text += block.text
                                 elif isinstance(block, ToolUseBlock):
                                     tool_count += 1
-                                    if on_tool_call:
+                                    if config.on_tool_call:
                                         tool_input = block.input or {}
                                         detail = get_tool_detail(block.name, tool_input)
-                                        on_tool_call(block.name, detail)
+                                        config.on_tool_call(block.name, detail)
                                 elif isinstance(block, ThinkingBlock):
                                     thinking_content += block.thinking
 
                         elif isinstance(message, ResultMessage):
-                            if hasattr(message, "result") and message.result:
+                            if message.result:
                                 result_text = message.result
-                            if hasattr(message, "session_id") and message.session_id:
+                            if message.session_id:
                                 new_session_id = message.session_id
-                            if hasattr(message, "total_cost_usd"):
+                            if message.total_cost_usd is not None:
                                 metadata["cost"] = message.total_cost_usd
-                            if hasattr(message, "num_turns"):
+                            if message.num_turns is not None:
                                 metadata["num_turns"] = message.num_turns
-                            if hasattr(message, "duration_ms"):
+                            if message.duration_ms is not None:
                                 metadata["duration_ms"] = message.duration_ms
-                            if hasattr(message, "usage"):
+                            if message.usage is not None:
                                 metadata["usage"] = message.usage
-                            if hasattr(message, "structured_output"):
+                            if message.structured_output is not None:
                                 metadata["structured_output"] = message.structured_output
-                            if hasattr(message, "is_error"):
+                            if message.is_error is not None:
                                 metadata["is_error"] = message.is_error
                 finally:
                     self._active_client = None
@@ -328,66 +270,64 @@ class ClaudeClient:
             logger.debug("Query failed: CLI not found")
             return (
                 "Error: Claude CLI not found. Please install claude-code.",
-                session_id or "",
+                config.session_id or "",
                 {"error": "cli_not_found"},
             )
         except CLIConnectionError as e:
             logger.debug(f"Query failed: CLI connection error: {e}")
             return (
                 f"Error: Failed to connect to Claude CLI: {e}",
-                session_id or "",
+                config.session_id or "",
                 {"error": "connection_failed"},
             )
         except ProcessError as e:
             logger.debug(f"Query failed: Process error (exit {e.exit_code}): {e}")
             return (
                 f"Error: Claude process failed (exit {e.exit_code}): {e}",
-                session_id or "",
+                config.session_id or "",
                 {"error": "process_error", "exit_code": e.exit_code},
             )
         except Exception as e:
             logger.debug(f"Query failed: Exception: {e}")
-            return f"Error calling Claude: {e}", session_id or "", {"error": str(e)}
+            return (
+                f"Error calling Claude: {e}",
+                config.session_id or "",
+                {"error": str(e)},
+            )
 
     async def query_stream(
         self,
-        prompt: str,
-        session_id: str | None = None,
-        continue_last: bool = False,
-        include_megg: bool = True,
-        user_settings: dict | None = None,
-        mode: str = "go_all",
-        on_tool_call: OnToolCall | None = None,
-        can_use_tool: CanUseTool | None = None,
-        **kwargs,
+        config: QueryConfig,
     ) -> AsyncIterator[Any]:
         """
         Query Claude and yield events (StreamEvent or messages).
         """
-        logger.debug(f"Stream query starting: session_id={session_id}, mode={mode}")
-        # Ensure partial messages are enabled for streaming
-        kwargs["include_partial_messages"] = True
+        logger.debug(
+            f"Stream query starting: session_id={config.session_id}, mode={config.mode}"
+        )
+        stream_config = replace(config, include_partial_messages=True)
 
         # Ensure sandbox exists
         Path(self.sandbox_dir).mkdir(parents=True, exist_ok=True)
 
-        full_prompt = prompt
-        if include_megg and not continue_last and not session_id:
+        full_prompt = stream_config.prompt
+        if (
+            stream_config.include_megg
+            and not stream_config.continue_last
+            and not stream_config.session_id
+        ):
             megg_ctx = load_megg_context(self.working_dir)
             if megg_ctx:
-                full_prompt = f"<context>\n{megg_ctx}\n</context>\n\n{prompt}"
+                full_prompt = (
+                    f"<context>\n{megg_ctx}\n</context>\n\n{stream_config.prompt}"
+                )
 
-        options = self._build_options(
-            user_settings=user_settings,
-            mode=mode,
-            can_use_tool=can_use_tool,
-            **kwargs,
-        )
+        options = self._build_options(stream_config)
 
-        if continue_last:
+        if stream_config.continue_last:
             options.continue_conversation = True
-        elif session_id:
-            options.resume = session_id
+        elif stream_config.session_id:
+            options.resume = stream_config.session_id
 
         try:
             async with ClaudeSDKClient(options=options) as client:
@@ -398,18 +338,20 @@ class ClaudeClient:
                         # Pass through on_tool_call side effect
                         if isinstance(message, AssistantMessage):
                             for block in message.content:
-                                if isinstance(block, ToolUseBlock) and on_tool_call:
+                                if (
+                                    isinstance(block, ToolUseBlock)
+                                    and stream_config.on_tool_call
+                                ):
                                     tool_input = block.input or {}
                                     detail = get_tool_detail(block.name, tool_input)
-                                    on_tool_call(block.name, detail)
+                                    stream_config.on_tool_call(block.name, detail)
                         yield message
                 finally:
                     self._active_client = None
 
         except Exception as e:
-            # Yield error as a special event or re-raise
-            # For simplicity, we yield an error dict
-            yield {"error": str(e)}
+            logger.debug(f"Stream query failed: {e}")
+            raise
 
     def health_check(self) -> tuple[bool, str]:
         """

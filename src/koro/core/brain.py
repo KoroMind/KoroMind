@@ -1,15 +1,20 @@
 """The Brain - central orchestration layer for KoroMind."""
 
 from collections.abc import AsyncIterator
-from typing import Any, Callable
+from typing import Any
+
+from claude_agent_sdk.types import ResultMessage, StreamEvent
 
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
 from koro.core.state import StateManager, get_state_manager
 from koro.core.types import (
     BrainResponse,
+    CanUseTool,
     MessageType,
     Mode,
+    OnToolCall,
+    QueryConfig,
     Session,
     ToolCall,
     UserSettings,
@@ -88,8 +93,8 @@ class Brain:
         include_audio: bool = True,
         voice_speed: float = 1.1,
         watch_enabled: bool = False,
-        on_tool_call: Callable[[str, str | None], None] | None = None,
-        can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        on_tool_call: OnToolCall | None = None,
+        can_use_tool: CanUseTool | None = None,
         **kwargs,
     ) -> BrainResponse:
         """
@@ -117,16 +122,10 @@ class Brain:
         # Transcribe voice if needed
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
-                return BrainResponse(
-                    text="Error: Voice content must be bytes",
-                    session_id=session_id or "",
-                )
+                raise ValueError("Voice content must be bytes")
             text = await self.voice_engine.transcribe(content)
             if text.startswith("[Transcription error") or text.startswith("[Error"):
-                return BrainResponse(
-                    text=text,
-                    session_id=session_id or "",
-                )
+                raise RuntimeError(text)
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -152,17 +151,19 @@ class Brain:
             if on_tool_call and watch_enabled:
                 on_tool_call(tool_name, detail)
 
-        # Call Claude
-        response_text, new_session_id, metadata = await self.claude_client.query(
+        config = self._build_query_config(
             prompt=text,
             session_id=session_id,
             continue_last=continue_last,
             user_settings=user_settings,
-            mode=mode.value,
+            mode=mode,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
             **kwargs,
         )
+
+        # Call Claude
+        response_text, new_session_id, metadata = await self.claude_client.query(config)
 
         # Update session state
         await self.state_manager.update_session(user_id, new_session_id)
@@ -185,6 +186,54 @@ class Brain:
             metadata=metadata,
         )
 
+    def _build_query_config(
+        self,
+        *,
+        prompt: str,
+        session_id: str | None,
+        continue_last: bool,
+        user_settings: dict[str, Any],
+        mode: Mode,
+        on_tool_call: OnToolCall | None,
+        can_use_tool: CanUseTool | None,
+        **kwargs,
+    ) -> QueryConfig:
+        config_kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "session_id": session_id,
+            "continue_last": continue_last,
+            "user_settings": user_settings,
+            "mode": mode.value,
+            "on_tool_call": on_tool_call,
+            "can_use_tool": can_use_tool,
+        }
+
+        allowed_keys = {
+            "include_megg",
+            "hooks",
+            "mcp_servers",
+            "agents",
+            "plugins",
+            "sandbox",
+            "output_format",
+            "max_turns",
+            "max_budget_usd",
+            "model",
+            "fallback_model",
+            "include_partial_messages",
+            "enable_file_checkpointing",
+        }
+
+        for key in list(kwargs.keys()):
+            if key in allowed_keys:
+                config_kwargs[key] = kwargs.pop(key)
+
+        if kwargs:
+            unknown = ", ".join(sorted(kwargs.keys()))
+            raise ValueError(f"Unsupported query options: {unknown}")
+
+        return QueryConfig(**config_kwargs)
+
     async def process_message_stream(
         self,
         user_id: str,
@@ -193,8 +242,8 @@ class Brain:
         session_id: str | None = None,
         mode: Mode = Mode.GO_ALL,
         watch_enabled: bool = False,
-        on_tool_call: Callable[[str, str | None], None] | None = None,
-        can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        on_tool_call: OnToolCall | None = None,
+        can_use_tool: CanUseTool | None = None,
         **kwargs,
     ) -> AsyncIterator[Any]:
         """
@@ -206,12 +255,10 @@ class Brain:
         # Transcribe voice if needed (blocking step before stream starts)
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
-                yield {"error": "Voice content must be bytes"}
-                return
+                raise ValueError("Voice content must be bytes")
             text = await self.voice_engine.transcribe(content)
             if text.startswith("[Transcription error") or text.startswith("[Error"):
-                yield {"error": text}
-                return
+                raise RuntimeError(text)
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -226,21 +273,19 @@ class Brain:
             "watch_enabled": watch_enabled,
         }
 
-        def _on_tool_call(tool_name: str, detail: str | None):
-            if on_tool_call and watch_enabled:
-                on_tool_call(tool_name, detail)
-
-        # Yield events from Claude
-        async for event in self.claude_client.query_stream(
+        config = self._build_query_config(
             prompt=text,
             session_id=session_id,
             continue_last=continue_last,
             user_settings=user_settings,
-            mode=mode.value,
-            on_tool_call=_on_tool_call if watch_enabled else None,
+            mode=mode,
+            on_tool_call=on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
             **kwargs,
-        ):
+        )
+
+        # Yield events from Claude
+        async for event in self.claude_client.query_stream(config):
             yield event
 
             # Update session state if we get a new session ID from result
@@ -251,12 +296,10 @@ class Brain:
             # The client should probably persist session ID updates internally or we handle it here.
             # For now, let's assume session update happens on the caller side or we need to intercept ResultMessage.
 
-            if hasattr(event, "session_id") and event.session_id:
-                # ResultMessage or StreamEvent might have session_id
-                # Only update if it's different/new
+            if isinstance(event, (ResultMessage, StreamEvent)) and event.session_id:
                 if event.session_id != session_id:
-                     await self.state_manager.update_session(user_id, event.session_id)
-                     session_id = event.session_id # Update local var
+                    await self.state_manager.update_session(user_id, event.session_id)
+                    session_id = event.session_id
 
     async def process_text(
         self,

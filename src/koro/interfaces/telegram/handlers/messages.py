@@ -271,8 +271,10 @@ async def _call_claude_with_settings(
             return PermissionResultAllow()
         return PermissionResultDeny(message="User rejected tool")
 
+    from koro.core.types import QueryConfig
+
     claude_client = get_claude_client()
-    return await claude_client.query(
+    config = QueryConfig(
         prompt=text,
         session_id=state["current_session"],
         continue_last=continue_last,
@@ -281,3 +283,4 @@ async def _call_claude_with_settings(
         on_tool_call=on_tool_call if watch_enabled else None,
         can_use_tool=can_use_tool if mode == "approve" else None,
     )
+    return await claude_client.query(config)

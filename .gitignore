@@ -38,4 +38,6 @@ credentials.json
 uv.lock
 
 # Claude
-.claude/settings.local.json
+.claude/
+.mcp.json
+credentials.json

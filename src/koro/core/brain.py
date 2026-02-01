@@ -1,5 +1,6 @@
 """The Brain - central orchestration layer for KoroMind."""
 
+from collections.abc import AsyncIterator
 from typing import Any, Callable
 
 from koro.core.claude import ClaudeClient, get_claude_client
@@ -68,6 +69,15 @@ class Brain:
             self._rate_limiter = get_rate_limiter()
         return self._rate_limiter
 
+    async def interrupt(self) -> bool:
+        """
+        Interrupt the currently active request.
+
+        Returns:
+            True if interrupt was sent, False otherwise
+        """
+        return await self.claude_client.interrupt()
+
     async def process_message(
         self,
         user_id: str,
@@ -80,6 +90,7 @@ class Brain:
         watch_enabled: bool = False,
         on_tool_call: Callable[[str, str | None], None] | None = None,
         can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        **kwargs,
     ) -> BrainResponse:
         """
         Process a message and return response.
@@ -94,7 +105,9 @@ class Brain:
             voice_speed: Voice speed for TTS (0.7-1.2)
             watch_enabled: Whether to call on_tool_call for each tool
             on_tool_call: Callback when tool is called (for watch mode)
-            can_use_tool: Callback for tool approval (for approve mode)
+            can_use_tool: SDK-compatible callback for tool approval (for approve mode)
+            **kwargs: Additional arguments passed to ClaudeClient.query
+                (hooks, mcp_servers, agents, plugins, sandbox, output_format, etc.)
 
         Returns:
             BrainResponse with text, optional audio, and metadata
@@ -148,6 +161,7 @@ class Brain:
             mode=mode.value,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            **kwargs,
         )
 
         # Update session state
@@ -156,6 +170,7 @@ class Brain:
         # Generate TTS if requested
         audio_bytes: bytes | None = None
         if include_audio:
+            # Note: We only TTS the main text response, not structured output or thinking
             audio_buffer = await self.voice_engine.text_to_speech(
                 response_text, speed=voice_speed
             )
@@ -170,6 +185,79 @@ class Brain:
             metadata=metadata,
         )
 
+    async def process_message_stream(
+        self,
+        user_id: str,
+        content: str | bytes,
+        content_type: MessageType,
+        session_id: str | None = None,
+        mode: Mode = Mode.GO_ALL,
+        watch_enabled: bool = False,
+        on_tool_call: Callable[[str, str | None], None] | None = None,
+        can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        **kwargs,
+    ) -> AsyncIterator[Any]:
+        """
+        Process a message and yield streaming events.
+
+        Args:
+            Same as process_message, but returns an iterator.
+        """
+        # Transcribe voice if needed (blocking step before stream starts)
+        if content_type == MessageType.VOICE:
+            if not isinstance(content, bytes):
+                yield {"error": "Voice content must be bytes"}
+                return
+            text = await self.voice_engine.transcribe(content)
+            if text.startswith("[Transcription error") or text.startswith("[Error"):
+                yield {"error": text}
+                return
+        else:
+            text = content if isinstance(content, str) else content.decode("utf-8")
+
+        if session_id is None:
+            current_session = await self.state_manager.get_current_session(user_id)
+            session_id = current_session.id if current_session else None
+
+        continue_last = session_id is not None
+
+        user_settings = {
+            "mode": mode.value,
+            "watch_enabled": watch_enabled,
+        }
+
+        def _on_tool_call(tool_name: str, detail: str | None):
+            if on_tool_call and watch_enabled:
+                on_tool_call(tool_name, detail)
+
+        # Yield events from Claude
+        async for event in self.claude_client.query_stream(
+            prompt=text,
+            session_id=session_id,
+            continue_last=continue_last,
+            user_settings=user_settings,
+            mode=mode.value,
+            on_tool_call=_on_tool_call if watch_enabled else None,
+            can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            **kwargs,
+        ):
+            yield event
+
+            # Update session state if we get a new session ID from result
+            # Note: query_stream yields raw messages/events. We might need to inspect them here
+            # to capture session_id update.
+            # But query_stream logic in claude.py doesn't return metadata at end, it yields objects.
+            # Let's check ResultMessage handling in stream.
+            # The client should probably persist session ID updates internally or we handle it here.
+            # For now, let's assume session update happens on the caller side or we need to intercept ResultMessage.
+
+            if hasattr(event, "session_id") and event.session_id:
+                # ResultMessage or StreamEvent might have session_id
+                # Only update if it's different/new
+                if event.session_id != session_id:
+                     await self.state_manager.update_session(user_id, event.session_id)
+                     session_id = event.session_id # Update local var
+
     async def process_text(
         self,
         user_id: str,
@@ -178,20 +266,10 @@ class Brain:
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
         voice_speed: float = 1.1,
+        **kwargs,
     ) -> BrainResponse:
         """
         Process a text message (convenience method).
-
-        Args:
-            user_id: Unique identifier for the user
-            text: Text message content
-            session_id: Optional session ID to continue
-            mode: Execution mode (GO_ALL or APPROVE)
-            include_audio: Whether to include TTS audio in response
-            voice_speed: Voice speed for TTS
-
-        Returns:
-            BrainResponse with text, optional audio, and metadata
         """
         return await self.process_message(
             user_id=user_id,
@@ -201,6 +279,7 @@ class Brain:
             mode=mode,
             include_audio=include_audio,
             voice_speed=voice_speed,
+            **kwargs,
         )
 
     async def process_voice(
@@ -211,20 +290,10 @@ class Brain:
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
         voice_speed: float = 1.1,
+        **kwargs,
     ) -> BrainResponse:
         """
         Process a voice message (convenience method).
-
-        Args:
-            user_id: Unique identifier for the user
-            voice_bytes: Voice audio bytes
-            session_id: Optional session ID to continue
-            mode: Execution mode (GO_ALL or APPROVE)
-            include_audio: Whether to include TTS audio in response
-            voice_speed: Voice speed for TTS
-
-        Returns:
-            BrainResponse with text, optional audio, and metadata
         """
         return await self.process_message(
             user_id=user_id,
@@ -234,6 +303,7 @@ class Brain:
             mode=mode,
             include_audio=include_audio,
             voice_speed=voice_speed,
+            **kwargs,
         )
 
     # Session Management

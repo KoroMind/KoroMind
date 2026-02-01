@@ -1,9 +1,76 @@
 """Shared types and data structures for KoroMind."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal, TypedDict
+
+from claude_agent_sdk import SdkMcpTool
+from claude_agent_sdk.types import (
+    AgentDefinition,
+    HookCallback,
+    HookContext,
+    HookEvent,
+    HookMatcher,
+    McpServerConfig,
+    PermissionResult,
+    PermissionResultAllow,
+    PermissionResultDeny,
+    SandboxSettings,
+    SdkPluginConfig,
+    StreamEvent,
+    ThinkingBlock,
+    ToolPermissionContext,
+)
+
+
+class OutputFormat(TypedDict):
+    """Output format configuration."""
+
+    type: Literal["json_schema"]
+    schema: dict[str, Any]
+
+
+# Type alias for tool permission callback (SDK-compatible)
+# Signature: (tool_name, tool_input, context) -> PermissionResult
+CanUseTool = Callable[
+    [str, dict[str, Any], ToolPermissionContext],
+    Awaitable[PermissionResult],
+]
+
+# Type alias for tool call notification callback
+# Signature: (tool_name, detail) -> None
+OnToolCall = Callable[[str, str | None], None]
+
+# Re-export SDK types for convenience
+__all__ = [
+    "AgentDefinition",
+    "BrainResponse",
+    "CanUseTool",
+    "HookCallback",
+    "HookContext",
+    "HookEvent",
+    "HookMatcher",
+    "McpServerConfig",
+    "MessageType",
+    "Mode",
+    "OnToolCall",
+    "OutputFormat",
+    "PermissionResult",
+    "PermissionResultAllow",
+    "PermissionResultDeny",
+    "ProjectConfig",
+    "SandboxSettings",
+    "SdkMcpTool",
+    "SdkPluginConfig",
+    "Session",
+    "StreamEvent",
+    "ThinkingBlock",
+    "ToolCall",
+    "ToolPermissionContext",
+    "UserSettings",
+]
 
 
 class MessageType(Enum):
@@ -66,6 +133,17 @@ class Session:
             created_at=datetime.fromisoformat(data["created_at"]),
             last_active=datetime.fromisoformat(data["last_active"]),
         )
+
+
+@dataclass
+class ProjectConfig:
+    """Project-level configuration (hooks, mcp, agents, etc)."""
+
+    hooks: dict[HookEvent, list[HookMatcher]] | None = None
+    mcp_servers: dict[str, McpServerConfig] | None = None
+    agents: dict[str, AgentDefinition] | None = None
+    plugins: list[SdkPluginConfig] | None = None
+    sandbox: SandboxSettings | None = None
 
 
 @dataclass

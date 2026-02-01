@@ -1,6 +1,9 @@
 """CLI application for KoroMind using Rich and Typer."""
 
 import asyncio
+import logging
+import os
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -13,6 +16,9 @@ from rich.table import Table
 from koro.core.brain import Brain
 from koro.core.config import validate_core_environment
 from koro.core.types import Mode
+
+# Default vault location
+DEFAULT_VAULT_PATH = Path.home() / ".koromind"
 
 app = typer.Typer(
     name="koro",
@@ -211,9 +217,32 @@ async def process_message(brain: Brain, user_id: str, text: str):
     console.print()
 
 
-async def repl(user_id: str):
+def _get_vault_path(vault: Optional[str]) -> Optional[Path]:
+    """Resolve vault path from argument, env var, or default."""
+    if vault:
+        path = Path(vault).expanduser()
+        if path.exists():
+            return path
+        console.print(f"[yellow]Warning: Vault path not found: {vault}[/yellow]")
+        return None
+
+    # Check env var
+    env_vault = os.environ.get("KOROMIND_VAULT")
+    if env_vault:
+        path = Path(env_vault).expanduser()
+        if path.exists():
+            return path
+
+    # Check default location
+    if DEFAULT_VAULT_PATH.exists():
+        return DEFAULT_VAULT_PATH
+
+    return None
+
+
+async def repl(user_id: str, vault_path: Optional[Path] = None):
     """Run the REPL (Read-Eval-Print Loop)."""
-    brain = Brain()
+    brain = Brain(vault_path=vault_path)
 
     # Check environment
     is_valid, message = validate_core_environment()
@@ -223,6 +252,12 @@ async def repl(user_id: str):
         return
 
     print_welcome()
+
+    # Show vault status
+    if brain.vault and brain.vault.exists:
+        config = brain.vault.load()
+        console.print(f"[dim]Vault: {brain.vault.root}[/dim]")
+        console.print(f"[dim]Model: {config.get('model', 'default')}[/dim]")
     console.print()
 
     while True:
@@ -258,22 +293,62 @@ def chat(
         "-u",
         help="User ID (defaults to 'cli-user')",
     ),
+    vault: Optional[str] = typer.Option(
+        None,
+        "--vault",
+        "-v",
+        help="Path to vault directory (default: ~/.koromind or $KOROMIND_VAULT)",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        "-d",
+        help="Enable debug logging",
+    ),
 ):
     """Start an interactive chat session."""
+    # Configure logging
+    if debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+        console.print("[dim]Debug logging enabled[/dim]")
+
     uid = user_id or "cli-user"
-    asyncio.run(repl(uid))
+    vault_path = _get_vault_path(vault)
+    asyncio.run(repl(uid, vault_path))
 
 
 @app.command()
-def health():
+def health(
+    vault: Optional[str] = typer.Option(
+        None,
+        "--vault",
+        "-v",
+        help="Path to vault directory",
+    ),
+):
     """Check system health."""
-    brain = Brain()
+    vault_path = _get_vault_path(vault)
+    brain = Brain(vault_path=vault_path)
     health_status = brain.health_check()
 
     table = Table(title="Health Check", show_header=True)
     table.add_column("Component", style="cyan")
     table.add_column("Status")
     table.add_column("Message")
+
+    # Add vault status
+    if brain.vault:
+        vault_ok = brain.vault.exists
+        vault_msg = str(brain.vault.root) if vault_ok else "config not found"
+        table.add_row(
+            "Vault",
+            "[green]OK[/green]" if vault_ok else "[yellow]WARN[/yellow]",
+            vault_msg,
+        )
 
     all_healthy = True
     for component, (healthy, message) in health_status.items():

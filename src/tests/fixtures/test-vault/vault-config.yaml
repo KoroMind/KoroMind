@@ -1,0 +1,20 @@
+# KoroMind Vault Configuration
+# Your second brain, configured.
+
+# The mind behind the mind
+model: "claude-opus-4-5-20250514"
+max_turns: 100
+
+# Where you think
+cwd: "."
+
+# Your personality
+system_prompt_file: "./prompts/system.md"
+
+# Safety rails
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "./hooks/safety.sh"

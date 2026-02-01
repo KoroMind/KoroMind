@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from typing_extensions import TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
 from claude_agent_sdk import SdkMcpTool
 from claude_agent_sdk.types import (
@@ -46,13 +46,15 @@ class CanUseTool(Protocol):
         tool_name: str,
         tool_input: dict[str, Any],
         context: ToolPermissionContext,
-    ) -> Awaitable[PermissionResult]: ...
+    ) -> Awaitable[PermissionResult]:
+        ...
 
 
 class OnToolCall(Protocol):
     """Callback signature for tool call notifications."""
 
-    def __call__(self, tool_name: str, detail: str | None) -> None: ...
+    def __call__(self, tool_name: str, detail: str | None) -> None:
+        ...
 
 
 class ClaudeTools(StrEnum):
@@ -208,24 +210,18 @@ class Session:
         )
 
 
-class ProjectConfig(BaseModel):
+class ProjectConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """Project-level configuration (hooks, mcp, agents, etc)."""
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
-
-    # SDK types use typing.TypedDict which requires Python 3.12+ for Pydantic
-    # Using Any to avoid validation issues on Python < 3.12
-    hooks: dict[str, Any] = Field(default_factory=dict)
-    mcp_servers: dict[str, Any] = Field(default_factory=dict)
-    agents: dict[str, Any] = Field(default_factory=dict)
-    plugins: list[Any] = Field(default_factory=list)
-    sandbox: Any | None = None
+    hooks: dict[HookEvent, list[HookMatcher]] = {}
+    mcp_servers: dict[str, McpServerConfig] = {}
+    agents: dict[str, AgentDefinition] = {}
+    plugins: list[SdkPluginConfig] = []
+    sandbox: SandboxSettings | None = None
 
 
-class QueryConfig(BaseModel):
+class QueryConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """Configuration for Claude SDK queries."""
-
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     prompt: str
     session_id: str | None = None
@@ -233,17 +229,14 @@ class QueryConfig(BaseModel):
     include_megg: bool = True
     user_settings: UserSettings | None = None
     mode: Mode = Mode.GO_ALL
-    # Protocol types don't work with Pydantic + __future__ annotations, use Any
-    on_tool_call: Any | None = None  # OnToolCall type
-    can_use_tool: Any | None = None  # CanUseTool type
-    # SDK types use typing.TypedDict which requires Python 3.12+ for Pydantic
-    # Using Any to avoid validation issues on Python < 3.12
-    hooks: dict[str, Any] = Field(default_factory=dict)
-    mcp_servers: dict[str, Any] = Field(default_factory=dict)
-    agents: dict[str, Any] = Field(default_factory=dict)
-    plugins: list[Any] = Field(default_factory=list)
-    sandbox: Any | None = None
-    output_format: Any | None = None  # OutputFormat TypedDict
+    on_tool_call: OnToolCall | None = None
+    can_use_tool: CanUseTool | None = None
+    hooks: dict[HookEvent, list[HookMatcher]] = {}
+    mcp_servers: dict[str, McpServerConfig] = {}
+    agents: dict[str, AgentDefinition] = {}
+    plugins: list[SdkPluginConfig] = []
+    sandbox: SandboxSettings | None = None
+    output_format: OutputFormat | None = None
     max_turns: int | None = None
     max_budget_usd: float | None = None
     model: str | None = None

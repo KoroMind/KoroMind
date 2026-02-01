@@ -111,7 +111,8 @@ class TestClaudeToolUse:
             )
         )
 
-        assert "12345" in response
+        # Claude may respond with digits or words
+        assert "12345" in response or "twelve thousand" in response.lower()
 
     @pytest.mark.asyncio
     async def test_tool_callback(self, claude_client, tmp_path):

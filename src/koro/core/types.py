@@ -1,10 +1,14 @@
 """Shared types and data structures for KoroMind."""
 
+from __future__ import annotations
+
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Literal, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, Protocol
+
+from typing_extensions import TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -209,11 +213,13 @@ class ProjectConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
-    hooks: dict[HookEvent, list[HookMatcher]] = Field(default_factory=dict)
-    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
-    agents: dict[str, AgentDefinition] = Field(default_factory=dict)
-    plugins: list[SdkPluginConfig] = Field(default_factory=list)
-    sandbox: SandboxSettings | None = None
+    # SDK types use typing.TypedDict which requires Python 3.12+ for Pydantic
+    # Using Any to avoid validation issues on Python < 3.12
+    hooks: dict[str, Any] = Field(default_factory=dict)
+    mcp_servers: dict[str, Any] = Field(default_factory=dict)
+    agents: dict[str, Any] = Field(default_factory=dict)
+    plugins: list[Any] = Field(default_factory=list)
+    sandbox: Any | None = None
 
 
 class QueryConfig(BaseModel):
@@ -227,14 +233,17 @@ class QueryConfig(BaseModel):
     include_megg: bool = True
     user_settings: UserSettings | None = None
     mode: Mode = Mode.GO_ALL
-    on_tool_call: OnToolCall | None = None
-    can_use_tool: CanUseTool | None = None
-    hooks: dict[HookEvent, list[HookMatcher]] = Field(default_factory=dict)
-    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
-    agents: dict[str, AgentDefinition] = Field(default_factory=dict)
-    plugins: list[SdkPluginConfig] = Field(default_factory=list)
-    sandbox: SandboxSettings | None = None
-    output_format: OutputFormat | None = None
+    # Protocol types don't work with Pydantic + __future__ annotations, use Any
+    on_tool_call: Any | None = None  # OnToolCall type
+    can_use_tool: Any | None = None  # CanUseTool type
+    # SDK types use typing.TypedDict which requires Python 3.12+ for Pydantic
+    # Using Any to avoid validation issues on Python < 3.12
+    hooks: dict[str, Any] = Field(default_factory=dict)
+    mcp_servers: dict[str, Any] = Field(default_factory=dict)
+    agents: dict[str, Any] = Field(default_factory=dict)
+    plugins: list[Any] = Field(default_factory=list)
+    sandbox: Any | None = None
+    output_format: Any | None = None  # OutputFormat TypedDict
     max_turns: int | None = None
     max_budget_usd: float | None = None
     model: str | None = None

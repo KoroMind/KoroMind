@@ -48,6 +48,7 @@ testpaths = ["src/tests"]
 pythonpath = ["src"]
 markers = [
     "live: marks tests as requiring live API keys (deselect with '-m \"not live\"')",
+    "eval: marks tests as agent-evaluated (non-deterministic quality checks)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

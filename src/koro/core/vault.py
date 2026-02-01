@@ -154,9 +154,7 @@ class Vault:
             return p
         return self.root / p
 
-    def _resolve_mcp_paths(
-        self, mcp_servers: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _resolve_mcp_paths(self, mcp_servers: dict[str, Any]) -> dict[str, Any]:
         """Resolve paths in MCP server configurations.
 
         Looks for paths starting with ./ in args lists.
@@ -170,7 +168,11 @@ class Vault:
             server_copy = server.copy()
             if "args" in server_copy and isinstance(server_copy["args"], list):
                 server_copy["args"] = [
-                    str(self._resolve(arg)) if isinstance(arg, str) and arg.startswith("./") else arg
+                    (
+                        str(self._resolve(arg))
+                        if isinstance(arg, str) and arg.startswith("./")
+                        else arg
+                    )
                     for arg in server_copy["args"]
                 ]
             resolved[name] = server_copy

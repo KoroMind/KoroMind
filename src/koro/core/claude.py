@@ -6,11 +6,17 @@ import os
 import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, CLIConnectionError, CLINotFoundError, ProcessError
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    CLIConnectionError,
+    CLINotFoundError,
+    ProcessError,
+)
 
 logger = logging.getLogger(__name__)
 from claude_agent_sdk.types import (
@@ -22,7 +28,6 @@ from claude_agent_sdk.types import (
     ResultMessage,
     SandboxSettings,
     SdkPluginConfig,
-    StreamEvent,
     TextBlock,
     ThinkingBlock,
     ToolUseBlock,
@@ -342,7 +347,9 @@ class ClaudeClient:
                             if hasattr(message, "usage"):
                                 metadata["usage"] = message.usage
                             if hasattr(message, "structured_output"):
-                                metadata["structured_output"] = message.structured_output
+                                metadata["structured_output"] = (
+                                    message.structured_output
+                                )
                             if hasattr(message, "is_error"):
                                 metadata["is_error"] = message.is_error
                 finally:
@@ -468,8 +475,12 @@ class ClaudeClient:
                 cwd=self.working_dir,
             )
             logger.debug(f"Health check subprocess: returncode={result.returncode}")
-            logger.debug(f"Health check stdout: {result.stdout[:200] if result.stdout else 'empty'}")
-            logger.debug(f"Health check stderr: {result.stderr[:200] if result.stderr else 'empty'}")
+            logger.debug(
+                f"Health check stdout: {result.stdout[:200] if result.stdout else 'empty'}"
+            )
+            logger.debug(
+                f"Health check stderr: {result.stderr[:200] if result.stderr else 'empty'}"
+            )
 
             if result.returncode == 0:
                 logger.debug("Health check passed")

@@ -1,7 +1,8 @@
 """Unit tests for the Vault component."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from koro.core.vault import Vault, VaultError
 
@@ -19,7 +20,7 @@ class TestVaultLoad:
         """Returns empty dict when config file is empty."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("")
-        
+
         vault = Vault(tmp_path)
         config = vault.load()
         assert config == {}
@@ -28,7 +29,7 @@ class TestVaultLoad:
         """Returns empty dict when config file contains only null."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("null")
-        
+
         vault = Vault(tmp_path)
         config = vault.load()
         assert config == {}
@@ -42,7 +43,7 @@ max_turns: 50
 """)
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         assert config["model"] == "claude-sonnet-4-20250514"
         assert config["max_turns"] == 50
 
@@ -50,7 +51,7 @@ max_turns: 50
         """Raises VaultError on invalid YAML syntax."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("invalid: yaml: content: [")
-        
+
         vault = Vault(tmp_path)
         with pytest.raises(VaultError, match="Invalid YAML"):
             vault.load()
@@ -59,7 +60,7 @@ max_turns: 50
         """Raises VaultError when YAML is not a mapping."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("- item1\n- item2")
-        
+
         vault = Vault(tmp_path)
         with pytest.raises(VaultError, match="must be a mapping"):
             vault.load()
@@ -68,13 +69,13 @@ max_turns: 50
         """Config is cached after first load."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("model: test-model")
-        
+
         vault = Vault(tmp_path)
         config1 = vault.load()
-        
+
         # Modify file
         config_file.write_text("model: different-model")
-        
+
         # Should return cached version
         config2 = vault.load()
         assert config1 is config2
@@ -88,14 +89,14 @@ class TestVaultReload:
         """Reload clears cache and reads fresh config."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("model: original")
-        
+
         vault = Vault(tmp_path)
         config1 = vault.load()
         assert config1["model"] == "original"
-        
+
         # Modify file
         config_file.write_text("model: updated")
-        
+
         # Reload should get fresh content
         config2 = vault.reload()
         assert config2["model"] == "updated"
@@ -108,30 +109,30 @@ class TestVaultPathResolution:
         """Relative cwd is resolved to absolute path."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text('cwd: "."')
-        
+
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         assert config["cwd"] == str(tmp_path)
 
     def test_resolves_relative_cwd_subdirectory(self, tmp_path: Path):
         """Relative cwd with subdirectory is resolved correctly."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text('cwd: "./sandbox"')
-        
+
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         assert config["cwd"] == str(tmp_path / "sandbox")
 
     def test_preserves_absolute_cwd(self, tmp_path: Path):
         """Absolute cwd paths are preserved as-is."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text('cwd: "/usr/local/bin"')
-        
+
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         assert config["cwd"] == "/usr/local/bin"
 
     def test_resolves_add_dirs(self, tmp_path: Path):
@@ -145,7 +146,7 @@ add_dirs:
 """)
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         assert config["add_dirs"] == [
             str(tmp_path),
             str(tmp_path / "projects"),
@@ -156,10 +157,10 @@ add_dirs:
         """system_prompt_file is resolved correctly."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text('system_prompt_file: "./prompts/main.md"')
-        
+
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         assert config["system_prompt_file"] == str(tmp_path / "prompts" / "main.md")
 
     def test_resolves_mcp_server_paths(self, tmp_path: Path):
@@ -173,7 +174,7 @@ mcp_servers:
 """)
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         assert config["mcp_servers"]["sqlite"]["args"] == [
             "mcp-server-sqlite",
             "--db-path",
@@ -193,7 +194,7 @@ hooks:
 """)
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         hook_cmd = config["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         assert hook_cmd == str(tmp_path / "hooks" / "validate.sh")
 
@@ -201,10 +202,10 @@ hooks:
         """Tilde is expanded to home directory."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text('cwd: "~/Documents"')
-        
+
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         assert config["cwd"] == str(Path.home() / "Documents")
 
 
@@ -215,7 +216,7 @@ class TestVaultProperties:
         """exists property returns True when config file exists."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("model: test")
-        
+
         vault = Vault(tmp_path)
         assert vault.exists is True
 
@@ -248,7 +249,7 @@ class TestVaultFullConfig:
 cwd: "."
 add_dirs:
   - "./projects"
-  
+
 model: "claude-sonnet-4-20250514"
 fallback_model: "claude-sonnet-4-20250514"
 max_turns: 50
@@ -283,7 +284,7 @@ plugins: []
 """)
         vault = Vault(tmp_path)
         config = vault.load()
-        
+
         # Check all sections are present
         assert config["cwd"] == str(tmp_path)
         assert config["add_dirs"] == [str(tmp_path / "projects")]

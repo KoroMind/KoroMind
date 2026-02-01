@@ -41,3 +41,6 @@ uv.lock
 .claude/
 .mcp.json
 credentials.json
+
+# Sandbox (Claude working directory)
+sandbox/

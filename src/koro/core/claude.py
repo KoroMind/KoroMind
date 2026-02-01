@@ -8,8 +8,6 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
@@ -17,8 +15,6 @@ from claude_agent_sdk import (
     CLINotFoundError,
     ProcessError,
 )
-
-logger = logging.getLogger(__name__)
 from claude_agent_sdk.types import (
     AgentDefinition,
     AssistantMessage,
@@ -36,6 +32,8 @@ from claude_agent_sdk.types import (
 from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
 from koro.core.prompt import get_prompt_manager
 from koro.core.types import CanUseTool, OnToolCall, OutputFormat
+
+logger = logging.getLogger(__name__)
 
 
 def load_megg_context(working_dir: str = None) -> str:

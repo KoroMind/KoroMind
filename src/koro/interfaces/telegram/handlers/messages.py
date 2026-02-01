@@ -3,20 +3,27 @@
 import asyncio
 import time
 import uuid
+from io import BytesIO
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
-from koro.claude import format_tool_call, get_claude_client
+from koro.claude import format_tool_call
 from koro.config import ALLOWED_CHAT_ID
+from koro.core.brain import get_brain
+from koro.core.types import (
+    BrainCallbacks,
+    MessageType,
+    Mode,
+    PermissionResultAllow,
+    PermissionResultDeny,
+)
 from koro.interfaces.telegram.handlers.utils import (
     debug,
     send_long_message,
     should_handle_message,
 )
-from koro.rate_limit import get_rate_limiter
-from koro.state import get_state_manager
-from koro.voice import get_voice_engine
 
 # Pending tool approvals for approve mode
 pending_approvals: dict = {}
@@ -81,57 +88,51 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
+    brain = get_brain()
 
     # Rate limiting
-    rate_limiter = get_rate_limiter()
-    allowed, rate_msg = rate_limiter.check(user_id)
+    allowed, rate_msg = brain.check_rate_limit(user_id)
     if not allowed:
         await update.message.reply_text(rate_msg)
         return
 
-    state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
-    settings = state_manager.get_user_settings(user_id)
+    # Get settings
+    settings = await brain.get_settings(user_id)
 
     processing_msg = await update.message.reply_text("Processing voice message...")
 
     try:
         # Download voice
         voice = await update.message.voice.get_file()
-        voice_bytes = await voice.download_as_bytearray()
+        voice_bytes = bytes(await voice.download_as_bytearray())
 
-        # Transcribe
-        await processing_msg.edit_text("Transcribing...")
-        voice_engine = get_voice_engine()
-        text = await voice_engine.transcribe(bytes(voice_bytes))
-
-        if text.startswith("[Transcription error") or text.startswith("[Error"):
-            await processing_msg.edit_text(text)
-            return
-
-        # Show what was heard
-        preview = text[:100] + "..." if len(text) > 100 else text
-        await processing_msg.edit_text(f"Heard: {preview}\n\nAsking Koro...")
-
-        # Call Claude
-        response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, update, context
+        # Create callbacks for Brain
+        callbacks = _create_brain_callbacks(
+            update, context, processing_msg, settings.watch_enabled, settings.mode
         )
 
-        # Update session
-        await state_manager.update_session(str(user_id), new_session_id)
+        # Start typing indicator
+        await update.effective_chat.send_chat_action(ChatAction.TYPING)
 
-        # Send response
-        await send_long_message(update, processing_msg, response)
+        # Process through Brain (handles transcription, Claude, TTS)
+        response = await brain.process_message(
+            user_id=user_id,
+            content=voice_bytes,
+            content_type=MessageType.VOICE,
+            mode=settings.mode,
+            include_audio=settings.audio_enabled,
+            voice_speed=settings.voice_speed,
+            watch_enabled=settings.watch_enabled,
+            callbacks=callbacks,
+        )
 
-        # Voice response if enabled
-        if settings["audio_enabled"]:
-            audio = await voice_engine.text_to_speech(
-                response, speed=settings["voice_speed"]
-            )
-            if audio:
-                await update.message.reply_voice(voice=audio)
+        # Send text response
+        await send_long_message(update, processing_msg, response.text)
+
+        # Send voice response if available
+        if response.audio:
+            await update.message.reply_voice(voice=BytesIO(response.audio))
 
     except Exception as e:
         debug(f"Error in handle_voice: {e}")
@@ -151,85 +152,136 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
+    brain = get_brain()
 
     # Rate limiting
-    rate_limiter = get_rate_limiter()
-    allowed, rate_msg = rate_limiter.check(user_id)
+    allowed, rate_msg = brain.check_rate_limit(user_id)
     if not allowed:
         await update.message.reply_text(rate_msg)
         return
 
-    state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
-    settings = state_manager.get_user_settings(user_id)
+    # Get settings
+    settings = await brain.get_settings(user_id)
     text = update.message.text
 
-    processing_msg = await update.message.reply_text("Asking Koro...")
+    processing_msg = await update.message.reply_text("Thinking...")
 
     try:
-        response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, update, context
+        # Create callbacks for Brain
+        callbacks = _create_brain_callbacks(
+            update, context, processing_msg, settings.watch_enabled, settings.mode
         )
 
-        # Update session
-        await state_manager.update_session(str(user_id), new_session_id)
+        # Start typing indicator
+        await update.effective_chat.send_chat_action(ChatAction.TYPING)
 
-        # Send response
-        await send_long_message(update, processing_msg, response)
+        # Process through Brain
+        response = await brain.process_message(
+            user_id=user_id,
+            content=text,
+            content_type=MessageType.TEXT,
+            mode=settings.mode,
+            include_audio=settings.audio_enabled,
+            voice_speed=settings.voice_speed,
+            watch_enabled=settings.watch_enabled,
+            callbacks=callbacks,
+        )
 
-        # Voice response if enabled
-        if settings["audio_enabled"]:
-            voice_engine = get_voice_engine()
-            audio = await voice_engine.text_to_speech(
-                response, speed=settings["voice_speed"]
-            )
-            if audio:
-                await update.message.reply_voice(voice=audio)
+        # Send text response
+        await send_long_message(update, processing_msg, response.text)
+
+        # Send voice response if available
+        if response.audio:
+            await update.message.reply_voice(voice=BytesIO(response.audio))
 
     except Exception as e:
         debug(f"Error in handle_text: {e}")
         await processing_msg.edit_text(f"Error: {e}")
 
 
-async def _call_claude_with_settings(
-    text: str,
-    state: dict,
-    settings: dict,
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle photo messages."""
+    if update.effective_user.is_bot is True:
+        return
+
+    debug(f"PHOTO received from user {update.effective_user.id}")
+
+    if not should_handle_message(update.message.message_thread_id):
+        return
+
+    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+        return
+
+    user_id = str(update.effective_user.id)
+    brain = get_brain()
+
+    # Rate limiting
+    allowed, rate_msg = brain.check_rate_limit(user_id)
+    if not allowed:
+        await update.message.reply_text(rate_msg)
+        return
+
+    try:
+        # Get the largest photo
+        photo = update.message.photo[-1]
+        photo_file = await photo.get_file()
+        photo_bytes = bytes(await photo_file.download_as_bytearray())
+
+        # Process through Brain (will return placeholder for now)
+        response = await brain.process_message(
+            user_id=user_id,
+            content=photo_bytes,
+            content_type=MessageType.IMAGE,
+        )
+
+        await update.message.reply_text(response.text)
+
+    except Exception as e:
+        debug(f"Error in handle_photo: {e}")
+        await update.message.reply_text(f"Error processing image: {e}")
+
+
+def _create_brain_callbacks(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-) -> tuple[str, str, dict]:
+    processing_msg,
+    watch_enabled: bool,
+    mode: Mode,
+) -> BrainCallbacks:
     """
-    Call Claude with user settings applied.
+    Create BrainCallbacks for Telegram interface.
 
     Args:
-        text: User message
-        state: User session state
-        settings: User settings
         update: Telegram update
         context: Telegram context
+        processing_msg: Processing message to update with progress
+        watch_enabled: Whether watch mode is enabled
+        mode: Execution mode (GO_ALL or APPROVE)
 
     Returns:
-        (response, session_id, metadata)
+        BrainCallbacks instance
     """
-    mode = settings.get("mode", "go_all")
-    watch_enabled = settings.get("watch_enabled", False)
-    continue_last = state["current_session"] is not None
 
-    # Watch mode callback
-    async def on_tool_call(tool_name: str, detail: str | None):
+    def on_progress(status: str) -> None:
+        """Update processing message with progress status."""
+        try:
+            asyncio.create_task(processing_msg.edit_text(status))
+        except Exception as exc:
+            debug(f"Failed to update progress: {exc}")
+
+    def on_tool_use(tool_name: str, detail: str | None) -> None:
+        """Send tool call notification in watch mode."""
         if watch_enabled:
             tool_msg = f"{tool_name}: {detail}" if detail else f"Using: {tool_name}"
             try:
-                await update.message.reply_text(tool_msg)
+                asyncio.create_task(update.message.reply_text(tool_msg))
             except Exception as exc:
                 debug(f"Failed to send tool call update: {exc}")
 
-    # Approve mode callback
-    async def can_use_tool(tool_name: str, tool_input: dict, ctx):
-        from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
-
-        if mode != "approve":
+    async def on_tool_approval(tool_name: str, tool_input: dict, ctx):
+        """Handle tool approval in approve mode."""
+        if mode != Mode.APPROVE:
             return PermissionResultAllow()
 
         approval_id = str(uuid.uuid4())[:8]
@@ -271,13 +323,8 @@ async def _call_claude_with_settings(
             return PermissionResultAllow()
         return PermissionResultDeny(message="User rejected tool")
 
-    claude_client = get_claude_client()
-    return await claude_client.query(
-        prompt=text,
-        session_id=state["current_session"],
-        continue_last=continue_last,
-        user_settings=settings,
-        mode=mode,
-        on_tool_call=on_tool_call if watch_enabled else None,
-        can_use_tool=can_use_tool if mode == "approve" else None,
+    return BrainCallbacks(
+        on_tool_use=on_tool_use,
+        on_tool_approval=on_tool_approval,
+        on_progress=on_progress,
     )

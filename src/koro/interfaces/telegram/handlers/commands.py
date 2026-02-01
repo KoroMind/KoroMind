@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 from koro.auth import check_claude_auth, load_credentials, save_credentials
 from koro.claude import get_claude_client
 from koro.config import ALLOWED_CHAT_ID, SANDBOX_DIR
+from koro.core.brain import get_brain
 from koro.interfaces.telegram.handlers.utils import debug, should_handle_message
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
@@ -43,17 +44,17 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
-    state_manager = get_state_manager()
+    user_id = str(update.effective_user.id)
+    brain = get_brain()
 
     session_name = " ".join(context.args) if context.args else None
-    await state_manager.clear_current_session(str(user_id))
+    session = await brain.create_session(user_id, name=session_name)
 
     if session_name:
         await update.message.reply_text(f"New session started: {session_name}")
     else:
         await update.message.reply_text(
-            "New session started. Send a voice message to begin."
+            f"New session started: {session.id[:8]}...\nSend a voice message to begin."
         )
 
 
@@ -87,24 +88,29 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
-    state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
+    user_id = str(update.effective_user.id)
+    brain = get_brain()
 
-    if not state["sessions"]:
+    sessions = await brain.get_sessions(user_id)
+    current_session = await brain.get_current_session(user_id)
+
+    if not sessions:
         await update.message.reply_text("No sessions yet.")
         return
 
     msg = "Sessions:\n"
-    for i, sess in enumerate(state["sessions"][-10:], 1):
-        current = " (current)" if sess == state["current_session"] else ""
-        msg += f"{i}. {sess[:9]}...{current}\n"
+    for i, sess in enumerate(sessions[:10], 1):
+        current = (
+            " (current)" if current_session and sess.id == current_session.id else ""
+        )
+        display_name = sess.name if sess.name else f"{sess.id[:8]}..."
+        msg += f"{i}. {display_name}{current}\n"
 
     await update.message.reply_text(msg)
 
 
 async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /switch command - switch to specific session."""
+    """Handle /switch command - switch to specific session by name or ID prefix."""
     if not should_handle_message(update.message.message_thread_id):
         return
 
@@ -112,23 +118,33 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text("Usage: /switch <session_id>")
+        await update.message.reply_text("Usage: /switch <name|session_id>")
         return
 
-    user_id = update.effective_user.id
-    state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
-    session_id = context.args[0]
+    user_id = str(update.effective_user.id)
+    brain = get_brain()
+    query = " ".join(context.args)
 
-    matches = [s for s in state["sessions"] if s.startswith(session_id)]
+    # Try exact name match first
+    session = await brain.state_manager.get_session_by_name(user_id, query)
+
+    if session:
+        await brain.switch_session(user_id, session.id)
+        await update.message.reply_text(f"Switched to session: {session.name}")
+        return
+
+    # Fall back to ID prefix matching
+    sessions = await brain.get_sessions(user_id)
+    matches = [s for s in sessions if s.id.startswith(query)]
 
     if len(matches) == 1:
-        await state_manager.update_session(str(user_id), matches[0])
-        await update.message.reply_text(f"Switched to session: {matches[0][:8]}...")
+        await brain.switch_session(user_id, matches[0].id)
+        display = matches[0].name if matches[0].name else f"{matches[0].id[:8]}..."
+        await update.message.reply_text(f"Switched to session: {display}")
     elif len(matches) > 1:
         await update.message.reply_text("Multiple matches. Be more specific.")
     else:
-        await update.message.reply_text(f"Session not found: {session_id}")
+        await update.message.reply_text(f"Session not found: {query}")
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):

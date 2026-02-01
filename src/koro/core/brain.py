@@ -5,8 +5,6 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Callable
 
-logger = logging.getLogger(__name__)
-
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
 from koro.core.state import StateManager, get_state_manager
@@ -21,6 +19,8 @@ from koro.core.types import (
 )
 from koro.core.vault import Vault
 from koro.core.voice import VoiceEngine, get_voice_engine
+
+logger = logging.getLogger(__name__)
 
 
 class Brain:
@@ -164,6 +164,21 @@ class Brain:
                     text=text,
                     session_id=session_id or "",
                 )
+        elif content_type == MessageType.IMAGE:
+            # TODO: Implement proper Claude vision API support
+            # For now, return a placeholder message
+            if not isinstance(content, bytes):
+                return BrainResponse(
+                    text="Error: Image content must be bytes",
+                    session_id=session_id or "",
+                )
+            logger.debug(
+                f"Image received: {len(content)} bytes (vision not yet implemented)"
+            )
+            return BrainResponse(
+                text="Image support is coming soon! For now, please describe the image in text.",
+                session_id=session_id or "",
+            )
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -408,9 +423,9 @@ class Brain:
         """Get all sessions for a user."""
         return await self.state_manager.get_sessions(user_id)
 
-    async def create_session(self, user_id: str) -> Session:
+    async def create_session(self, user_id: str, name: str | None = None) -> Session:
         """Create a new session for a user."""
-        return await self.state_manager.create_session(user_id)
+        return await self.state_manager.create_session(user_id, name)
 
     async def get_current_session(self, user_id: str) -> Session | None:
         """Get the current session for a user."""

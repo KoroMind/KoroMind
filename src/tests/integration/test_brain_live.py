@@ -33,7 +33,6 @@ def brain(tmp_path):
     """Create Brain with temp sandbox."""
     from koro.core.claude import ClaudeClient
     from koro.core.state import StateManager
-    from koro.core.voice import VoiceEngine
 
     sandbox = tmp_path / "sandbox"
     sandbox.mkdir()

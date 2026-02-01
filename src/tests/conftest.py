@@ -130,6 +130,7 @@ def make_update():
         update.effective_user.is_bot = is_bot
         update.effective_chat.id = chat_id
         update.effective_chat.send_message = AsyncMock()
+        update.effective_chat.send_chat_action = AsyncMock()
 
         update.message.message_thread_id = thread_id
         update.message.text = text

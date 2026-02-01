@@ -17,7 +17,11 @@ from koro.interfaces.telegram.handlers.commands import (
     cmd_status,
     cmd_switch,
 )
-from koro.interfaces.telegram.handlers.messages import handle_text, handle_voice
+from koro.interfaces.telegram.handlers.messages import (
+    handle_photo,
+    handle_text,
+    handle_voice,
+)
 
 __all__ = [
     "cmd_start",
@@ -33,6 +37,7 @@ __all__ = [
     "cmd_elevenlabs_key",
     "handle_voice",
     "handle_text",
+    "handle_photo",
     "handle_settings_callback",
     "handle_approval_callback",
 ]

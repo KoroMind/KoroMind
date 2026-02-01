@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/Claude-Agent%20SDK-7c3aed?style=flat-square" alt="Claude Agent SDK">
   <img src="https://img.shields.io/badge/FastAPI-REST-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/Telegram-Bot-26a5e4?style=flat-square&logo=telegram&logoColor=white" alt="Telegram Bot">
@@ -100,7 +100,7 @@ src/koro/
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - [Claude Code](https://claude.ai/code) installed
 - Telegram bot token from [@BotFather](https://t.me/botfather) (for Telegram interface)
 - ElevenLabs API key from [elevenlabs.io](https://elevenlabs.io) (for voice)
@@ -114,7 +114,7 @@ cd koromind
 
 # Install with uv (recommended)
 pip install uv
-uv venv -p python3.11
+uv venv -p python3.12
 source .venv/bin/activate
 uv sync
 

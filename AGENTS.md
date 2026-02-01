@@ -11,7 +11,7 @@ KoroMind is a multi-interface personal AI assistant ("second brain") that connec
 ### Setup
 ```bash
 pip install uv
-uv venv -p python3.11
+uv venv -p python3.12
 source .venv/bin/activate
 uv sync --extra dev
 cp .env.example .env  # Then fill in credentials
@@ -128,7 +128,7 @@ Message → Brain.process_message() → STT (if voice) → Claude SDK → [Tools
 Legacy JSON files (`sessions_state.json`, `user_settings.json`) are auto-migrated on first run.
 
 ## Code Style
-- Python 3.11+, PEP 8
+- Python 3.12+, PEP 8
 - Type hints for function signatures
 - Black for formatting (line-length 88)
 - isort with black profile

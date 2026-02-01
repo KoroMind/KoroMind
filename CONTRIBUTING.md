@@ -35,7 +35,7 @@ pip install uv
 
 2. Create a virtual environment:
 ```bash
-uv venv -p python3.11
+uv venv -p python3.12
 source .venv/bin/activate  # Linux/macOS
 # or: .venv\Scripts\activate  # Windows
 ```
@@ -66,7 +66,7 @@ pytest test_bot.py::test_transcribe_voice -v
 
 ## Code Style
 
-- Use Python 3.11+ features where appropriate
+- Use Python 3.12+ features where appropriate
 - Follow PEP 8 guidelines
 - Add type hints for function signatures
 - Keep functions focused and under 50 lines where possible

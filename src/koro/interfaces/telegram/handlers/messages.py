@@ -126,9 +126,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_long_message(update, processing_msg, response)
 
         # Voice response if enabled
-        if settings["audio_enabled"]:
+        if settings.audio_enabled:
             audio = await voice_engine.text_to_speech(
-                response, speed=settings["voice_speed"]
+                response, speed=settings.voice_speed
             )
             if audio:
                 await update.message.reply_voice(voice=audio)
@@ -195,7 +195,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _call_claude_with_settings(
     text: str,
     state: dict,
-    settings: dict,
+    settings,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, str, dict]:
@@ -205,7 +205,7 @@ async def _call_claude_with_settings(
     Args:
         text: User message
         state: User session state
-        settings: User settings
+        settings: User settings (UserSettings object)
         update: Telegram update
         context: Telegram context
 
@@ -214,9 +214,13 @@ async def _call_claude_with_settings(
     """
     from koro.core.types import Mode, UserSettings
 
-    settings_model = UserSettings.from_dict(settings)
+    # Handle both UserSettings objects and dicts for backward compatibility
+    if isinstance(settings, dict):
+        settings_model = UserSettings.from_dict(settings)
+    else:
+        settings_model = settings
     mode = settings_model.mode
-    watch_enabled = settings.get("watch_enabled", False)
+    watch_enabled = settings_model.watch_enabled
     continue_last = state["current_session"] is not None
 
     # Watch mode callback

@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import koro.core.prompt as prompt
+from koro.core.types import UserSettings
 from koro.prompt import PromptManager, build_dynamic_prompt
 
 
@@ -104,7 +105,7 @@ class TestBuildDynamicPrompt:
     def test_adds_audio_disabled_note(self):
         """build_dynamic_prompt notes when audio disabled."""
         base = "Base"
-        settings = {"audio_enabled": False}
+        settings = UserSettings(audio_enabled=False)
 
         result = build_dynamic_prompt(base, settings)
 
@@ -113,7 +114,7 @@ class TestBuildDynamicPrompt:
     def test_no_audio_note_when_enabled(self):
         """build_dynamic_prompt doesn't note when audio enabled."""
         base = "Base"
-        settings = {"audio_enabled": True}
+        settings = UserSettings(audio_enabled=True)
 
         result = build_dynamic_prompt(base, settings)
 
@@ -186,7 +187,7 @@ class TestPromptManager:
 
         monkeypatch.setattr(prompt, "BASE_DIR", tmp_path)
         manager = PromptManager(str(prompt_file))
-        settings = {"audio_enabled": False}
+        settings = UserSettings(audio_enabled=False)
 
         result = manager.get_prompt(settings)
 

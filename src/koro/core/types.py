@@ -3,8 +3,10 @@
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, Literal, Protocol, TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from claude_agent_sdk import SdkMcpTool
 from claude_agent_sdk.types import (
@@ -48,11 +50,42 @@ class OnToolCall(Protocol):
 
     def __call__(self, tool_name: str, detail: str | None) -> None: ...
 
+
+class ClaudeTools(StrEnum):
+    """Claude tool names for allowed tool lists."""
+
+    READ = "Read"
+    GREP = "Grep"
+    GLOB = "Glob"
+    WEBSEARCH = "WebSearch"
+    WEBFETCH = "WebFetch"
+    TASK = "Task"
+    BASH = "Bash"
+    EDIT = "Edit"
+    WRITE = "Write"
+    SKILL = "Skill"
+
+
+DEFAULT_CLAUDE_TOOLS = [
+    ClaudeTools.READ,
+    ClaudeTools.GREP,
+    ClaudeTools.GLOB,
+    ClaudeTools.WEBSEARCH,
+    ClaudeTools.WEBFETCH,
+    ClaudeTools.TASK,
+    ClaudeTools.BASH,
+    ClaudeTools.EDIT,
+    ClaudeTools.WRITE,
+    ClaudeTools.SKILL,
+]
+
 # Re-export SDK types for convenience
 __all__ = [
     "AgentDefinition",
     "BrainResponse",
     "CanUseTool",
+    "ClaudeTools",
+    "DEFAULT_CLAUDE_TOOLS",
     "HookCallback",
     "HookContext",
     "HookEvent",
@@ -91,6 +124,36 @@ class Mode(Enum):
 
     GO_ALL = "go_all"
     APPROVE = "approve"
+
+
+@dataclass(frozen=True)
+class UserSettings:
+    """User preferences and settings."""
+
+    mode: Mode = Mode.GO_ALL
+    audio_enabled: bool = True
+    voice_speed: float = 1.1
+    watch_enabled: bool = False
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        return {
+            "mode": self.mode.value,
+            "audio_enabled": self.audio_enabled,
+            "voice_speed": self.voice_speed,
+            "watch_enabled": self.watch_enabled,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "UserSettings":
+        """Create from dictionary."""
+        mode_value = data.get("mode", "go_all")
+        return cls(
+            mode=Mode(mode_value) if isinstance(mode_value, str) else mode_value,
+            audio_enabled=data.get("audio_enabled", True),
+            voice_speed=data.get("voice_speed", 1.1),
+            watch_enabled=data.get("watch_enabled", False),
+        )
 
 
 @dataclass(frozen=True)
@@ -141,33 +204,35 @@ class Session:
         )
 
 
-@dataclass(frozen=True)
-class ProjectConfig:
+class ProjectConfig(BaseModel):
     """Project-level configuration (hooks, mcp, agents, etc)."""
 
-    hooks: dict[HookEvent, list[HookMatcher]] = field(default_factory=dict)
-    mcp_servers: dict[str, McpServerConfig] = field(default_factory=dict)
-    agents: dict[str, AgentDefinition] = field(default_factory=dict)
-    plugins: list[SdkPluginConfig] = field(default_factory=list)
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    hooks: dict[HookEvent, list[HookMatcher]] = Field(default_factory=dict)
+    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
+    agents: dict[str, AgentDefinition] = Field(default_factory=dict)
+    plugins: list[SdkPluginConfig] = Field(default_factory=list)
     sandbox: SandboxSettings | None = None
 
 
-@dataclass(frozen=True)
-class QueryConfig:
+class QueryConfig(BaseModel):
     """Configuration for Claude SDK queries."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     prompt: str
     session_id: str | None = None
     continue_last: bool = False
     include_megg: bool = True
-    user_settings: dict[str, Any] | None = None
-    mode: str = "go_all"
+    user_settings: UserSettings | None = None
+    mode: Mode = Mode.GO_ALL
     on_tool_call: OnToolCall | None = None
     can_use_tool: CanUseTool | None = None
-    hooks: dict[HookEvent, list[HookMatcher]] = field(default_factory=dict)
-    mcp_servers: dict[str, McpServerConfig] = field(default_factory=dict)
-    agents: dict[str, AgentDefinition] = field(default_factory=dict)
-    plugins: list[SdkPluginConfig] = field(default_factory=list)
+    hooks: dict[HookEvent, list[HookMatcher]] = Field(default_factory=dict)
+    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
+    agents: dict[str, AgentDefinition] = Field(default_factory=dict)
+    plugins: list[SdkPluginConfig] = Field(default_factory=list)
     sandbox: SandboxSettings | None = None
     output_format: OutputFormat | None = None
     max_turns: int | None = None
@@ -176,33 +241,3 @@ class QueryConfig:
     fallback_model: str | None = None
     include_partial_messages: bool = False
     enable_file_checkpointing: bool = False
-
-
-@dataclass
-class UserSettings:
-    """User preferences and settings."""
-
-    mode: Mode = Mode.GO_ALL
-    audio_enabled: bool = True
-    voice_speed: float = 1.1
-    watch_enabled: bool = False
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for serialization."""
-        return {
-            "mode": self.mode.value,
-            "audio_enabled": self.audio_enabled,
-            "voice_speed": self.voice_speed,
-            "watch_enabled": self.watch_enabled,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "UserSettings":
-        """Create from dictionary."""
-        mode_value = data.get("mode", "go_all")
-        return cls(
-            mode=Mode(mode_value) if isinstance(mode_value, str) else mode_value,
-            audio_enabled=data.get("audio_enabled", True),
-            voice_speed=data.get("voice_speed", 1.1),
-            watch_enabled=data.get("watch_enabled", False),
-        )

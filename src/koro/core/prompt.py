@@ -9,6 +9,7 @@ from koro.core.config import (
     SANDBOX_DIR,
     SYSTEM_PROMPT_FILE,
 )
+from koro.core.types import UserSettings
 
 
 def load_system_prompt(prompt_file: str = None) -> str:
@@ -74,7 +75,7 @@ Remember: You're being heard, not read. Speak naturally."""
 
 def build_dynamic_prompt(
     base_prompt: str,
-    user_settings: dict = None,
+    user_settings: UserSettings | dict | None = None,
 ) -> str:
     """
     Build dynamic system prompt with current date/time and user settings.
@@ -96,8 +97,14 @@ def build_dynamic_prompt(
     prompt = prompt + timestamp_info
 
     # Optionally inject user settings summary
-    if user_settings:
-        if not user_settings.get("audio_enabled", True):
+    settings_dict: dict[str, object] = {}
+    if isinstance(user_settings, UserSettings):
+        settings_dict = user_settings.to_dict()
+    elif isinstance(user_settings, dict):
+        settings_dict = user_settings
+
+    if settings_dict:
+        if not settings_dict.get("audio_enabled", True):
             prompt = (
                 prompt + "\n\nUser settings:\n- Audio responses disabled (text only)"
             )
@@ -129,7 +136,7 @@ class PromptManager:
         """Force reload of prompt from file."""
         self._base_prompt = None
 
-    def get_prompt(self, user_settings: dict = None) -> str:
+    def get_prompt(self, user_settings: UserSettings | dict | None = None) -> str:
         """
         Get complete prompt with dynamic content.
 

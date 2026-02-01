@@ -5,7 +5,6 @@ import logging
 import os
 import subprocess
 from collections.abc import AsyncIterator
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +22,7 @@ from claude_agent_sdk.types import (
 
 from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
 from koro.core.prompt import get_prompt_manager
-from koro.core.types import QueryConfig
+from koro.core.types import DEFAULT_CLAUDE_TOOLS, Mode, QueryConfig
 
 
 def load_megg_context(working_dir: str = None) -> str:
@@ -156,29 +155,34 @@ class ClaudeClient:
         )
 
         # Set permission mode and tools based on mode
-        if config.mode == "approve" and config.can_use_tool:
+        if config.mode == Mode.APPROVE and config.can_use_tool:
             options.can_use_tool = config.can_use_tool
             options.permission_mode = "default"
         else:
-            options.allowed_tools = [
-                "Read",
-                "Grep",
-                "Glob",
-                "WebSearch",
-                "WebFetch",
-                "Task",
-                "Bash",
-                "Edit",
-                "Write",
-                "Skill",
-            ]
+            options.allowed_tools = [tool.value for tool in DEFAULT_CLAUDE_TOOLS]
 
         logger.debug(
             f"Built options: model={config.model}, max_turns={config.max_turns}, "
-            f"cwd={self.sandbox_dir}, mode={config.mode}, "
+            f"cwd={self.sandbox_dir}, mode={config.mode.value}, "
             f"hooks={bool(config.hooks)}, mcp_servers={bool(config.mcp_servers)}"
         )
         return options
+
+    def _prepare_query(self, config: QueryConfig) -> tuple[str, ClaudeAgentOptions]:
+        full_prompt = config.prompt
+        if config.include_megg and not config.continue_last and not config.session_id:
+            megg_ctx = load_megg_context(self.working_dir)
+            if megg_ctx:
+                full_prompt = f"<context>\n{megg_ctx}\n</context>\n\n{config.prompt}"
+
+        options = self._build_options(config)
+
+        if config.continue_last:
+            options.continue_conversation = True
+        elif config.session_id:
+            options.resume = config.session_id
+
+        return full_prompt, options
 
     async def query(
         self,
@@ -189,27 +193,13 @@ class ClaudeClient:
         """
         logger.debug(
             f"Query starting: session_id={config.session_id}, "
-            f"continue_last={config.continue_last}, mode={config.mode}, "
+            f"continue_last={config.continue_last}, mode={config.mode.value}, "
             f"model={config.model}"
         )
         # Ensure sandbox exists
         Path(self.sandbox_dir).mkdir(parents=True, exist_ok=True)
 
-        # Build prompt with megg context
-        full_prompt = config.prompt
-        if config.include_megg and not config.continue_last and not config.session_id:
-            megg_ctx = load_megg_context(self.working_dir)
-            if megg_ctx:
-                full_prompt = f"<context>\n{megg_ctx}\n</context>\n\n{config.prompt}"
-
-        # Build options
-        options = self._build_options(config)
-
-        # Handle session continuation
-        if config.continue_last:
-            options.continue_conversation = True
-        elif config.session_id:
-            options.resume = config.session_id
+        full_prompt, options = self._prepare_query(config)
 
         result_text = ""
         new_session_id = config.session_id
@@ -225,16 +215,18 @@ class ClaudeClient:
                     async for message in client.receive_response():
                         if isinstance(message, AssistantMessage):
                             for block in message.content:
-                                if isinstance(block, TextBlock):
-                                    result_text += block.text
-                                elif isinstance(block, ToolUseBlock):
-                                    tool_count += 1
-                                    if config.on_tool_call:
-                                        tool_input = block.input or {}
-                                        detail = get_tool_detail(block.name, tool_input)
-                                        config.on_tool_call(block.name, detail)
-                                elif isinstance(block, ThinkingBlock):
-                                    thinking_content += block.thinking
+                                match block:
+                                    case TextBlock(text=text):
+                                        result_text += text
+                                    case ToolUseBlock(name=name, input=tool_input):
+                                        tool_count += 1
+                                        if config.on_tool_call:
+                                            detail = get_tool_detail(
+                                                name, tool_input or {}
+                                            )
+                                            config.on_tool_call(name, detail)
+                                    case ThinkingBlock(thinking=thinking):
+                                        thinking_content += thinking
 
                         elif isinstance(message, ResultMessage):
                             if message.result:
@@ -303,31 +295,14 @@ class ClaudeClient:
         Query Claude and yield events (StreamEvent or messages).
         """
         logger.debug(
-            f"Stream query starting: session_id={config.session_id}, mode={config.mode}"
+            f"Stream query starting: session_id={config.session_id}, mode={config.mode.value}"
         )
-        stream_config = replace(config, include_partial_messages=True)
+        stream_config = config.model_copy(update={"include_partial_messages": True})
 
         # Ensure sandbox exists
         Path(self.sandbox_dir).mkdir(parents=True, exist_ok=True)
 
-        full_prompt = stream_config.prompt
-        if (
-            stream_config.include_megg
-            and not stream_config.continue_last
-            and not stream_config.session_id
-        ):
-            megg_ctx = load_megg_context(self.working_dir)
-            if megg_ctx:
-                full_prompt = (
-                    f"<context>\n{megg_ctx}\n</context>\n\n{stream_config.prompt}"
-                )
-
-        options = self._build_options(stream_config)
-
-        if stream_config.continue_last:
-            options.continue_conversation = True
-        elif stream_config.session_id:
-            options.resume = stream_config.session_id
+        full_prompt, options = self._prepare_query(stream_config)
 
         try:
             async with ClaudeSDKClient(options=options) as client:

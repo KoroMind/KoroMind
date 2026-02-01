@@ -4,6 +4,7 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Generator
@@ -382,16 +383,19 @@ class StateManager:
         # Get current settings first
         current = await self.get_settings(user_id)
 
-        # Apply updates
+        updates: dict[str, object] = {}
         if "mode" in kwargs:
             mode_val = kwargs["mode"]
-            current.mode = mode_val if isinstance(mode_val, Mode) else Mode(mode_val)
+            updates["mode"] = mode_val if isinstance(mode_val, Mode) else Mode(mode_val)
         if "audio_enabled" in kwargs:
-            current.audio_enabled = kwargs["audio_enabled"]
+            updates["audio_enabled"] = kwargs["audio_enabled"]
         if "voice_speed" in kwargs:
-            current.voice_speed = kwargs["voice_speed"]
+            updates["voice_speed"] = kwargs["voice_speed"]
         if "watch_enabled" in kwargs:
-            current.watch_enabled = kwargs["watch_enabled"]
+            updates["watch_enabled"] = kwargs["watch_enabled"]
+
+        if updates:
+            current = replace(current, **updates)
 
         # Save to database
         with self._get_connection() as conn:

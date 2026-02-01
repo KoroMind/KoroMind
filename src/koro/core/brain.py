@@ -137,13 +137,12 @@ class Brain:
         # Determine if we're continuing a session
         continue_last = session_id is not None
 
-        # Build user settings dict for Claude
-        user_settings = {
-            "audio_enabled": include_audio,
-            "voice_speed": voice_speed,
-            "mode": mode.value,
-            "watch_enabled": watch_enabled,
-        }
+        user_settings = UserSettings(
+            mode=mode,
+            audio_enabled=include_audio,
+            voice_speed=voice_speed,
+            watch_enabled=watch_enabled,
+        )
 
         # Tool call tracking wrapper
         def _on_tool_call(tool_name: str, detail: str | None):
@@ -192,7 +191,7 @@ class Brain:
         prompt: str,
         session_id: str | None,
         continue_last: bool,
-        user_settings: dict[str, Any],
+        user_settings: UserSettings,
         mode: Mode,
         on_tool_call: OnToolCall | None,
         can_use_tool: CanUseTool | None,
@@ -203,7 +202,7 @@ class Brain:
             "session_id": session_id,
             "continue_last": continue_last,
             "user_settings": user_settings,
-            "mode": mode.value,
+            "mode": mode,
             "on_tool_call": on_tool_call,
             "can_use_tool": can_use_tool,
         }
@@ -268,10 +267,7 @@ class Brain:
 
         continue_last = session_id is not None
 
-        user_settings = {
-            "mode": mode.value,
-            "watch_enabled": watch_enabled,
-        }
+        user_settings = UserSettings(mode=mode, watch_enabled=watch_enabled)
 
         config = self._build_query_config(
             prompt=text,

@@ -212,7 +212,10 @@ async def _call_claude_with_settings(
     Returns:
         (response, session_id, metadata)
     """
-    mode = settings.get("mode", "go_all")
+    from koro.core.types import Mode, UserSettings
+
+    settings_model = UserSettings.from_dict(settings)
+    mode = settings_model.mode
     watch_enabled = settings.get("watch_enabled", False)
     continue_last = state["current_session"] is not None
 
@@ -278,9 +281,9 @@ async def _call_claude_with_settings(
         prompt=text,
         session_id=state["current_session"],
         continue_last=continue_last,
-        user_settings=settings,
+        user_settings=settings_model,
         mode=mode,
         on_tool_call=on_tool_call if watch_enabled else None,
-        can_use_tool=can_use_tool if mode == "approve" else None,
+        can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
     )
     return await claude_client.query(config)

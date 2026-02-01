@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, CLIConnectionError, CLINotFoundError, ProcessError
+
+logger = logging.getLogger(__name__)
 from claude_agent_sdk.types import (
     AgentDefinition,
     AssistantMessage,
@@ -115,6 +118,12 @@ class ClaudeClient:
         self.working_dir = working_dir or CLAUDE_WORKING_DIR
         self.prompt_manager = get_prompt_manager()
         self._active_client: ClaudeSDKClient | None = None
+        logger.debug(
+            f"ClaudeClient initialized: sandbox_dir={self.sandbox_dir}, "
+            f"working_dir={self.working_dir}, "
+            f"CLAUDE_CODE_OAUTH_TOKEN={'set' if os.environ.get('CLAUDE_CODE_OAUTH_TOKEN') else 'not set'}, "
+            f"ANTHROPIC_API_KEY={'set' if os.environ.get('ANTHROPIC_API_KEY') else 'not set'}"
+        )
 
     async def interrupt(self) -> bool:
         """
@@ -212,6 +221,11 @@ class ClaudeClient:
                 "Skill",
             ]
 
+        logger.debug(
+            f"Built options: model={model}, max_turns={max_turns}, "
+            f"cwd={self.sandbox_dir}, mode={mode}, "
+            f"hooks={bool(hooks)}, mcp_servers={bool(mcp_servers)}"
+        )
         return options
 
     async def query(
@@ -245,7 +259,10 @@ class ClaudeClient:
         """
         Query Claude and return response.
         """
-        logger.debug(f"Query starting: mode={mode}, session={session_id}")
+        logger.debug(
+            f"Query starting: session_id={session_id}, continue_last={continue_last}, "
+            f"mode={mode}, model={model}"
+        )
 
         # Ensure sandbox exists
         Path(self.sandbox_dir).mkdir(parents=True, exist_ok=True)
@@ -336,9 +353,9 @@ class ClaudeClient:
                 metadata["thinking"] = thinking_content
 
             logger.debug(
-                f"Query complete: tools={tool_count}, "
-                f"cost=${metadata.get('cost', 0):.4f}, "
-                f"turns={metadata.get('num_turns', 0)}"
+                f"Query complete: session_id={new_session_id}, "
+                f"tools={tool_count}, cost={metadata.get('cost')}, "
+                f"turns={metadata.get('num_turns')}"
             )
             return result_text, new_session_id, metadata
 
@@ -382,7 +399,7 @@ class ClaudeClient:
         """
         Query Claude and yield events (StreamEvent or messages).
         """
-        logger.debug(f"Query stream starting: mode={mode}, session={session_id}")
+        logger.debug(f"Stream query starting: session_id={session_id}, mode={mode}")
 
         # Ensure partial messages are enabled for streaming
         kwargs["include_partial_messages"] = True
@@ -437,6 +454,11 @@ class ClaudeClient:
         Returns:
             (success, message)
         """
+        logger.debug(f"Health check starting: cwd={self.working_dir}")
+        logger.debug(
+            f"Auth env: CLAUDE_CODE_OAUTH_TOKEN={'set' if os.environ.get('CLAUDE_CODE_OAUTH_TOKEN') else 'not set'}, "
+            f"ANTHROPIC_API_KEY={'set' if os.environ.get('ANTHROPIC_API_KEY') else 'not set'}"
+        )
         try:
             result = subprocess.run(
                 ["claude", "-p", "Say OK", "--output-format", "json"],
@@ -445,10 +467,17 @@ class ClaudeClient:
                 timeout=30,
                 cwd=self.working_dir,
             )
+            logger.debug(f"Health check subprocess: returncode={result.returncode}")
+            logger.debug(f"Health check stdout: {result.stdout[:200] if result.stdout else 'empty'}")
+            logger.debug(f"Health check stderr: {result.stderr[:200] if result.stderr else 'empty'}")
+
             if result.returncode == 0:
+                logger.debug("Health check passed")
                 return True, "OK"
+            logger.debug(f"Health check failed: returncode={result.returncode}")
             return False, f"FAILED - {result.stderr[:50]}"
         except Exception as e:
+            logger.debug(f"Health check exception: {e}")
             return False, f"FAILED - {e}"
 
 

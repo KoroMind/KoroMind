@@ -124,3 +124,66 @@ class TestClaudeToolUse:
         )
 
         assert "Read" in tools_called
+
+
+@pytest.mark.live
+class TestClaudeStreaming:
+    """Live tests for Claude streaming."""
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_events(self, claude_client):
+        """Streaming yields multiple events."""
+        events = []
+        async for event in claude_client.query_stream("Say hello", include_megg=False):
+            events.append(type(event).__name__)
+
+        # Should have at least AssistantMessage and ResultMessage
+        assert len(events) >= 2
+        assert "ResultMessage" in events
+
+    @pytest.mark.asyncio
+    async def test_stream_result_contains_text(self, claude_client):
+        """Streaming result contains response text."""
+        result_text = None
+        async for event in claude_client.query_stream(
+            "Say exactly: 'streaming works'", include_megg=False
+        ):
+            if hasattr(event, "result"):
+                result_text = event.result
+
+        assert result_text is not None
+        assert "streaming" in result_text.lower() or "works" in result_text.lower()
+
+
+@pytest.mark.live
+class TestClaudeMetadata:
+    """Live tests for Claude response metadata."""
+
+    @pytest.mark.asyncio
+    async def test_metadata_includes_cost(self, claude_client):
+        """Response metadata includes cost."""
+        _, _, metadata = await claude_client.query("Say OK", include_megg=False)
+
+        assert "cost" in metadata
+        assert metadata["cost"] > 0
+
+    @pytest.mark.asyncio
+    async def test_metadata_includes_turns(self, claude_client):
+        """Response metadata includes turn count."""
+        _, _, metadata = await claude_client.query("Say OK", include_megg=False)
+
+        assert "num_turns" in metadata
+        assert metadata["num_turns"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_metadata_includes_tool_count(self, claude_client, tmp_path):
+        """Response metadata tracks tool usage."""
+        test_file = tmp_path / "tool_count.txt"
+        test_file.write_text("test")
+
+        _, _, metadata = await claude_client.query(
+            f"Read {test_file}", include_megg=False
+        )
+
+        assert "tool_count" in metadata
+        assert metadata["tool_count"] >= 1

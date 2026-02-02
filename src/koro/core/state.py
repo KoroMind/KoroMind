@@ -94,13 +94,15 @@ class StateManager:
         """Migrate data from legacy JSON files if not already done."""
         with self._get_connection() as conn:
             # Check if migration was already done
-            result = conn.execute(
-                "SELECT 1 FROM migration_status WHERE name = 'json_migration'"
-            ).fetchone()
+            result = conn.execute("""
+                SELECT 1
+                FROM migration_status
+                WHERE name IN ('json_migration', 'json_migration_failed')
+                """).fetchone()
             if result:
                 return
 
-            migration_failed = False
+            errors: list[str] = []
 
             # Migrate sessions from JSON
             if STATE_FILE.exists():
@@ -121,13 +123,13 @@ class StateManager:
                                 """,
                                 (session_id, user_id, now, now, is_current),
                             )
-                except (json.JSONDecodeError, IOError):
-                    logger.warning(
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.error(
                         "Failed to migrate sessions from %s",
                         STATE_FILE,
                         exc_info=True,
                     )
-                    migration_failed = True
+                    errors.append(f"Sessions: {exc}")
 
             # Migrate settings from JSON
             if SETTINGS_FILE.exists():
@@ -151,16 +153,20 @@ class StateManager:
                                 1 if user_settings.get("watch_enabled", False) else 0,
                             ),
                         )
-                except (json.JSONDecodeError, IOError):
-                    logger.warning(
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.error(
                         "Failed to migrate settings from %s",
                         SETTINGS_FILE,
                         exc_info=True,
                     )
-                    migration_failed = True
+                    errors.append(f"Settings: {exc}")
 
-            if migration_failed:
-                return
+            if errors:
+                conn.execute(
+                    "INSERT INTO migration_status (name, completed_at) VALUES (?, ?)",
+                    ("json_migration_failed", datetime.now().isoformat()),
+                )
+                raise RuntimeError(f"JSON migration failed: {'; '.join(errors)}")
 
             # Mark migration as complete
             conn.execute(

@@ -22,6 +22,7 @@ This is a **major architectural refactor** implementing the Claude Agent SDK acr
 - 2026-02-02: Guard singleton initialization with locks (commit `b87d6ed`).
 - 2026-02-02: Skip session updates when Claude returns an error (commit `42e78a9`).
 - 2026-02-02: Add unit test for Brain streaming session updates (commit `a6ccfbd`).
+- 2026-02-02: Use structured voice errors instead of string prefixes (commit `b9fc8e2`).
 
 ### Critical Issues Found: 3
 ### High Priority Issues: 7

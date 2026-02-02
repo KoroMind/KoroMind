@@ -1,6 +1,5 @@
 """Telegram bot initialization and runner."""
 
-import asyncio
 import logging
 from pathlib import Path
 
@@ -50,10 +49,8 @@ from koro.voice import get_voice_engine
 logger = logging.getLogger(__name__)
 
 
-async def _periodic_approval_cleanup() -> None:
-    while True:
-        await asyncio.sleep(60)
-        cleanup_stale_approvals()
+async def _periodic_approval_cleanup(_context) -> None:
+    cleanup_stale_approvals()
 
 
 async def error_handler(update, context):
@@ -113,7 +110,11 @@ def run_telegram_bot():
     setup_logging()
 
     async def _post_init(application):
-        application.create_task(_periodic_approval_cleanup())
+        application.job_queue.run_repeating(
+            _periodic_approval_cleanup,
+            interval=60,
+            first=60,
+        )
 
     # Build application with concurrent updates for approve mode
     app = (

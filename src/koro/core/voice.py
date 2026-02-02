@@ -8,6 +8,18 @@ from elevenlabs.client import ElevenLabs
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
 
+class VoiceError(RuntimeError):
+    """Base error for voice processing failures."""
+
+
+class VoiceNotConfiguredError(VoiceError):
+    """Raised when ElevenLabs is not configured."""
+
+
+class VoiceTranscriptionError(VoiceError):
+    """Raised when transcription fails."""
+
+
 class VoiceEngine:
     """Handles text-to-speech and speech-to-text conversion."""
 
@@ -39,7 +51,7 @@ class VoiceEngine:
             Transcribed text or error message
         """
         if not self.client:
-            return "[Error: ElevenLabs not configured]"
+            raise VoiceNotConfiguredError("ElevenLabs not configured")
 
         def _transcribe_sync():
             return self.client.speech_to_text.convert(
@@ -51,8 +63,8 @@ class VoiceEngine:
         try:
             transcription = await asyncio.to_thread(_transcribe_sync)
             return transcription.text
-        except Exception as e:
-            return f"[Transcription error: {e}]"
+        except Exception as exc:
+            raise VoiceTranscriptionError(str(exc)) from exc
 
     async def text_to_speech(self, text: str, speed: float = None) -> BytesIO | None:
         """

@@ -16,7 +16,7 @@ from koro.interfaces.telegram.handlers.utils import (
 )
 from koro.rate_limit import get_rate_limiter
 from koro.state import get_state_manager
-from koro.voice import get_voice_engine
+from koro.voice import VoiceError, get_voice_engine
 
 # Pending tool approvals for approve mode
 pending_approvals: dict = {}
@@ -104,10 +104,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Transcribe
         await processing_msg.edit_text("Transcribing...")
         voice_engine = get_voice_engine()
-        text = await voice_engine.transcribe(bytes(voice_bytes))
-
-        if text.startswith("[Transcription error") or text.startswith("[Error"):
-            await processing_msg.edit_text(text)
+        try:
+            text = await voice_engine.transcribe(bytes(voice_bytes))
+        except VoiceError as exc:
+            await processing_msg.edit_text(f"Error: {exc}")
             return
 
         # Show what was heard

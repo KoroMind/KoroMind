@@ -20,7 +20,7 @@ from koro.core.types import (
     ToolCall,
     UserSettings,
 )
-from koro.core.voice import VoiceEngine, get_voice_engine
+from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
 
 class Brain:
@@ -124,9 +124,10 @@ class Brain:
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
                 raise ValueError("Voice content must be bytes")
-            text = await self.voice_engine.transcribe(content)
-            if text.startswith("[Transcription error") or text.startswith("[Error"):
-                raise RuntimeError(text)
+            try:
+                text = await self.voice_engine.transcribe(content)
+            except VoiceError as exc:
+                raise RuntimeError(str(exc)) from exc
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -283,9 +284,10 @@ class Brain:
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
                 raise ValueError("Voice content must be bytes")
-            text = await self.voice_engine.transcribe(content)
-            if text.startswith("[Transcription error") or text.startswith("[Error"):
-                raise RuntimeError(text)
+            try:
+                text = await self.voice_engine.transcribe(content)
+            except VoiceError as exc:
+                raise RuntimeError(str(exc)) from exc
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 

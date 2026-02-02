@@ -11,6 +11,7 @@ import koro.interfaces.telegram.handlers.commands as commands
 import koro.interfaces.telegram.handlers.messages as messages
 import koro.interfaces.telegram.handlers.utils as utils
 from koro.state import StateManager
+from koro.voice import VoiceTranscriptionError
 
 
 @pytest.fixture
@@ -802,7 +803,7 @@ class TestMessageHandlersFullFlow:
         limiter.check.return_value = (True, "")
         mock_voice = MagicMock()
         mock_voice.transcribe = AsyncMock(
-            return_value="[Transcription error: API failed]"
+            side_effect=VoiceTranscriptionError("API failed")
         )
 
         monkeypatch.setattr(messages, "get_state_manager", lambda: state_manager)

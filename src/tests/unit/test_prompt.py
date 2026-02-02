@@ -88,7 +88,7 @@ class TestBuildDynamicPrompt:
         """build_dynamic_prompt adds current date/time."""
         base = "Base prompt"
 
-        result = build_dynamic_prompt(base)
+        result = build_dynamic_prompt(base, UserSettings())
 
         assert "Current date and time:" in result
         # Should contain year
@@ -98,7 +98,7 @@ class TestBuildDynamicPrompt:
         """build_dynamic_prompt includes base prompt."""
         base = "This is the base prompt content"
 
-        result = build_dynamic_prompt(base)
+        result = build_dynamic_prompt(base, UserSettings())
 
         assert "This is the base prompt content" in result
 
@@ -120,11 +120,11 @@ class TestBuildDynamicPrompt:
 
         assert "Audio responses disabled" not in result
 
-    def test_handles_none_settings(self):
-        """build_dynamic_prompt handles None settings."""
+    def test_handles_default_settings(self):
+        """build_dynamic_prompt handles default settings."""
         base = "Base"
 
-        result = build_dynamic_prompt(base, None)
+        result = build_dynamic_prompt(base, UserSettings())
 
         assert "Base" in result
 

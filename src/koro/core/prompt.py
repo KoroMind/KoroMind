@@ -75,7 +75,7 @@ Remember: You're being heard, not read. Speak naturally."""
 
 def build_dynamic_prompt(
     base_prompt: str,
-    user_settings: UserSettings | None = None,
+    user_settings: UserSettings,
 ) -> str:
     """
     Build dynamic system prompt with current date/time and user settings.
@@ -97,7 +97,7 @@ def build_dynamic_prompt(
     prompt = prompt + timestamp_info
 
     # Optionally inject user settings summary
-    if user_settings and not user_settings.audio_enabled:
+    if not user_settings.audio_enabled:
         prompt = prompt + "\n\nUser settings:\n- Audio responses disabled (text only)"
 
     return prompt
@@ -127,12 +127,12 @@ class PromptManager:
         """Force reload of prompt from file."""
         self._base_prompt = None
 
-    def get_prompt(self, user_settings: UserSettings | None = None) -> str:
+    def get_prompt(self, user_settings: UserSettings) -> str:
         """
         Get complete prompt with dynamic content.
 
         Args:
-            user_settings: Optional user settings
+            user_settings: User settings
 
         Returns:
             Complete system prompt

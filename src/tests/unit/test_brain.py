@@ -25,7 +25,15 @@ async def test_process_message_stream_updates_session_on_result_only():
 
     async def mock_stream(_config):
         yield DummyEvent()
-        yield ResultMessage(subtype="success", result="ok", session_id="sess_new")
+        yield ResultMessage(
+            subtype="success",
+            duration_ms=10,
+            duration_api_ms=5,
+            is_error=False,
+            num_turns=1,
+            session_id="sess_new",
+            result="ok",
+        )
 
     claude_client = MagicMock()
     claude_client.query_stream = mock_stream

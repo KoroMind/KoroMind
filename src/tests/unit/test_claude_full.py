@@ -189,8 +189,12 @@ async def test_tool_result_tracking(claude_client):
         )
         yield ResultMessage(
             subtype="success",
-            result="Done",
+            duration_ms=10,
+            duration_api_ms=5,
+            is_error=False,
+            num_turns=1,
             session_id="sess_1",
+            result="Done",
         )
 
     mock_sdk_client.receive_response = mock_receive

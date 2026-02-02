@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from threading import Lock
 from typing import Any
 
-from claude_agent_sdk.types import ResultMessage
+from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
 
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
@@ -21,6 +21,8 @@ from koro.core.types import (
     UserSettings,
 )
 from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
+
+StreamedEvent = AssistantMessage | ResultMessage | StreamEvent
 
 
 class Brain:
@@ -273,7 +275,7 @@ class Brain:
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
         **kwargs,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamedEvent]:
         """
         Process a message and yield streaming events.
 

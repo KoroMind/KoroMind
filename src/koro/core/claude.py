@@ -18,6 +18,7 @@ from claude_agent_sdk import (
 from claude_agent_sdk.types import (
     AssistantMessage,
     ResultMessage,
+    StreamEvent,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
@@ -29,6 +30,8 @@ from koro.core.prompt import get_prompt_manager
 from koro.core.types import DEFAULT_CLAUDE_TOOLS, Mode, QueryConfig
 
 logger = logging.getLogger(__name__)
+
+StreamedEvent = AssistantMessage | ResultMessage | StreamEvent
 
 
 def load_megg_context(working_dir: str = None) -> str:
@@ -319,7 +322,7 @@ class ClaudeClient:
     async def query_stream(
         self,
         config: QueryConfig,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamedEvent]:
         """
         Query Claude and yield events (StreamEvent or messages).
         """

@@ -236,32 +236,6 @@ class Brain:
             unknown = ", ".join(sorted(kwargs.keys()))
             raise ValueError(f"Unsupported query options: {unknown}")
 
-        if "max_turns" in config_kwargs:
-            max_turns = config_kwargs["max_turns"]
-            if not isinstance(max_turns, int) or isinstance(max_turns, bool):
-                raise TypeError(f"max_turns must be int, got {type(max_turns)}")
-
-        if "max_budget_usd" in config_kwargs:
-            max_budget = config_kwargs["max_budget_usd"]
-            if not isinstance(max_budget, (int, float)) or isinstance(max_budget, bool):
-                raise TypeError(f"max_budget_usd must be float, got {type(max_budget)}")
-
-        if "include_partial_messages" in config_kwargs:
-            include_partial = config_kwargs["include_partial_messages"]
-            if not isinstance(include_partial, bool):
-                raise TypeError(
-                    "include_partial_messages must be bool, got "
-                    f"{type(include_partial)}"
-                )
-
-        if "enable_file_checkpointing" in config_kwargs:
-            checkpointing = config_kwargs["enable_file_checkpointing"]
-            if not isinstance(checkpointing, bool):
-                raise TypeError(
-                    "enable_file_checkpointing must be bool, got "
-                    f"{type(checkpointing)}"
-                )
-
         return QueryConfig(**config_kwargs)
 
     async def process_message_stream(

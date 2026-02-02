@@ -25,7 +25,7 @@ from claude_agent_sdk.types import (
     ThinkingBlock,
     ToolPermissionContext,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing_extensions import TypedDict
 
 
@@ -221,3 +221,28 @@ class QueryConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):
     fallback_model: str | None = None
     include_partial_messages: bool = False
     enable_file_checkpointing: bool = False
+
+    @field_validator("max_turns")
+    @classmethod
+    def _validate_max_turns(cls, value: int | None) -> int | None:
+        if value is None:
+            return value
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"max_turns must be int, got {type(value)}")
+        return value
+
+    @field_validator("max_budget_usd")
+    @classmethod
+    def _validate_max_budget_usd(cls, value: float | None) -> float | None:
+        if value is None:
+            return value
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError(f"max_budget_usd must be float, got {type(value)}")
+        return float(value)
+
+    @field_validator("include_partial_messages", "enable_file_checkpointing")
+    @classmethod
+    def _validate_bool_flags(cls, value: bool) -> bool:
+        if not isinstance(value, bool):
+            raise TypeError(f"Value must be bool, got {type(value)}")
+        return value

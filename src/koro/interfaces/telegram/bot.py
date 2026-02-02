@@ -112,9 +112,16 @@ def run_telegram_bot():
     # Setup logging
     setup_logging()
 
+    async def _post_init(application):
+        application.create_task(_periodic_approval_cleanup())
+
     # Build application with concurrent updates for approve mode
     app = (
-        ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
+        ApplicationBuilder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .concurrent_updates(True)
+        .post_init(_post_init)
+        .build()
     )
 
     # Register command handlers
@@ -142,9 +149,6 @@ def run_telegram_bot():
 
     # Register error handler
     app.add_error_handler(error_handler)
-
-    # Periodic cleanup for pending approvals
-    app.create_task(_periodic_approval_cleanup())
 
     # Ensure sandbox exists
     Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)

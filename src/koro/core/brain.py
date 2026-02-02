@@ -149,10 +149,10 @@ class Brain:
         )
 
         # Tool call tracking wrapper
-        def _on_tool_call(tool_name: str, detail: str | None):
+        async def _on_tool_call(tool_name: str, detail: str | None):
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if on_tool_call and watch_enabled:
-                on_tool_call(tool_name, detail)
+                await on_tool_call(tool_name, detail)
 
         config = self._build_query_config(
             prompt=text,

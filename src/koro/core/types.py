@@ -51,7 +51,7 @@ class CanUseTool(Protocol):
 class OnToolCall(Protocol):
     """Callback signature for tool call notifications."""
 
-    def __call__(self, tool_name: str, detail: str | None) -> None:
+    def __call__(self, tool_name: str, detail: str | None) -> Awaitable[None]:
         pass
 
 

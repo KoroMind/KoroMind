@@ -241,7 +241,7 @@ class ClaudeClient:
                                             detail = get_tool_detail(
                                                 name, tool_input or {}
                                             )
-                                            config.on_tool_call(name, detail)
+                                            await config.on_tool_call(name, detail)
                                     case ToolResultBlock(
                                         tool_use_id=tool_use_id, is_error=is_error
                                     ):
@@ -351,7 +351,7 @@ class ClaudeClient:
                                 ):
                                     tool_input = block.input or {}
                                     detail = get_tool_detail(block.name, tool_input)
-                                    stream_config.on_tool_call(block.name, detail)
+                                    await stream_config.on_tool_call(block.name, detail)
                         yield message
                 finally:
                     self._active_client = None

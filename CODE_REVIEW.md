@@ -15,6 +15,7 @@ This is a **major architectural refactor** implementing the Claude Agent SDK acr
 
 - 2026-02-02: Fix streaming session update to only use ResultMessage (commit `c6ad053`).
 - 2026-02-02: Remove SQL column interpolation in settings updates (commit `a7890db`).
+- 2026-02-02: Add periodic pending-approvals cleanup and timeout cleanup (commit `7104482`).
 
 ### Critical Issues Found: 3
 ### High Priority Issues: 7

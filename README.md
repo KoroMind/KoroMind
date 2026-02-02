@@ -151,6 +151,14 @@ koro-cli
 docker-compose up --build -d
 ```
 
+### Docker (dev hot reload for Telegram bot)
+
+This uses `watchfiles` to restart the Telegram bot on Python file changes in `src/`.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
 ---
 
 ## Interfaces

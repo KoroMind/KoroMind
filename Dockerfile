@@ -28,6 +28,9 @@ FROM base AS app
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 
+# Install dev dependencies when requested
+ARG INSTALL_DEV=false
+
 # Switch to non-root user
 USER claude
 WORKDIR /home/claude/app
@@ -41,7 +44,11 @@ COPY --chown=claude:claude src/ ./src/
 # Create virtual environment and install dependencies via uv
 RUN python -m venv .venv && \
     .venv/bin/pip install --no-cache-dir --upgrade pip uv && \
-    .venv/bin/uv sync --frozen --no-dev
+    if [ "$INSTALL_DEV" = "true" ]; then \
+        .venv/bin/uv sync --frozen --extra dev; \
+    else \
+        .venv/bin/uv sync --frozen --no-dev; \
+    fi
 
 # Copy Claude settings (agents, skills, config from toru-claude-settings submodule)
 COPY --chown=claude:claude .claude-settings/ /home/claude/.claude/

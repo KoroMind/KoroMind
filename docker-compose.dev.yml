@@ -1,0 +1,10 @@
+services:
+  koro:
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+    command: >
+      /bin/sh -c ".venv/bin/watchfiles '.venv/bin/koromind telegram' /home/claude/app/src"
+    volumes:
+      - ./src:/home/claude/app/src

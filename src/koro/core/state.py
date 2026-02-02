@@ -32,6 +32,8 @@ class StateManager:
         """
         self._using_custom_path = db_path is not None
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
+        self._connection: sqlite3.Connection | None = None
+        self._connection_lock = Lock()
         self._ensure_schema()
         # Only migrate from global JSON files when using default path
         if not self._using_custom_path:
@@ -83,13 +85,25 @@ class StateManager:
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Get a database connection with row factory."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
+        with self._connection_lock:
+            if self._connection is None:
+                self._connection = sqlite3.connect(
+                    self.db_path, check_same_thread=False
+                )
+                self._connection.row_factory = sqlite3.Row
+            try:
+                yield self._connection
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
+
+    def close(self) -> None:
+        """Close the shared database connection."""
+        with self._connection_lock:
+            if self._connection is not None:
+                self._connection.close()
+                self._connection = None
 
     def _migrate_from_json(self) -> None:
         """Migrate data from legacy JSON files if not already done."""

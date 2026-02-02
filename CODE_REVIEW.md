@@ -28,6 +28,7 @@ This is a **major architectural refactor** implementing the Claude Agent SDK acr
 - 2026-02-02: Track tool results in Claude metadata (commit `10dc656`).
 - 2026-02-02: Reuse SQLite connection in StateManager (commit `c2cf0c1`).
 - 2026-02-02: Update unit tests for ResultMessage and voice error changes (commit `206c874`).
+- 2026-02-02: Make QueryConfig.user_settings non-optional (commit `af854cd`).
 
 ### Critical Issues Found: 3
 ### High Priority Issues: 7

@@ -5,15 +5,15 @@ Coding rules and guardrails for working in the `src/` directory.
 ## Coding Guardrails
 
 - Avoid `hasattr`/`setattr` in core logic; use typed models with known attributes
-- Prefer `@dataclass(frozen=True)` unless mutation is required and explicit
+- Prefer immutable data structures unless mutation is required and explicit
 - Avoid optional containers for `list`/`dict`; use empty defaults instead
 - Use `Protocol` for callback types instead of ad-hoc `Callable` aliases
 - Use a config object when functions exceed ~5 parameters
 - Extract shared logic to helpers to avoid duplication
 - Raise exceptions for invalid inputs in core paths; don't yield error dicts
 - Use Pydantic models when parsing external JSON or user-provided config
-- Use Pydantic validators for type checks instead of manual validation in callers
-- Normalize identifiers (e.g., user_id) at system boundaries
+- Put validation in model validators instead of in callers
+- Normalize identifiers at system boundaries
 - Do not interpolate SQL identifiers or values; use explicit statements and parameters
 - Avoid inline imports in core code unless resolving a hard cycle
 

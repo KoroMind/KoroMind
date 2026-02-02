@@ -8,10 +8,6 @@ from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any, Literal, Protocol
 
-from typing_extensions import TypedDict
-
-from pydantic import BaseModel
-
 from claude_agent_sdk import SdkMcpTool
 from claude_agent_sdk.types import (
     AgentDefinition,
@@ -29,6 +25,8 @@ from claude_agent_sdk.types import (
     ThinkingBlock,
     ToolPermissionContext,
 )
+from pydantic import BaseModel, Field
+from typing_extensions import TypedDict
 
 
 class OutputFormat(TypedDict):
@@ -227,7 +225,7 @@ class QueryConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):
     session_id: str | None = None
     continue_last: bool = False
     include_megg: bool = True
-    user_settings: UserSettings | None = None
+    user_settings: UserSettings = Field(default_factory=UserSettings)
     mode: Mode = Mode.GO_ALL
     # Protocol types can't be validated by Pydantic, use Any
     on_tool_call: Any | None = None  # OnToolCall

@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import koro.core.prompt as prompt
+from koro.core.types import UserSettings
 from koro.prompt import PromptManager, build_dynamic_prompt
 
 
@@ -87,7 +88,7 @@ class TestBuildDynamicPrompt:
         """build_dynamic_prompt adds current date/time."""
         base = "Base prompt"
 
-        result = build_dynamic_prompt(base)
+        result = build_dynamic_prompt(base, UserSettings())
 
         assert "Current date and time:" in result
         # Should contain year
@@ -97,14 +98,14 @@ class TestBuildDynamicPrompt:
         """build_dynamic_prompt includes base prompt."""
         base = "This is the base prompt content"
 
-        result = build_dynamic_prompt(base)
+        result = build_dynamic_prompt(base, UserSettings())
 
         assert "This is the base prompt content" in result
 
     def test_adds_audio_disabled_note(self):
         """build_dynamic_prompt notes when audio disabled."""
         base = "Base"
-        settings = {"audio_enabled": False}
+        settings = UserSettings(audio_enabled=False)
 
         result = build_dynamic_prompt(base, settings)
 
@@ -113,17 +114,17 @@ class TestBuildDynamicPrompt:
     def test_no_audio_note_when_enabled(self):
         """build_dynamic_prompt doesn't note when audio enabled."""
         base = "Base"
-        settings = {"audio_enabled": True}
+        settings = UserSettings(audio_enabled=True)
 
         result = build_dynamic_prompt(base, settings)
 
         assert "Audio responses disabled" not in result
 
-    def test_handles_none_settings(self):
-        """build_dynamic_prompt handles None settings."""
+    def test_handles_default_settings(self):
+        """build_dynamic_prompt handles default settings."""
         base = "Base"
 
-        result = build_dynamic_prompt(base, None)
+        result = build_dynamic_prompt(base, UserSettings())
 
         assert "Base" in result
 
@@ -186,7 +187,7 @@ class TestPromptManager:
 
         monkeypatch.setattr(prompt, "BASE_DIR", tmp_path)
         manager = PromptManager(str(prompt_file))
-        settings = {"audio_enabled": False}
+        settings = UserSettings(audio_enabled=False)
 
         result = manager.get_prompt(settings)
 

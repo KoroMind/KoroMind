@@ -43,7 +43,7 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
 
     session_name = " ".join(context.args) if context.args else None
@@ -65,7 +65,7 @@ async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = state_manager.get_user_state(user_id)
 
@@ -87,7 +87,7 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = state_manager.get_user_state(user_id)
 
@@ -115,7 +115,7 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /switch <session_id>")
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = state_manager.get_user_state(user_id)
     session_id = context.args[0]
@@ -139,7 +139,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = state_manager.get_user_state(user_id)
 
@@ -178,7 +178,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status.append(f"Claude Code: {cl_msg}")
 
     # Session info
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = state_manager.get_user_state(user_id)
     status.append(f"\nSessions: {len(state['sessions'])}")
@@ -206,15 +206,15 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     settings = state_manager.get_user_settings(user_id)
 
-    audio_status = "ON" if settings["audio_enabled"] else "OFF"
-    speed = settings["voice_speed"]
-    mode = settings.get("mode", "go_all")
+    audio_status = "ON" if settings.audio_enabled else "OFF"
+    speed = settings.voice_speed
+    mode = settings.mode.value
     mode_display = "Go All" if mode == "go_all" else "Approve"
-    watch_status = "ON" if settings.get("watch_enabled", False) else "OFF"
+    watch_status = "ON" if settings.watch_enabled else "OFF"
 
     message = (
         f"Settings:\n\n"

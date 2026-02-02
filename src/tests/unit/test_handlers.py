@@ -11,6 +11,7 @@ import koro.interfaces.telegram.handlers.commands as commands
 import koro.interfaces.telegram.handlers.messages as messages
 import koro.interfaces.telegram.handlers.utils as utils
 from koro.state import StateManager
+from koro.voice import VoiceTranscriptionError
 
 
 @pytest.fixture
@@ -445,7 +446,7 @@ class TestApprovalCallbackHandlers:
         """Approval callback approves tool use."""
         approval_event = asyncio.Event()
         messages.pending_approvals["test123"] = {
-            "user_id": 12345,
+            "user_id": "12345",
             "event": approval_event,
             "approved": None,
             "tool_name": "Read",
@@ -469,7 +470,7 @@ class TestApprovalCallbackHandlers:
         """Approval callback rejects tool use."""
         approval_event = asyncio.Event()
         messages.pending_approvals["test456"] = {
-            "user_id": 12345,
+            "user_id": "12345",
             "event": approval_event,
             "approved": None,
             "tool_name": "Bash",
@@ -619,7 +620,7 @@ class TestCallbackHandlers:
         await callbacks.handle_settings_callback(update, MagicMock())
 
         settings = state_manager.get_user_settings(12345)
-        assert settings["audio_enabled"] is False
+        assert settings.audio_enabled is False
 
     @pytest.mark.asyncio
     async def test_settings_toggle_mode(
@@ -637,7 +638,7 @@ class TestCallbackHandlers:
         await callbacks.handle_settings_callback(update, MagicMock())
 
         settings = state_manager.get_user_settings(12345)
-        assert settings["mode"] == "approve"
+        assert settings.mode.value == "approve"
 
     @pytest.mark.asyncio
     async def test_settings_set_speed(
@@ -655,7 +656,7 @@ class TestCallbackHandlers:
         await callbacks.handle_settings_callback(update, MagicMock())
 
         settings = state_manager.get_user_settings(12345)
-        assert settings["voice_speed"] == 0.9
+        assert settings.voice_speed == 0.9
 
     @pytest.mark.asyncio
     async def test_settings_rejects_invalid_speed(
@@ -673,7 +674,7 @@ class TestCallbackHandlers:
         await callbacks.handle_settings_callback(update, MagicMock())
 
         settings = state_manager.get_user_settings(12345)
-        assert settings["voice_speed"] == 1.0
+        assert settings.voice_speed == 1.0
         query.answer.assert_called_with("Invalid speed range")
 
 
@@ -802,7 +803,7 @@ class TestMessageHandlersFullFlow:
         limiter.check.return_value = (True, "")
         mock_voice = MagicMock()
         mock_voice.transcribe = AsyncMock(
-            return_value="[Transcription error: API failed]"
+            side_effect=VoiceTranscriptionError("API failed")
         )
 
         monkeypatch.setattr(messages, "get_state_manager", lambda: state_manager)
@@ -861,7 +862,7 @@ class TestPendingApprovalsCleanup:
         approval_id = "test123"
         messages.pending_approvals[approval_id] = {
             "created_at": time.time() - 600,
-            "user_id": 12345,
+            "user_id": "12345",
             "tool_name": "Bash",
         }
 
@@ -875,7 +876,7 @@ class TestPendingApprovalsCleanup:
 
         for i in range(messages.MAX_PENDING_APPROVALS + 10):
             messages.add_pending_approval(
-                f"id_{i}", {"user_id": i, "created_at": time.time()}
+                f"id_{i}", {"user_id": str(i), "created_at": time.time()}
             )
 
         assert len(messages.pending_approvals) <= messages.MAX_PENDING_APPROVALS

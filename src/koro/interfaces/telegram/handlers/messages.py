@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from koro.claude import format_tool_call, get_claude_client
 from koro.config import ALLOWED_CHAT_ID
+from koro.core.types import Mode, QueryConfig, UserSettings
 from koro.interfaces.telegram.handlers.utils import (
     debug,
     send_long_message,
@@ -16,7 +17,7 @@ from koro.interfaces.telegram.handlers.utils import (
 )
 from koro.rate_limit import get_rate_limiter
 from koro.state import get_state_manager
-from koro.voice import get_voice_engine
+from koro.voice import VoiceError, get_voice_engine
 
 # Pending tool approvals for approve mode
 pending_approvals: dict = {}
@@ -81,7 +82,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
 
     # Rate limiting
     rate_limiter = get_rate_limiter()
@@ -104,10 +105,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Transcribe
         await processing_msg.edit_text("Transcribing...")
         voice_engine = get_voice_engine()
-        text = await voice_engine.transcribe(bytes(voice_bytes))
-
-        if text.startswith("[Transcription error") or text.startswith("[Error"):
-            await processing_msg.edit_text(text)
+        try:
+            text = await voice_engine.transcribe(bytes(voice_bytes))
+        except VoiceError as exc:
+            await processing_msg.edit_text(f"Error: {exc}")
             return
 
         # Show what was heard
@@ -116,7 +117,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Call Claude
         response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, update, context
+            text, state, settings, user_id, update, context
         )
 
         # Update session
@@ -126,9 +127,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_long_message(update, processing_msg, response)
 
         # Voice response if enabled
-        if settings["audio_enabled"]:
+        if settings.audio_enabled:
             audio = await voice_engine.text_to_speech(
-                response, speed=settings["voice_speed"]
+                response, speed=settings.voice_speed
             )
             if audio:
                 await update.message.reply_voice(voice=audio)
@@ -151,7 +152,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
 
     # Rate limiting
     rate_limiter = get_rate_limiter()
@@ -169,7 +170,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, update, context
+            text, state, settings, user_id, update, context
         )
 
         # Update session
@@ -179,10 +180,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_long_message(update, processing_msg, response)
 
         # Voice response if enabled
-        if settings["audio_enabled"]:
+        if settings.audio_enabled:
             voice_engine = get_voice_engine()
             audio = await voice_engine.text_to_speech(
-                response, speed=settings["voice_speed"]
+                response, speed=settings.voice_speed
             )
             if audio:
                 await update.message.reply_voice(voice=audio)
@@ -195,7 +196,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _call_claude_with_settings(
     text: str,
     state: dict,
-    settings: dict,
+    settings,
+    user_id: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, str, dict]:
@@ -205,15 +207,20 @@ async def _call_claude_with_settings(
     Args:
         text: User message
         state: User session state
-        settings: User settings
+        settings: User settings (UserSettings object)
         update: Telegram update
         context: Telegram context
 
     Returns:
         (response, session_id, metadata)
     """
-    mode = settings.get("mode", "go_all")
-    watch_enabled = settings.get("watch_enabled", False)
+    # Handle both UserSettings objects and dicts for backward compatibility
+    if isinstance(settings, dict):
+        settings_model = UserSettings.model_validate(settings)
+    else:
+        settings_model = settings
+    mode = settings_model.mode
+    watch_enabled = settings_model.watch_enabled
     continue_last = state["current_session"] is not None
 
     # Watch mode callback
@@ -239,7 +246,7 @@ async def _call_claude_with_settings(
             approval_id,
             {
                 "created_at": time.time(),
-                "user_id": update.effective_user.id,
+                "user_id": user_id,
                 "event": approval_event,
                 "approved": None,
                 "tool_name": tool_name,
@@ -263,8 +270,11 @@ async def _call_claude_with_settings(
         try:
             await asyncio.wait_for(approval_event.wait(), timeout=300)
         except asyncio.TimeoutError:
-            del pending_approvals[approval_id]
+            pending_approvals.pop(approval_id, None)
             return PermissionResultDeny(message="Approval timed out")
+        except asyncio.CancelledError:
+            pending_approvals.pop(approval_id, None)
+            raise
 
         approval_data = pending_approvals.pop(approval_id, {})
         if approval_data.get("approved"):
@@ -272,12 +282,13 @@ async def _call_claude_with_settings(
         return PermissionResultDeny(message="User rejected tool")
 
     claude_client = get_claude_client()
-    return await claude_client.query(
+    config = QueryConfig(
         prompt=text,
         session_id=state["current_session"],
         continue_last=continue_last,
-        user_settings=settings,
+        user_settings=settings_model,
         mode=mode,
         on_tool_call=on_tool_call if watch_enabled else None,
-        can_use_tool=can_use_tool if mode == "approve" else None,
+        can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
     )
+    return await claude_client.query(config)

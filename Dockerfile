@@ -2,26 +2,20 @@
 # Multi-stage build for efficient image size
 
 # ============================================================================
-# Stage 1: Base with Node.js and Python 3.12
+# Stage 1: Base with Python 3.12 and Node.js
 # ============================================================================
-FROM node:20-slim AS base
+FROM python:3.12-slim-bookworm AS base
 
-# Install Python 3.12 and system dependencies
+# Install Node.js and system dependencies
 # Note: We need Python 3.12+ for Pydantic + TypedDict compatibility
 RUN apt-get update && apt-get install -y \
-    software-properties-common \
     curl \
-    && echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list \
-    && apt-get update && apt-get install -y -t trixie \
-    python3.12 \
-    python3.12-venv \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm /etc/apt/sources.list.d/trixie.list \
-    && ln -sf /usr/bin/python3.12 /usr/bin/python3
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (uid 1000 required by Claude CLI)
-# Delete existing node user first (it has UID 1000)
-RUN userdel -r node && \
+RUN if id -u node >/dev/null 2>&1; then userdel -r node; fi && \
     useradd -m -u 1000 -s /bin/bash claude && \
     mkdir -p /home/claude/.claude && \
     chown -R claude:claude /home/claude
@@ -41,13 +35,13 @@ WORKDIR /home/claude/app
 # Copy dependency manifests first for better caching
 COPY --chown=claude:claude pyproject.toml uv.lock ./
 
+# Copy application code (needed for editable install during uv sync)
+COPY --chown=claude:claude src/ ./src/
+
 # Create virtual environment and install dependencies via uv
-RUN python3.12 -m venv .venv && \
+RUN python -m venv .venv && \
     .venv/bin/pip install --no-cache-dir --upgrade pip uv && \
     .venv/bin/uv sync --frozen --no-dev
-
-# Copy application code
-COPY --chown=claude:claude src/ ./src/
 
 # Copy Claude settings (agents, skills, config from toru-claude-settings submodule)
 COPY --chown=claude:claude .claude-settings/ /home/claude/.claude/

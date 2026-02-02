@@ -1,8 +1,12 @@
 """Rate limiting for message handling."""
 
+import sqlite3
 import time
+from contextlib import contextmanager
+from pathlib import Path
+from threading import Lock
 
-from koro.core.config import RATE_LIMIT_PER_MINUTE, RATE_LIMIT_SECONDS
+from koro.core.config import DATABASE_PATH, RATE_LIMIT_PER_MINUTE, RATE_LIMIT_SECONDS
 
 
 class RateLimiter:
@@ -12,6 +16,7 @@ class RateLimiter:
         self,
         cooldown_seconds: float = None,
         per_minute_limit: int = None,
+        db_path: Path | str | None = None,
     ):
         """
         Initialize rate limiter.
@@ -19,6 +24,7 @@ class RateLimiter:
         Args:
             cooldown_seconds: Minimum seconds between messages
             per_minute_limit: Maximum messages per minute
+            db_path: Optional SQLite path for persistence
         """
         self.cooldown_seconds = (
             RATE_LIMIT_SECONDS if cooldown_seconds is None else cooldown_seconds
@@ -26,7 +32,67 @@ class RateLimiter:
         self.per_minute_limit = (
             RATE_LIMIT_PER_MINUTE if per_minute_limit is None else per_minute_limit
         )
+        self.db_path = Path(db_path) if db_path else DATABASE_PATH
         self.user_limits: dict[str, dict] = {}
+        self._ensure_schema()
+
+    def _ensure_schema(self) -> None:
+        with self._get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS rate_limits (
+                    user_id TEXT PRIMARY KEY,
+                    last_message REAL,
+                    minute_start REAL NOT NULL,
+                    minute_count INTEGER NOT NULL
+                )
+                """)
+
+    @contextmanager
+    def _get_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _load_limits(self, user_id: str) -> dict | None:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT last_message, minute_start, minute_count
+                FROM rate_limits
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "last_message": row["last_message"],
+            "minute_start": row["minute_start"],
+            "minute_count": row["minute_count"],
+        }
+
+    def _save_limits(self, user_id: str, limits: dict) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO rate_limits (user_id, last_message, minute_start, minute_count)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    last_message = excluded.last_message,
+                    minute_start = excluded.minute_start,
+                    minute_count = excluded.minute_count
+                """,
+                (
+                    user_id,
+                    limits["last_message"],
+                    limits["minute_start"],
+                    limits["minute_count"],
+                ),
+            )
 
     def check(self, user_id: int | str) -> tuple[bool, str]:
         """
@@ -42,13 +108,16 @@ class RateLimiter:
         user_id_str = str(user_id)
 
         if user_id_str not in self.user_limits:
-            self.user_limits[user_id_str] = {
-                "last_message": None,
-                "minute_count": 0,
-                "minute_start": now,
-            }
-
-        limits = self.user_limits[user_id_str]
+            limits = self._load_limits(user_id_str)
+            if limits is None:
+                limits = {
+                    "last_message": None,
+                    "minute_count": 0,
+                    "minute_start": now,
+                }
+            self.user_limits[user_id_str] = limits
+        else:
+            limits = self.user_limits[user_id_str]
 
         # Check per-message cooldown
         if limits["last_message"] is not None and self.cooldown_seconds > 0:
@@ -76,6 +145,7 @@ class RateLimiter:
         limits["last_message"] = now
         limits["minute_count"] += 1
 
+        self._save_limits(user_id_str, limits)
         return True, ""
 
     def reset(self, user_id: int | str) -> None:
@@ -83,21 +153,28 @@ class RateLimiter:
         user_id_str = str(user_id)
         if user_id_str in self.user_limits:
             del self.user_limits[user_id_str]
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,))
 
     def reset_all(self) -> None:
         """Reset all rate limits."""
         self.user_limits.clear()
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM rate_limits")
 
 
 # Default instance
 _rate_limiter: RateLimiter | None = None
+_rate_limiter_lock = Lock()
 
 
 def get_rate_limiter() -> RateLimiter:
     """Get or create the default rate limiter instance."""
     global _rate_limiter
     if _rate_limiter is None:
-        _rate_limiter = RateLimiter()
+        with _rate_limiter_lock:
+            if _rate_limiter is None:
+                _rate_limiter = RateLimiter()
     return _rate_limiter
 
 

@@ -6,6 +6,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from typing import Generator
 from uuid import uuid4
 
@@ -30,6 +31,8 @@ class StateManager:
         """
         self._using_custom_path = db_path is not None
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
+        self._connection: sqlite3.Connection | None = None
+        self._connection_lock = Lock()
         self._ensure_schema()
         # Only migrate from global JSON files when using default path
         if not self._using_custom_path:
@@ -81,25 +84,39 @@ class StateManager:
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Get a database connection with row factory."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
+        with self._connection_lock:
+            if self._connection is None:
+                self._connection = sqlite3.connect(
+                    self.db_path, check_same_thread=False
+                )
+                self._connection.row_factory = sqlite3.Row
+            try:
+                yield self._connection
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
+
+    def close(self) -> None:
+        """Close the shared database connection."""
+        with self._connection_lock:
+            if self._connection is not None:
+                self._connection.close()
+                self._connection = None
 
     def _migrate_from_json(self) -> None:
         """Migrate data from legacy JSON files if not already done."""
         with self._get_connection() as conn:
             # Check if migration was already done
-            result = conn.execute(
-                "SELECT 1 FROM migration_status WHERE name = 'json_migration'"
-            ).fetchone()
+            result = conn.execute("""
+                SELECT 1
+                FROM migration_status
+                WHERE name IN ('json_migration', 'json_migration_failed')
+                """).fetchone()
             if result:
                 return
 
-            migration_failed = False
+            errors: list[str] = []
 
             # Migrate sessions from JSON
             if STATE_FILE.exists():
@@ -120,13 +137,13 @@ class StateManager:
                                 """,
                                 (session_id, user_id, now, now, is_current),
                             )
-                except (json.JSONDecodeError, IOError):
-                    logger.warning(
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.error(
                         "Failed to migrate sessions from %s",
                         STATE_FILE,
                         exc_info=True,
                     )
-                    migration_failed = True
+                    errors.append(f"Sessions: {exc}")
 
             # Migrate settings from JSON
             if SETTINGS_FILE.exists():
@@ -150,16 +167,20 @@ class StateManager:
                                 1 if user_settings.get("watch_enabled", False) else 0,
                             ),
                         )
-                except (json.JSONDecodeError, IOError):
-                    logger.warning(
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.error(
                         "Failed to migrate settings from %s",
                         SETTINGS_FILE,
                         exc_info=True,
                     )
-                    migration_failed = True
+                    errors.append(f"Settings: {exc}")
 
-            if migration_failed:
-                return
+            if errors:
+                conn.execute(
+                    "INSERT INTO migration_status (name, completed_at) VALUES (?, ?)",
+                    ("json_migration_failed", datetime.now().isoformat()),
+                )
+                raise RuntimeError(f"JSON migration failed: {'; '.join(errors)}")
 
             # Mark migration as complete
             conn.execute(
@@ -382,16 +403,19 @@ class StateManager:
         # Get current settings first
         current = await self.get_settings(user_id)
 
-        # Apply updates
+        updates: dict[str, object] = {}
         if "mode" in kwargs:
             mode_val = kwargs["mode"]
-            current.mode = mode_val if isinstance(mode_val, Mode) else Mode(mode_val)
+            updates["mode"] = mode_val if isinstance(mode_val, Mode) else Mode(mode_val)
         if "audio_enabled" in kwargs:
-            current.audio_enabled = kwargs["audio_enabled"]
+            updates["audio_enabled"] = kwargs["audio_enabled"]
         if "voice_speed" in kwargs:
-            current.voice_speed = kwargs["voice_speed"]
+            updates["voice_speed"] = kwargs["voice_speed"]
         if "watch_enabled" in kwargs:
-            current.watch_enabled = kwargs["watch_enabled"]
+            updates["watch_enabled"] = kwargs["watch_enabled"]
+
+        if updates:
+            current = current.model_copy(update=updates)
 
         # Save to database
         with self._get_connection() as conn:
@@ -474,9 +498,9 @@ class StateManager:
                 "sessions": [row["id"] for row in session_rows],
             }
 
-    def get_user_settings(self, user_id: int) -> dict:
+    def get_user_settings(self, user_id: int) -> UserSettings:
         """
-        Get user settings in legacy format.
+        Get user settings.
 
         Deprecated: Use async get_settings instead.
         """
@@ -488,20 +512,15 @@ class StateManager:
             ).fetchone()
 
             if row:
-                return {
-                    "mode": row["mode"],
-                    "audio_enabled": bool(row["audio_enabled"]),
-                    "voice_speed": row["voice_speed"],
-                    "watch_enabled": bool(row["watch_enabled"]),
-                }
+                return UserSettings(
+                    mode=Mode(row["mode"]),
+                    audio_enabled=bool(row["audio_enabled"]),
+                    voice_speed=row["voice_speed"],
+                    watch_enabled=bool(row["watch_enabled"]),
+                )
 
             # Create default settings
-            default_settings = {
-                "mode": "go_all",
-                "audio_enabled": True,
-                "voice_speed": VOICE_SETTINGS["speed"],
-                "watch_enabled": False,
-            }
+            default_settings = UserSettings()
             conn.execute(
                 """
                 INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled)
@@ -509,10 +528,10 @@ class StateManager:
                 """,
                 (
                     user_id_str,
-                    default_settings["mode"],
-                    1,
-                    default_settings["voice_speed"],
-                    0,
+                    default_settings.mode.value,
+                    1 if default_settings.audio_enabled else 0,
+                    default_settings.voice_speed,
+                    1 if default_settings.watch_enabled else 0,
                 ),
             )
             return default_settings
@@ -527,34 +546,46 @@ class StateManager:
         # Ensure user has settings
         self.get_user_settings(user_id)
 
-        column_map = {
-            "mode": "mode",
-            "audio_enabled": "audio_enabled",
-            "voice_speed": "voice_speed",
-            "watch_enabled": "watch_enabled",
-        }
-
-        if key not in column_map:
+        if key not in {"mode", "audio_enabled", "voice_speed", "watch_enabled"}:
             return
 
         with self._get_connection() as conn:
             if key in ("audio_enabled", "watch_enabled"):
                 value = 1 if value else 0
-            conn.execute(
-                f"UPDATE settings SET {column_map[key]} = ? WHERE user_id = ?",
-                (value, user_id_str),
-            )
+            if key == "mode":
+                conn.execute(
+                    "UPDATE settings SET mode = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
+            elif key == "audio_enabled":
+                conn.execute(
+                    "UPDATE settings SET audio_enabled = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
+            elif key == "voice_speed":
+                conn.execute(
+                    "UPDATE settings SET voice_speed = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
+            elif key == "watch_enabled":
+                conn.execute(
+                    "UPDATE settings SET watch_enabled = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
 
 
 # Default instance
 _state_manager: StateManager | None = None
+_state_manager_lock = Lock()
 
 
 def get_state_manager() -> StateManager:
     """Get or create the default state manager instance."""
     global _state_manager
     if _state_manager is None:
-        _state_manager = StateManager()
+        with _state_manager_lock:
+            if _state_manager is None:
+                _state_manager = StateManager()
     return _state_manager
 
 

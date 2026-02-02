@@ -158,7 +158,7 @@ callbacks = WorkerCallbacks(
     on_tool_approval=lambda req: show_telegram_approval_ui(req),  # Telegram has this
     on_tool_use=lambda notif: send_notification(notif),           # Watch mode
     on_progress=lambda msg: update_status(msg),                   # Progress
-)
+);
 ```
 
 HTTP doesn't register callbacks → approve mode doesn't work → that's fine, it's an API.

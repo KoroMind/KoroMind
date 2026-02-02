@@ -41,11 +41,16 @@ from koro.interfaces.telegram.handlers import (
     handle_text,
     handle_voice,
 )
+from koro.interfaces.telegram.handlers.messages import cleanup_stale_approvals
 from koro.interfaces.telegram.handlers.utils import debug
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
 
 logger = logging.getLogger(__name__)
+
+
+async def _periodic_approval_cleanup(_context) -> None:
+    cleanup_stale_approvals()
 
 
 async def error_handler(update, context):
@@ -104,9 +109,20 @@ def run_telegram_bot():
     # Setup logging
     setup_logging()
 
+    async def _post_init(application):
+        application.job_queue.run_repeating(
+            _periodic_approval_cleanup,
+            interval=60,
+            first=60,
+        )
+
     # Build application with concurrent updates for approve mode
     app = (
-        ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
+        ApplicationBuilder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .concurrent_updates(True)
+        .post_init(_post_init)
+        .build()
     )
 
     # Register command handlers

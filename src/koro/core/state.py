@@ -4,7 +4,6 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
@@ -416,7 +415,7 @@ class StateManager:
             updates["watch_enabled"] = kwargs["watch_enabled"]
 
         if updates:
-            current = replace(current, **updates)
+            current = current.model_copy(update=updates)
 
         # Save to database
         with self._get_connection() as conn:

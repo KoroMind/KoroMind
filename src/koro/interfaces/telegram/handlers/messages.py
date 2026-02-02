@@ -216,7 +216,7 @@ async def _call_claude_with_settings(
     """
     # Handle both UserSettings objects and dicts for backward compatibility
     if isinstance(settings, dict):
-        settings_model = UserSettings.from_dict(settings)
+        settings_model = UserSettings.model_validate(settings)
     else:
         settings_model = settings
     mode = settings_model.mode

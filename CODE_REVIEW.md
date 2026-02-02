@@ -18,6 +18,7 @@ This is a **major architectural refactor** implementing the Claude Agent SDK acr
 - 2026-02-02: Add periodic pending-approvals cleanup and timeout cleanup (commit `7104482`).
 - 2026-02-02: Map Brain input/transcription errors to 400/422 in API endpoints (commit `9a2db44`).
 - 2026-02-02: Validate query config option types before Pydantic (commit `f97fccf`).
+- 2026-02-02: Record JSON migration failures and stop retries (commit `c6c6b9d`).
 
 ### Critical Issues Found: 3
 ### High Priority Issues: 7

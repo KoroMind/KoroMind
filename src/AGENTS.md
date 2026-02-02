@@ -12,6 +12,10 @@ Coding rules and guardrails for working in the `src/` directory.
 - Extract shared logic to helpers to avoid duplication
 - Raise exceptions for invalid inputs in core paths; don't yield error dicts
 - Use Pydantic models when parsing external JSON or user-provided config
+- Use Pydantic validators for type checks instead of manual validation in callers
+- Normalize identifiers (e.g., user_id) at system boundaries
+- Do not interpolate SQL identifiers or values; use explicit statements and parameters
+- Avoid inline imports in core code unless resolving a hard cycle
 
 ## Python Best Practices
 
@@ -28,12 +32,15 @@ Coding rules and guardrails for working in the `src/` directory.
 - Keep try blocks small and focused around the specific operation that may fail
 - Let exceptions propagate to framework handlers when you can't meaningfully handle them
 - Don't wrap entire function bodies in try/except—isolate the risky operation
+- Use typed exceptions for domain errors (avoid stringly-typed error signaling)
 
 ### Code Organization
 
 - Keep all imports at module top level, not inside functions
 - Return new objects instead of mutating parameters as side effects, use immutable structures (frozen=True) if possible
 - If mutation is unavoidable, make it explicit in the function name (e.g., `append_to_list()`)
+- Guard singleton initialization in concurrent contexts (lock or DI)
+- Add scheduled cleanup for in-memory caches with TTLs
 
 ### Defensive Programming
 
@@ -41,6 +48,7 @@ Coding rules and guardrails for working in the `src/` directory.
 - Validate inputs at system boundaries (user input, external APIs)
 - Trust internal code and framework guarantees—don't over-validate
 - Make function behavior explicit through clear naming
+- Prefer non-optional domain models; pass explicit defaults instead of `None`
 
 ## Refactoring Learnings
 

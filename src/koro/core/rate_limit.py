@@ -1,6 +1,7 @@
 """Rate limiting for message handling."""
 
 import time
+from threading import Lock
 
 from koro.core.config import RATE_LIMIT_PER_MINUTE, RATE_LIMIT_SECONDS
 
@@ -91,13 +92,16 @@ class RateLimiter:
 
 # Default instance
 _rate_limiter: RateLimiter | None = None
+_rate_limiter_lock = Lock()
 
 
 def get_rate_limiter() -> RateLimiter:
     """Get or create the default rate limiter instance."""
     global _rate_limiter
     if _rate_limiter is None:
-        _rate_limiter = RateLimiter()
+        with _rate_limiter_lock:
+            if _rate_limiter is None:
+                _rate_limiter = RateLimiter()
     return _rate_limiter
 
 

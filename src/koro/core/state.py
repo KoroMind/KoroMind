@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from typing import Generator
 from uuid import uuid4
 
@@ -562,13 +563,16 @@ class StateManager:
 
 # Default instance
 _state_manager: StateManager | None = None
+_state_manager_lock = Lock()
 
 
 def get_state_manager() -> StateManager:
     """Get or create the default state manager instance."""
     global _state_manager
     if _state_manager is None:
-        _state_manager = StateManager()
+        with _state_manager_lock:
+            if _state_manager is None:
+                _state_manager = StateManager()
     return _state_manager
 
 

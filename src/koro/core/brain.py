@@ -1,6 +1,7 @@
 """The Brain - central orchestration layer for KoroMind."""
 
 from collections.abc import AsyncIterator
+from threading import Lock
 from typing import Any
 
 from claude_agent_sdk.types import ResultMessage
@@ -430,13 +431,16 @@ class Brain:
 
 # Default instance
 _brain: Brain | None = None
+_brain_lock = Lock()
 
 
 def get_brain() -> Brain:
     """Get or create the default brain instance."""
     global _brain
     if _brain is None:
-        _brain = Brain()
+        with _brain_lock:
+            if _brain is None:
+                _brain = Brain()
     return _brain
 
 

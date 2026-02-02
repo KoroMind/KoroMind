@@ -526,23 +526,32 @@ class StateManager:
         # Ensure user has settings
         self.get_user_settings(user_id)
 
-        column_map = {
-            "mode": "mode",
-            "audio_enabled": "audio_enabled",
-            "voice_speed": "voice_speed",
-            "watch_enabled": "watch_enabled",
-        }
-
-        if key not in column_map:
+        if key not in {"mode", "audio_enabled", "voice_speed", "watch_enabled"}:
             return
 
         with self._get_connection() as conn:
             if key in ("audio_enabled", "watch_enabled"):
                 value = 1 if value else 0
-            conn.execute(
-                f"UPDATE settings SET {column_map[key]} = ? WHERE user_id = ?",
-                (value, user_id_str),
-            )
+            if key == "mode":
+                conn.execute(
+                    "UPDATE settings SET mode = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
+            elif key == "audio_enabled":
+                conn.execute(
+                    "UPDATE settings SET audio_enabled = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
+            elif key == "voice_speed":
+                conn.execute(
+                    "UPDATE settings SET voice_speed = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
+            elif key == "watch_enabled":
+                conn.execute(
+                    "UPDATE settings SET watch_enabled = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
 
 
 # Default instance

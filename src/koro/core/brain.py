@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
-from claude_agent_sdk.types import ResultMessage, StreamEvent
+from claude_agent_sdk.types import ResultMessage
 
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
@@ -292,7 +292,7 @@ class Brain:
             # The client should probably persist session ID updates internally or we handle it here.
             # For now, let's assume session update happens on the caller side or we need to intercept ResultMessage.
 
-            if isinstance(event, (ResultMessage, StreamEvent)) and event.session_id:
+            if isinstance(event, ResultMessage) and event.session_id:
                 if event.session_id != session_id:
                     await self.state_manager.update_session(user_id, event.session_id)
                     session_id = event.session_id

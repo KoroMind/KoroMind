@@ -26,6 +26,7 @@ This is a **major architectural refactor** implementing the Claude Agent SDK acr
 - 2026-02-02: Persist rate limiter state to SQLite (commit `e2e870a`).
 - 2026-02-02: Normalize Telegram user IDs to strings (commit `166e46c`).
 - 2026-02-02: Track tool results in Claude metadata (commit `10dc656`).
+- 2026-02-02: Reuse SQLite connection in StateManager (commit `c2cf0c1`).
 
 ### Critical Issues Found: 3
 ### High Priority Issues: 7

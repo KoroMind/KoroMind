@@ -270,8 +270,11 @@ async def _call_claude_with_settings(
         try:
             await asyncio.wait_for(approval_event.wait(), timeout=300)
         except asyncio.TimeoutError:
-            del pending_approvals[approval_id]
+            pending_approvals.pop(approval_id, None)
             return PermissionResultDeny(message="Approval timed out")
+        except asyncio.CancelledError:
+            pending_approvals.pop(approval_id, None)
+            raise
 
         approval_data = pending_approvals.pop(approval_id, {})
         if approval_data.get("approved"):

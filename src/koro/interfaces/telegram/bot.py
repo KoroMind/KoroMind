@@ -1,5 +1,6 @@
 """Telegram bot initialization and runner."""
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -41,11 +42,18 @@ from koro.interfaces.telegram.handlers import (
     handle_text,
     handle_voice,
 )
+from koro.interfaces.telegram.handlers.messages import cleanup_stale_approvals
 from koro.interfaces.telegram.handlers.utils import debug
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
 
 logger = logging.getLogger(__name__)
+
+
+async def _periodic_approval_cleanup() -> None:
+    while True:
+        await asyncio.sleep(60)
+        cleanup_stale_approvals()
 
 
 async def error_handler(update, context):
@@ -134,6 +142,9 @@ def run_telegram_bot():
 
     # Register error handler
     app.add_error_handler(error_handler)
+
+    # Periodic cleanup for pending approvals
+    app.create_task(_periodic_approval_cleanup())
 
     # Ensure sandbox exists
     Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)

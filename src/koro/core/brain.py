@@ -165,8 +165,9 @@ class Brain:
         # Call Claude
         response_text, new_session_id, metadata = await self.claude_client.query(config)
 
-        # Update session state
-        await self.state_manager.update_session(user_id, new_session_id)
+        # Update session state only on successful Claude responses
+        if not metadata.get("error"):
+            await self.state_manager.update_session(user_id, new_session_id)
 
         # Generate TTS if requested
         audio_bytes: bytes | None = None

@@ -81,7 +81,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
 
     # Rate limiting
     rate_limiter = get_rate_limiter()
@@ -116,7 +116,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Call Claude
         response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, update, context
+            text, state, settings, user_id, update, context
         )
 
         # Update session
@@ -151,7 +151,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
 
     # Rate limiting
     rate_limiter = get_rate_limiter()
@@ -169,7 +169,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, update, context
+            text, state, settings, user_id, update, context
         )
 
         # Update session
@@ -196,6 +196,7 @@ async def _call_claude_with_settings(
     text: str,
     state: dict,
     settings,
+    user_id: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, str, dict]:
@@ -246,7 +247,7 @@ async def _call_claude_with_settings(
             approval_id,
             {
                 "created_at": time.time(),
-                "user_id": update.effective_user.id,
+                "user_id": user_id,
                 "event": approval_event,
                 "approved": None,
                 "tool_name": tool_name,

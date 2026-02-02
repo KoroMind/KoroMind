@@ -13,20 +13,24 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     debug(f"SETTINGS CALLBACK: {query.data}")
 
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     settings = state_manager.get_user_settings(user_id)
     callback_data = query.data
 
     if callback_data == "setting_audio_toggle":
-        state_manager.update_setting(user_id, "audio_enabled", not settings.audio_enabled)
+        state_manager.update_setting(
+            user_id, "audio_enabled", not settings.audio_enabled
+        )
 
     elif callback_data == "setting_mode_toggle":
         new_mode = "approve" if settings.mode.value == "go_all" else "go_all"
         state_manager.update_setting(user_id, "mode", new_mode)
 
     elif callback_data == "setting_watch_toggle":
-        state_manager.update_setting(user_id, "watch_enabled", not settings.watch_enabled)
+        state_manager.update_setting(
+            user_id, "watch_enabled", not settings.watch_enabled
+        )
 
     elif callback_data.startswith("setting_speed_"):
         try:
@@ -91,14 +95,14 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
 
     debug(f"APPROVAL CALLBACK: {callback_data}")
 
+    user_id = str(update.effective_user.id)
+
     await query.answer()
 
     if callback_data.startswith("approve_"):
         approval_id = callback_data.replace("approve_", "")
         if approval_id in pending_approvals:
-            if update.effective_user.id != pending_approvals[approval_id].get(
-                "user_id"
-            ):
+            if user_id != pending_approvals[approval_id].get("user_id"):
                 await query.answer("Only the requester can approve this")
                 return
 
@@ -112,9 +116,7 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
     elif callback_data.startswith("reject_"):
         approval_id = callback_data.replace("reject_", "")
         if approval_id in pending_approvals:
-            if update.effective_user.id != pending_approvals[approval_id].get(
-                "user_id"
-            ):
+            if user_id != pending_approvals[approval_id].get("user_id"):
                 await query.answer("Only the requester can reject this")
                 return
 

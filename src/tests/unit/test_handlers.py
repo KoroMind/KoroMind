@@ -446,7 +446,7 @@ class TestApprovalCallbackHandlers:
         """Approval callback approves tool use."""
         approval_event = asyncio.Event()
         messages.pending_approvals["test123"] = {
-            "user_id": 12345,
+            "user_id": "12345",
             "event": approval_event,
             "approved": None,
             "tool_name": "Read",
@@ -470,7 +470,7 @@ class TestApprovalCallbackHandlers:
         """Approval callback rejects tool use."""
         approval_event = asyncio.Event()
         messages.pending_approvals["test456"] = {
-            "user_id": 12345,
+            "user_id": "12345",
             "event": approval_event,
             "approved": None,
             "tool_name": "Bash",
@@ -862,7 +862,7 @@ class TestPendingApprovalsCleanup:
         approval_id = "test123"
         messages.pending_approvals[approval_id] = {
             "created_at": time.time() - 600,
-            "user_id": 12345,
+            "user_id": "12345",
             "tool_name": "Bash",
         }
 
@@ -876,7 +876,7 @@ class TestPendingApprovalsCleanup:
 
         for i in range(messages.MAX_PENDING_APPROVALS + 10):
             messages.add_pending_approval(
-                f"id_{i}", {"user_id": i, "created_at": time.time()}
+                f"id_{i}", {"user_id": str(i), "created_at": time.time()}
             )
 
         assert len(messages.pending_approvals) <= messages.MAX_PENDING_APPROVALS

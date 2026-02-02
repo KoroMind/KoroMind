@@ -37,6 +37,7 @@ Coding rules and guardrails for working in the `src/` directory.
 
 ### Defensive Programming
 
+- Avoid defensive programming in core logic; trust internal invariants.
 - Validate inputs at system boundaries (user input, external APIs)
 - Trust internal code and framework guarantees—don't over-validate
 - Make function behavior explicit through clear naming
@@ -87,15 +88,15 @@ Pydantic has limitations with certain Python types:
 class QueryConfig(BaseModel):
     on_tool_call: OnToolCall | None = None  # Pydantic can't validate Protocol
 
-# GOOD: Use Any with type comment
+# GOOD: Use a concrete callable type (and validate explicitly if needed)
 class QueryConfig(BaseModel):
-    on_tool_call: Any | None = None  # OnToolCall type
+    on_tool_call: Callable[[ToolCall], None] | None = None
 
-# BAD: SDK TypedDict requires Python 3.12+ for Pydantic validation
-hooks: dict[HookEvent, list[HookMatcher]] = {}
-
-# GOOD: Use Any for SDK types when supporting older Python
+# BAD: Replacing precise SDK types with Any loses validation and type safety
 hooks: dict[str, Any] = Field(default_factory=dict)
+
+# GOOD: Keep precise SDK types; use Pydantic config/validators if needed
+hooks: dict[HookEvent, list[HookMatcher]] = Field(default_factory=dict)
 ```
 
 ### Test Data Must Match Production Types
@@ -114,6 +115,6 @@ result = build_dynamic_prompt(base, settings)
 
 Before using a feature, verify it works with the project's minimum Python version:
 
-- `typing.TypedDict` + Pydantic validation requires Python 3.12+
+- `typing.TypedDict` + Pydantic validation is supported on Python 3.12+
 - `from __future__ import annotations` can break Protocol + Pydantic combos
 - When in doubt, check `pyproject.toml` for `requires-python`

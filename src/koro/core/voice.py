@@ -4,6 +4,7 @@ import asyncio
 from io import BytesIO
 
 from elevenlabs.client import ElevenLabs
+from elevenlabs.core import ApiError
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
@@ -63,7 +64,9 @@ class VoiceEngine:
         try:
             transcription = await asyncio.to_thread(_transcribe_sync)
             return transcription.text
-        except Exception as exc:
+        except ApiError as exc:
+            return f"Error: {exc}"
+        except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
 
     async def text_to_speech(self, text: str, speed: float = None) -> BytesIO | None:

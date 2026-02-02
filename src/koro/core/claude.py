@@ -8,21 +8,27 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, CLIConnectionError, CLINotFoundError, ProcessError
-
-logger = logging.getLogger(__name__)
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    CLIConnectionError,
+    CLINotFoundError,
+    ProcessError,
+)
 from claude_agent_sdk.types import (
     AssistantMessage,
     ResultMessage,
-    StreamEvent,
     TextBlock,
     ThinkingBlock,
+    ToolResultBlock,
     ToolUseBlock,
 )
 
 from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
 from koro.core.prompt import get_prompt_manager
 from koro.core.types import DEFAULT_CLAUDE_TOOLS, Mode, QueryConfig
+
+logger = logging.getLogger(__name__)
 
 
 def load_megg_context(working_dir: str = None) -> str:
@@ -205,6 +211,8 @@ class ClaudeClient:
         new_session_id = config.session_id
         metadata = {}
         tool_count = 0
+        tool_results: list[dict[str, Any]] = []
+        tool_use_map: dict[str, dict[str, Any]] = {}
         thinking_content = ""
 
         try:
@@ -218,13 +226,30 @@ class ClaudeClient:
                                 match block:
                                     case TextBlock(text=text):
                                         result_text += text
-                                    case ToolUseBlock(name=name, input=tool_input):
+                                    case ToolUseBlock(
+                                        id=tool_id, name=name, input=tool_input
+                                    ):
                                         tool_count += 1
+                                        tool_use_map[tool_id] = {
+                                            "name": name,
+                                            "input": tool_input,
+                                        }
                                         if config.on_tool_call:
                                             detail = get_tool_detail(
                                                 name, tool_input or {}
                                             )
                                             config.on_tool_call(name, detail)
+                                    case ToolResultBlock(
+                                        tool_use_id=tool_use_id, is_error=is_error
+                                    ):
+                                        tool_info = tool_use_map.get(tool_use_id, {})
+                                        tool_results.append(
+                                            {
+                                                "tool_use_id": tool_use_id,
+                                                "name": tool_info.get("name"),
+                                                "is_error": is_error,
+                                            }
+                                        )
                                     case ThinkingBlock(thinking=thinking):
                                         thinking_content += thinking
 
@@ -242,13 +267,17 @@ class ClaudeClient:
                             if message.usage is not None:
                                 metadata["usage"] = message.usage
                             if message.structured_output is not None:
-                                metadata["structured_output"] = message.structured_output
+                                metadata["structured_output"] = (
+                                    message.structured_output
+                                )
                             if message.is_error is not None:
                                 metadata["is_error"] = message.is_error
                 finally:
                     self._active_client = None
 
             metadata["tool_count"] = tool_count
+            if tool_results:
+                metadata["tool_results"] = tool_results
             if thinking_content:
                 metadata["thinking"] = thinking_content
             logger.debug(
@@ -349,8 +378,12 @@ class ClaudeClient:
                 cwd=self.working_dir,
             )
             logger.debug(f"Health check subprocess: returncode={result.returncode}")
-            logger.debug(f"Health check stdout: {result.stdout[:200] if result.stdout else 'empty'}")
-            logger.debug(f"Health check stderr: {result.stderr[:200] if result.stderr else 'empty'}")
+            logger.debug(
+                f"Health check stdout: {result.stdout[:200] if result.stdout else 'empty'}"
+            )
+            logger.debug(
+                f"Health check stderr: {result.stderr[:200] if result.stderr else 'empty'}"
+            )
 
             if result.returncode == 0:
                 logger.debug("Health check passed")

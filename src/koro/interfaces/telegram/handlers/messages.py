@@ -9,7 +9,7 @@ from telegram.ext import ContextTypes
 
 from koro.claude import format_tool_call, get_claude_client
 from koro.config import ALLOWED_CHAT_ID
-from koro.core.types import Mode, UserSettings
+from koro.core.types import Mode, QueryConfig, UserSettings
 from koro.interfaces.telegram.handlers.utils import (
     debug,
     send_long_message,
@@ -282,12 +282,13 @@ async def _call_claude_with_settings(
         return PermissionResultDeny(message="User rejected tool")
 
     claude_client = get_claude_client()
-    return await claude_client.query(
+    config = QueryConfig(
         prompt=text,
         session_id=state["current_session"],
         continue_last=continue_last,
-        user_settings=settings_model.model_dump(),
-        mode=mode.value,
+        user_settings=settings_model,
+        mode=mode,
         on_tool_call=on_tool_call if watch_enabled else None,
         can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
     )
+    return await claude_client.query(config)

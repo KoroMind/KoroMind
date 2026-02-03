@@ -257,7 +257,7 @@ async def repl(user_id: str, vault_path: Optional[Path] = None):
     if brain.vault and brain.vault.exists:
         config = brain.vault.load()
         console.print(f"[dim]Vault: {brain.vault.root}[/dim]")
-        console.print(f"[dim]Model: {config.get('model', 'default')}[/dim]")
+        console.print(f"[dim]Model: {config.model or 'default'}[/dim]")
     console.print()
 
     while True:

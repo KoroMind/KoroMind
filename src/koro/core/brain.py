@@ -3,23 +3,31 @@
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, Callable
+from threading import Lock
+from typing import Any
 
-logger = logging.getLogger(__name__)
+from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
 
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
 from koro.core.state import StateManager, get_state_manager
 from koro.core.types import (
     BrainResponse,
+    CanUseTool,
     MessageType,
     Mode,
+    OnToolCall,
+    QueryConfig,
     Session,
     ToolCall,
     UserSettings,
 )
-from koro.core.vault import Vault, VaultConfig
-from koro.core.voice import VoiceEngine, get_voice_engine
+from koro.core.vault import Vault
+from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
+
+logger = logging.getLogger(__name__)
+
+StreamedEvent = AssistantMessage | ResultMessage | StreamEvent
 
 
 class Brain:
@@ -51,11 +59,7 @@ class Brain:
         self._rate_limiter = rate_limiter
 
         if self._vault:
-            logger.info(f"Brain initialized with vault: {vault_path}")
-            if self._vault.exists:
-                logger.debug(f"Vault config found at: {self._vault.config_file}")
-            else:
-                logger.warning(f"Vault path set but no config found: {vault_path}")
+            logger.debug(f"Brain initialized with vault: {vault_path}")
         else:
             logger.debug("Brain initialized without vault")
 
@@ -111,8 +115,8 @@ class Brain:
         include_audio: bool = True,
         voice_speed: float = 1.1,
         watch_enabled: bool = False,
-        on_tool_call: Callable[[str, str | None], None] | None = None,
-        can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        on_tool_call: OnToolCall | None = None,
+        can_use_tool: CanUseTool | None = None,
         **kwargs,
     ) -> BrainResponse:
         """
@@ -140,16 +144,11 @@ class Brain:
         # Transcribe voice if needed
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
-                return BrainResponse(
-                    text="Error: Voice content must be bytes",
-                    session_id=session_id or "",
-                )
-            text = await self.voice_engine.transcribe(content)
-            if text.startswith("[Transcription error") or text.startswith("[Error"):
-                return BrainResponse(
-                    text=text,
-                    session_id=session_id or "",
-                )
+                raise ValueError("Voice content must be bytes")
+            try:
+                text = await self.voice_engine.transcribe(content)
+            except VoiceError as exc:
+                raise RuntimeError(str(exc)) from exc
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -161,53 +160,44 @@ class Brain:
         # Determine if we're continuing a session
         continue_last = session_id is not None
 
-        # Build user settings dict for Claude
-        user_settings = {
-            "audio_enabled": include_audio,
-            "voice_speed": voice_speed,
-            "mode": mode.value,
-            "watch_enabled": watch_enabled,
-        }
+        user_settings = UserSettings(
+            mode=mode,
+            audio_enabled=include_audio,
+            voice_speed=voice_speed,
+            watch_enabled=watch_enabled,
+        )
 
         # Tool call tracking wrapper
-        def _on_tool_call(tool_name: str, detail: str | None):
+        async def _on_tool_call(tool_name: str, detail: str | None):
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if on_tool_call and watch_enabled:
-                on_tool_call(tool_name, detail)
+                await on_tool_call(tool_name, detail)
 
         # Load vault config if available, merge with explicit kwargs
         # Explicit kwargs take precedence over vault config
         vault_config = self._vault.load() if self._vault else None
-        vault_dict = (
-            vault_config.model_dump(exclude_none=True, exclude_defaults=True)
-            if vault_config
-            else {}
-        )
-        merged_kwargs = {**vault_dict, **kwargs}
+        if vault_config:
+            vault_dict = vault_config.model_dump(exclude_none=True, exclude_defaults=True)
+            kwargs = {**vault_dict, **kwargs}
+            logger.debug(f"Merged vault config: {list(vault_dict.keys())}")
 
-        if vault_config and vault_config != VaultConfig():
-            logger.debug(
-                f"Vault config loaded: model={vault_config.model}, "
-                f"max_turns={vault_config.max_turns}, "
-                f"cwd={vault_config.cwd}"
-            )
-        if kwargs:
-            logger.debug(f"Explicit kwargs override: {list(kwargs.keys())}")
-
-        # Call Claude
-        response_text, new_session_id, metadata = await self.claude_client.query(
+        config = self._build_query_config(
             prompt=text,
             session_id=session_id,
             continue_last=continue_last,
             user_settings=user_settings,
-            mode=mode.value,
+            mode=mode,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
-            **merged_kwargs,
+            **kwargs,
         )
 
-        # Update session state
-        await self.state_manager.update_session(user_id, new_session_id)
+        # Call Claude
+        response_text, new_session_id, metadata = await self.claude_client.query(config)
+
+        # Update session state only on successful Claude responses
+        if not metadata.get("error"):
+            await self.state_manager.update_session(user_id, new_session_id)
 
         # Generate TTS if requested
         audio_bytes: bytes | None = None
@@ -227,6 +217,58 @@ class Brain:
             metadata=metadata,
         )
 
+    def _build_query_config(
+        self,
+        *,
+        prompt: str,
+        session_id: str | None,
+        continue_last: bool,
+        user_settings: UserSettings,
+        mode: Mode,
+        on_tool_call: OnToolCall | None,
+        can_use_tool: CanUseTool | None,
+        **kwargs,
+    ) -> QueryConfig:
+        config_kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "session_id": session_id,
+            "continue_last": continue_last,
+            "user_settings": user_settings,
+            "mode": mode,
+            "on_tool_call": on_tool_call,
+            "can_use_tool": can_use_tool,
+        }
+
+        allowed_keys = {
+            "include_megg",
+            "hooks",
+            "mcp_servers",
+            "agents",
+            "plugins",
+            "sandbox",
+            "output_format",
+            "max_turns",
+            "max_budget_usd",
+            "model",
+            "fallback_model",
+            "include_partial_messages",
+            "enable_file_checkpointing",
+            # Vault config additions
+            "cwd",
+            "add_dirs",
+            "system_prompt_file",
+        }
+
+        for key in list(kwargs.keys()):
+            if key in allowed_keys:
+                config_kwargs[key] = kwargs.pop(key)
+
+        if kwargs:
+            unknown = ", ".join(sorted(kwargs.keys()))
+            raise ValueError(f"Unsupported query options: {unknown}")
+
+        return QueryConfig(**config_kwargs)
+
     async def process_message_stream(
         self,
         user_id: str,
@@ -235,10 +277,10 @@ class Brain:
         session_id: str | None = None,
         mode: Mode = Mode.GO_ALL,
         watch_enabled: bool = False,
-        on_tool_call: Callable[[str, str | None], None] | None = None,
-        can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        on_tool_call: OnToolCall | None = None,
+        can_use_tool: CanUseTool | None = None,
         **kwargs,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[StreamedEvent]:
         """
         Process a message and yield streaming events.
 
@@ -248,12 +290,11 @@ class Brain:
         # Transcribe voice if needed (blocking step before stream starts)
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
-                yield {"error": "Voice content must be bytes"}
-                return
-            text = await self.voice_engine.transcribe(content)
-            if text.startswith("[Transcription error") or text.startswith("[Error"):
-                yield {"error": text}
-                return
+                raise ValueError("Voice content must be bytes")
+            try:
+                text = await self.voice_engine.transcribe(content)
+            except VoiceError as exc:
+                raise RuntimeError(str(exc)) from exc
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -263,35 +304,27 @@ class Brain:
 
         continue_last = session_id is not None
 
-        user_settings = {
-            "mode": mode.value,
-            "watch_enabled": watch_enabled,
-        }
-
-        def _on_tool_call(tool_name: str, detail: str | None):
-            if on_tool_call and watch_enabled:
-                on_tool_call(tool_name, detail)
+        user_settings = UserSettings(mode=mode, watch_enabled=watch_enabled)
 
         # Load vault config if available, merge with explicit kwargs
         vault_config = self._vault.load() if self._vault else None
-        vault_dict = (
-            vault_config.model_dump(exclude_none=True, exclude_defaults=True)
-            if vault_config
-            else {}
-        )
-        merged_kwargs = {**vault_dict, **kwargs}
+        if vault_config:
+            vault_dict = vault_config.model_dump(exclude_none=True, exclude_defaults=True)
+            kwargs = {**vault_dict, **kwargs}
 
-        # Yield events from Claude
-        async for event in self.claude_client.query_stream(
+        config = self._build_query_config(
             prompt=text,
             session_id=session_id,
             continue_last=continue_last,
             user_settings=user_settings,
-            mode=mode.value,
-            on_tool_call=_on_tool_call if watch_enabled else None,
+            mode=mode,
+            on_tool_call=on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
-            **merged_kwargs,
-        ):
+            **kwargs,
+        )
+
+        # Yield events from Claude
+        async for event in self.claude_client.query_stream(config):
             yield event
 
             # Update session state if we get a new session ID from result
@@ -302,12 +335,10 @@ class Brain:
             # The client should probably persist session ID updates internally or we handle it here.
             # For now, let's assume session update happens on the caller side or we need to intercept ResultMessage.
 
-            if hasattr(event, "session_id") and event.session_id:
-                # ResultMessage or StreamEvent might have session_id
-                # Only update if it's different/new
+            if isinstance(event, ResultMessage) and event.session_id:
                 if event.session_id != session_id:
                     await self.state_manager.update_session(user_id, event.session_id)
-                    session_id = event.session_id  # Update local var
+                    session_id = event.session_id
 
     async def process_text(
         self,
@@ -416,13 +447,16 @@ class Brain:
 
 # Default instance
 _brain: Brain | None = None
+_brain_lock = Lock()
 
 
 def get_brain() -> Brain:
     """Get or create the default brain instance."""
     global _brain
     if _brain is None:
-        _brain = Brain()
+        with _brain_lock:
+            if _brain is None:
+                _brain = Brain()
     return _brain
 
 

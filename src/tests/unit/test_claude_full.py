@@ -9,10 +9,12 @@ from claude_agent_sdk.types import (
     StreamEvent,
     TextBlock,
     ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
 )
 
 from koro.core.claude import ClaudeClient
-from koro.core.types import SandboxSettings
+from koro.core.types import QueryConfig, SandboxSettings
 
 
 @pytest.fixture
@@ -24,16 +26,14 @@ def claude_client():
 async def test_build_options_full(claude_client):
     """Test building options with all new parameters."""
     sandbox_settings: SandboxSettings = {"enabled": True}
-    
+
     # Test complex options
     hooks_mock = {"PreToolUse": []}
     mcp_mock = {"server": {"type": "stdio", "command": "ls"}}
     output_format = {"type": "json_schema", "schema": {}}
-    
-    options = claude_client._build_options(
-        user_settings=None,
-        mode="go_all",
-        can_use_tool=None,
+
+    config = QueryConfig(
+        prompt="test",
         sandbox=sandbox_settings,
         include_partial_messages=True,
         max_turns=10,
@@ -43,8 +43,9 @@ async def test_build_options_full(claude_client):
         hooks=hooks_mock,
         mcp_servers=mcp_mock,
         output_format=output_format,
-        enable_file_checkpointing=True
+        enable_file_checkpointing=True,
     )
+    options = claude_client._build_options(config)
 
     assert options.sandbox == sandbox_settings
     assert options.include_partial_messages is True
@@ -66,7 +67,7 @@ async def test_full_result_metadata(claude_client):
     mock_sdk_client.query = AsyncMock()
     mock_sdk_client.__aenter__ = AsyncMock(return_value=mock_sdk_client)
     mock_sdk_client.__aexit__ = AsyncMock()
-    
+
     async def mock_receive():
         yield ResultMessage(
             subtype="success",
@@ -78,14 +79,16 @@ async def test_full_result_metadata(claude_client):
             num_turns=5,
             total_cost_usd=0.05,
             usage={"input_tokens": 100, "output_tokens": 50},
-            structured_output={"key": "value"}
+            structured_output={"key": "value"},
         )
 
     mock_sdk_client.receive_response = mock_receive
 
     with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
-        result, session_id, metadata = await claude_client.query("test")
-        
+        result, session_id, metadata = await claude_client.query(
+            QueryConfig(prompt="test")
+        )
+
         assert result == "Done"
         assert metadata["cost"] == 0.05
         assert metadata["num_turns"] == 5
@@ -102,13 +105,13 @@ async def test_stream_event_handling(claude_client):
     mock_sdk_client.query = AsyncMock()
     mock_sdk_client.__aenter__ = AsyncMock(return_value=mock_sdk_client)
     mock_sdk_client.__aexit__ = AsyncMock()
-    
+
     stream_event = StreamEvent(
         uuid="evt_1",
         session_id="sess_1",
-        event={"type": "content_block_delta", "delta": {"text": "Hello"}}
+        event={"type": "content_block_delta", "delta": {"text": "Hello"}},
     )
-    
+
     async def mock_receive():
         yield stream_event
 
@@ -116,9 +119,11 @@ async def test_stream_event_handling(claude_client):
 
     with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
         events = []
-        async for event in claude_client.query_stream("test", include_partial_messages=True):
+        async for event in claude_client.query_stream(
+            QueryConfig(prompt="test", include_partial_messages=True)
+        ):
             events.append(event)
-        
+
         assert len(events) == 1
         assert isinstance(events[0], StreamEvent)
         assert events[0].uuid == "evt_1"
@@ -133,7 +138,7 @@ async def test_thinking_block_parsing(claude_client):
     mock_sdk_client.query = AsyncMock()
     mock_sdk_client.__aenter__ = AsyncMock(return_value=mock_sdk_client)
     mock_sdk_client.__aexit__ = AsyncMock()
-    
+
     # Mock stream response
     async def mock_receive():
         yield AssistantMessage(
@@ -141,7 +146,7 @@ async def test_thinking_block_parsing(claude_client):
                 ThinkingBlock(thinking="Hmm...", signature="sig"),
                 TextBlock(text="Hello"),
             ],
-            model="claude-3"
+            model="claude-3",
         )
         yield ResultMessage(
             subtype="success",
@@ -151,17 +156,59 @@ async def test_thinking_block_parsing(claude_client):
             duration_api_ms=50,
             is_error=False,
             num_turns=1,
-            total_cost_usd=0.01
+            total_cost_usd=0.01,
         )
 
     # Assign the generator function directly
     mock_sdk_client.receive_response = mock_receive
 
     with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
-        result, session_id, metadata = await claude_client.query("test")
-        
+        result, session_id, metadata = await claude_client.query(
+            QueryConfig(prompt="test")
+        )
+
         assert result == "Hello"
         assert metadata["thinking"] == "Hmm..."
+
+
+@pytest.mark.asyncio
+async def test_tool_result_tracking(claude_client):
+    """Tool result blocks are captured in metadata."""
+    mock_sdk_client = MagicMock()
+    mock_sdk_client.query = AsyncMock()
+    mock_sdk_client.__aenter__ = AsyncMock(return_value=mock_sdk_client)
+    mock_sdk_client.__aexit__ = AsyncMock()
+
+    async def mock_receive():
+        yield AssistantMessage(
+            content=[
+                ToolUseBlock(id="tool_1", name="Read", input={"path": "README.md"}),
+                ToolResultBlock(tool_use_id="tool_1", is_error=False),
+            ],
+            model="claude-3",
+        )
+        yield ResultMessage(
+            subtype="success",
+            duration_ms=10,
+            duration_api_ms=5,
+            is_error=False,
+            num_turns=1,
+            session_id="sess_1",
+            result="Done",
+        )
+
+    mock_sdk_client.receive_response = mock_receive
+
+    with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
+        result, session_id, metadata = await claude_client.query(
+            QueryConfig(prompt="test")
+        )
+
+        assert result == "Done"
+        assert session_id == "sess_1"
+        assert metadata["tool_results"] == [
+            {"tool_use_id": "tool_1", "name": "Read", "is_error": False}
+        ]
 
 
 @pytest.mark.asyncio
@@ -174,7 +221,7 @@ async def test_interrupt(claude_client):
 
     # Simulate active client
     claude_client._active_client = mock_sdk_client
-    
+
     success = await claude_client.interrupt()
     assert success is True
     mock_sdk_client.interrupt.assert_called_once()
@@ -192,10 +239,9 @@ async def test_query_stream(claude_client):
     mock_sdk_client.query = AsyncMock()
     mock_sdk_client.__aenter__ = AsyncMock(return_value=mock_sdk_client)
     mock_sdk_client.__aexit__ = AsyncMock()
-    
+
     expected_msg = AssistantMessage(
-        content=[TextBlock(text="Streamed")],
-        model="claude-3"
+        content=[TextBlock(text="Streamed")], model="claude-3"
     )
 
     async def mock_receive():
@@ -205,9 +251,9 @@ async def test_query_stream(claude_client):
 
     with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
         events = []
-        async for event in claude_client.query_stream("test"):
+        async for event in claude_client.query_stream(QueryConfig(prompt="test")):
             events.append(event)
-        
+
         assert len(events) == 1
         assert events[0] == expected_msg
         # Verify active client was set and cleared

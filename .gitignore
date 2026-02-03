@@ -34,10 +34,9 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+
+# Secrets
 credentials.json
-uv.lock
 
 # Claude
 .claude/
-.mcp.json
-credentials.json

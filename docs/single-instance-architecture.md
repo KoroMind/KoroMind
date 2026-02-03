@@ -4,28 +4,30 @@
 
 ```mermaid
 graph TD
-    subgraph Clients[Clients]
+    subgraph Clients[Clients - External]
         TG[Telegram]
         HTTP[HTTP/Mobile]
-        CLI[CLI]
         DISC[Discord]
     end
 
     subgraph Worker[Worker]
+        subgraph Connectors[Connectors]
+            TGW[Telegram]
+            HTTPW[HTTP/Mobile]
+            DISCW[Discord]
+        end
+        CLI[CLI]
         BRAIN[Brain <br> Gatekeeper]
         SDK[Claude SDK]
         VOICE[Audio Processing]
-
-        BRAIN <--> VOICE
-        API <--> BRAIN
-
-        BRAIN <--> SDK
+        VAULT[Vault]
     end
 
-    subgraph Vault[Vault]
-        STATE[SQLite DB]
-        CONFIG[User Config<br/>MCP, Agents, Hooks]
-        MEMORY[Memory]
+    subgraph Mount[Mount]
+        SETTINGS[Settings]
+        MCP[mcp.json]
+        DIR[Directories]
+        MEM[Memeories]
     end
 
     subgraph Backup[Backup]
@@ -37,26 +39,41 @@ graph TD
         TMP[Temporary <br> Experiments]
     end
 
-    TG --> API
-    HTTP --> API
-    CLI --> API
-    DISC --> API
 
-    BRAIN <--> Vault
-    BRAIN <--> Sandbox
-    SDK <-.-> Vault
-    Vault --> Backup
+    TG --> TGW
+    HTTP --> HTTPW
+    DISC --> DISCW
+    CLI --> BRAIN
+
+    TGW --> BRAIN
+    HTTPW --> BRAIN
+    DISCW --> BRAIN
+    BRAIN --> VAULT
+
+    BRAIN --> SDK
+    BRAIN --> VOICE
+    SDK --> Sandbox
+
+    SDK --> Mount
+
+    VAULT --> Mount
+    VOICE --> ElevenLabs
+    VOICE --> OpenAI
+
+    Mount --> Backup
 ```
 
 ## Components
 
 | Component | Role |
 |-----------|------|
-| **API** | Single entry point, routes requests, protocol translation |
+| **Connectors** | Protocol adapters translating external clients to internal format |
+| **CLI** | Direct command-line interface to Brain |
 | **Brain (Gatekeeper)** | Central orchestrator—loads config, calls SDK, handles voice, manages all component communication |
-| **Audio** | ElevenLabs STT/TTS |
-| **Claude SDK** | Tool execution, MCP, permissions, sessions, Vault access |
-| **Vault** | Persistent user state and config (Docker volume) |
+| **Vault** | In-worker state manager, bridges Brain to Mount |
+| **Audio Processing** | ElevenLabs/OpenAI STT/TTS |
+| **Claude SDK** | Tool execution, MCP, permissions, sessions, Mount access |
+| **Mount** | Persistent user state and config (Docker volume mount) |
 | **Sandbox** | Ephemeral workspace for Claude (Docker volume) |
 
 ---
@@ -141,7 +158,7 @@ callbacks = WorkerCallbacks(
     on_tool_approval=lambda req: show_telegram_approval_ui(req),  # Telegram has this
     on_tool_use=lambda notif: send_notification(notif),           # Watch mode
     on_progress=lambda msg: update_status(msg),                   # Progress
-)
+);
 ```
 
 HTTP doesn't register callbacks → approve mode doesn't work → that's fine, it's an API.
@@ -150,28 +167,33 @@ HTTP doesn't register callbacks → approve mode doesn't work → that's fine, i
 
 ---
 
-### Decision 5: Vault Holds Config
+### Decision 5: Mount Holds Config
 
-User configuration (MCP servers, agents, hooks, permissions) lives in Vault, not code.
+User configuration (MCP servers, agents, hooks, permissions, settings, memories) lives in Mount, not code.
 
-On startup, Worker loads config from Vault and passes it straight to SDK:
+Mount contains:
+- **Settings** - User preferences and configuration
+- **mcp.json** - MCP server definitions
+- **Directories** - User data directories (git repos, notes)
+- **Memories** - Long-term memory storage
 
-| Vault | `ClaudeAgentOptions` |
+On startup, Vault loads config from Mount and passes it to SDK:
+
+| Mount | `ClaudeAgentOptions` |
 |-------|---------------------|
-| MCP Servers | `mcp_servers` |
-| Agent Definitions | `agents` |
-| Hooks | `hooks` |
-| Permission Rules | `can_use_tool` |
-| System Prompts | `system_prompt` |
+| mcp.json | `mcp_servers` |
+| Settings | `agents`, `hooks` |
+| Directories | workspace paths |
+| Memories | context for prompts |
 
 **Value**:
-- Portable—mount Vault to any Worker
+- Portable—mount to any Worker
 - User-owned—no vendor lock-in
 - SDK-native—no translation layer
 
 ---
 
-### Decision 6: Sandbox vs Vault Access
+### Decision 6: Sandbox vs Mount Access
 
 Claude has two places to work:
 
@@ -180,14 +202,14 @@ Claude has two places to work:
 - Code execution
 - Can be wiped without data loss
 
-**Vault** (persistent):
+**Mount** (persistent):
 - SDK reads config (MCP, agents, hooks)
 - SDK can write user data (git repos, notes)
 - Protected from accidental wipes
 
-Sandbox is the default scratchpad. Vault access is for intentional, persistent changes.
+Sandbox is the default scratchpad. Mount access is for intentional, persistent changes.
 
-**Value**: Safety with flexibility. Temp work in Sandbox, important work in Vault.
+**Value**: Safety with flexibility. Temp work in Sandbox, important work in Mount.
 
 ---
 
@@ -195,19 +217,20 @@ Sandbox is the default scratchpad. Vault access is for intentional, persistent c
 
 **Security concern**: If Worker holds user data, it becomes a target. Compromise Worker, leak data.
 
-**Pattern**: Worker holds nothing. All state lives in Vault.
+**Pattern**: Worker holds nothing persistent. All state lives in Mount.
 
 - No credentials stored in Worker
 - No conversation history in Worker memory
 - No user config baked into Worker image
 - Worker can be killed and replaced without data loss
+- Vault is an in-memory bridge, not persistent storage
 
 **Value**:
-- **Portability**: Mount Vault to any Worker, instantly working
+- **Portability**: Mount to any Worker, instantly working
 - **Security**: Worker compromise doesn't leak persistent data
 - **Simplicity**: No sync, no migration, no "where's my data?"
 
-Everything belongs to the user, stored in their Vault.
+Everything belongs to the user, stored in their Mount.
 
 ---
 
@@ -217,27 +240,27 @@ Multi-tenancy is on the roadmap, but this architecture is for one user.
 
 No tenant isolation, no credential rotation, no distributed state.
 
-The architecture supports multi-tenancy later—Vault is portable, Worker is stateless. But MVP serves one user well before serving many poorly.
+The architecture supports multi-tenancy later—Mount is portable, Worker is stateless. But MVP serves one user well before serving many poorly.
 
 ---
 
 ## Data Flow
 
 ```
-1. Client sends message (Telegram/HTTP/CLI)
-2. Connector translates to JSON, sends to API
-3. API routes to Brain
-4. Brain loads user config from Vault
-5. Brain passes ClaudeAgentOptions to SDK
-6. SDK executes (tools run in Sandbox, can access Vault)
-7. Brain updates state in Vault
-8. Brain synthesizes audio if requested
-9. API returns JSON response
-10. Connector translates to native output
+1. Client sends message (Telegram/HTTP/Discord)
+2. Connector translates to JSON, sends to Brain
+3. Brain loads user config from Vault (which reads from Mount)
+4. Brain passes ClaudeAgentOptions to SDK
+5. SDK executes (tools run in Sandbox, can access Mount)
+6. Vault updates state in Mount
+7. Brain synthesizes audio if requested (via ElevenLabs/OpenAI)
+8. Response flows back through Connector to Client
+9. Mount snapshots to Backup periodically
 ```
 
 ---
 
 ## Changelog
 
+- **2026-01-31**: Updated architecture - Vault moved inside Worker, Mount as persistent storage, explicit Connectors
 - **2026-01-29**: Initial architecture document from V design sessions

@@ -148,6 +148,7 @@ koro-cli
 ### Docker
 
 ```bash
+docker compose run --rm uv-lock
 docker-compose up --build -d
 ```
 

@@ -38,6 +38,15 @@ services:
       retries: 3
       start_period: 40s
 
+  # Helper to generate uv.lock without local Python
+  uv-lock:
+    image: python:3.12-slim-bookworm
+    working_dir: /repo
+    volumes:
+      - .:/repo
+    entrypoint: ["/bin/sh", "-lc"]
+    command: "pip install --no-cache-dir uv && uv lock"
+
 volumes:
   koro-state:
   koro-sandbox:

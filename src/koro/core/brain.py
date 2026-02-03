@@ -18,7 +18,7 @@ from koro.core.types import (
     ToolCall,
     UserSettings,
 )
-from koro.core.vault import Vault
+from koro.core.vault import Vault, VaultConfig
 from koro.core.voice import VoiceEngine, get_voice_engine
 
 
@@ -177,14 +177,19 @@ class Brain:
 
         # Load vault config if available, merge with explicit kwargs
         # Explicit kwargs take precedence over vault config
-        vault_config = self._vault.load() if self._vault else {}
-        merged_kwargs = {**vault_config, **kwargs}
+        vault_config = self._vault.load() if self._vault else None
+        vault_dict = (
+            vault_config.model_dump(exclude_none=True, exclude_defaults=True)
+            if vault_config
+            else {}
+        )
+        merged_kwargs = {**vault_dict, **kwargs}
 
-        if vault_config:
+        if vault_config and vault_config != VaultConfig():
             logger.debug(
-                f"Vault config loaded: model={vault_config.get('model')}, "
-                f"max_turns={vault_config.get('max_turns')}, "
-                f"cwd={vault_config.get('cwd')}"
+                f"Vault config loaded: model={vault_config.model}, "
+                f"max_turns={vault_config.max_turns}, "
+                f"cwd={vault_config.cwd}"
             )
         if kwargs:
             logger.debug(f"Explicit kwargs override: {list(kwargs.keys())}")
@@ -268,8 +273,13 @@ class Brain:
                 on_tool_call(tool_name, detail)
 
         # Load vault config if available, merge with explicit kwargs
-        vault_config = self._vault.load() if self._vault else {}
-        merged_kwargs = {**vault_config, **kwargs}
+        vault_config = self._vault.load() if self._vault else None
+        vault_dict = (
+            vault_config.model_dump(exclude_none=True, exclude_defaults=True)
+            if vault_config
+            else {}
+        )
+        merged_kwargs = {**vault_dict, **kwargs}
 
         # Yield events from Claude
         async for event in self.claude_client.query_stream(
@@ -296,8 +306,8 @@ class Brain:
                 # ResultMessage or StreamEvent might have session_id
                 # Only update if it's different/new
                 if event.session_id != session_id:
-                     await self.state_manager.update_session(user_id, event.session_id)
-                     session_id = event.session_id # Update local var
+                    await self.state_manager.update_session(user_id, event.session_id)
+                    session_id = event.session_id  # Update local var
 
     async def process_text(
         self,

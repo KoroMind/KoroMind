@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import koro.core.claude as claude
-from koro.core.types import QueryConfig
 
 
 @pytest.fixture
@@ -233,7 +232,7 @@ class TestClaudeClientQuery:
         client = claude.ClaudeClient(
             sandbox_dir=str(sandbox_dir), working_dir=str(tmp_path)
         )
-        await client.query(QueryConfig(prompt="Hello"))
+        await client.query(prompt="Hello")
 
         assert sandbox_dir.exists()
 
@@ -254,7 +253,7 @@ class TestClaudeClientQuery:
         client = claude.ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
-        await client.query(QueryConfig(prompt="Hello", include_megg=True))
+        await client.query(prompt="Hello", include_megg=True)
 
         assert "Megg context here" in captured_prompt["value"]
 
@@ -274,7 +273,7 @@ class TestClaudeClientQuery:
         client = claude.ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
-        await client.query(QueryConfig(prompt="Hello", continue_last=True))
+        await client.query(prompt="Hello", continue_last=True)
 
         assert called["megg"] is False
 
@@ -296,7 +295,7 @@ class TestClaudeClientQuery:
         client = claude.ClaudeClient(
             sandbox_dir=str(tmp_path / "sandbox"), working_dir=str(tmp_path)
         )
-        result, session_id, metadata = await client.query(QueryConfig(prompt="Hello"))
+        result, session_id, metadata = await client.query(prompt="Hello")
 
         assert "Error" in result
         assert "SDK error" in result

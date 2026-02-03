@@ -10,10 +10,7 @@ These tests verify the complete vault experience:
 import os
 from pathlib import Path
 
-import pytest
-
-from koro.core.vault import Vault
-
+from koro.core.vault import Vault, VaultConfig
 
 # Path to test vault fixture
 TEST_VAULT = Path(__file__).parent.parent / "fixtures" / "test-vault"
@@ -33,22 +30,22 @@ class TestVaultIntegration:
         config = vault.load()
 
         assert config is not None
-        assert isinstance(config, dict)
+        assert isinstance(config, VaultConfig)
 
     def test_model_configuration(self):
         """Verify model is set to Opus 4.5."""
         vault = Vault(TEST_VAULT)
         config = vault.load()
 
-        assert config["model"] == "claude-opus-4-5-20250514"
-        assert config["max_turns"] == 100
+        assert config.model == "claude-opus-4-5-20250514"
+        assert config.max_turns == 100
 
     def test_system_prompt_file_resolves(self):
         """System prompt file path resolves to absolute path."""
         vault = Vault(TEST_VAULT)
         config = vault.load()
 
-        prompt_path = Path(config["system_prompt_file"])
+        prompt_path = Path(config.system_prompt_file)
 
         # Should be absolute
         assert prompt_path.is_absolute()
@@ -66,7 +63,7 @@ class TestVaultIntegration:
         vault = Vault(TEST_VAULT)
         config = vault.load()
 
-        assert config["cwd"] == str(TEST_VAULT)
+        assert config.cwd == str(TEST_VAULT)
 
     def test_hooks_command_resolves(self):
         """Hook command paths resolve to absolute paths."""
@@ -74,11 +71,11 @@ class TestVaultIntegration:
         config = vault.load()
 
         # Get the safety hook command
-        pre_tool_hooks = config["hooks"]["PreToolUse"]
-        bash_matcher = next(h for h in pre_tool_hooks if h["matcher"] == "Bash")
-        command_hook = bash_matcher["hooks"][0]
+        pre_tool_hooks = config.hooks["PreToolUse"]
+        bash_matcher = next(h for h in pre_tool_hooks if h.matcher == "Bash")
+        command_hook = bash_matcher.hooks[0]
 
-        hook_path = Path(command_hook["command"])
+        hook_path = Path(command_hook.command)
 
         # Should be absolute
         assert hook_path.is_absolute()
@@ -95,18 +92,17 @@ class TestVaultIntegration:
         config = vault.load()
 
         # Check system prompt
-        if "system_prompt_file" in config:
-            assert Path(config["system_prompt_file"]).exists()
+        if config.system_prompt_file:
+            assert Path(config.system_prompt_file).exists()
 
         # Check hooks
-        if "hooks" in config:
-            for event, matchers in config["hooks"].items():
+        if config.hooks:
+            for event, matchers in config.hooks.items():
                 for matcher in matchers:
-                    for hook in matcher.get("hooks", []):
-                        if "command" in hook:
-                            cmd_path = Path(hook["command"])
-                            if cmd_path.is_absolute():
-                                assert cmd_path.exists(), f"Hook not found: {cmd_path}"
+                    for hook in matcher.hooks:
+                        cmd_path = Path(hook.command)
+                        if cmd_path.is_absolute():
+                            assert cmd_path.exists(), f"Hook not found: {cmd_path}"
 
     def test_agent_files_exist(self):
         """Agent markdown files exist in vault."""
@@ -124,14 +120,14 @@ class TestVaultIntegration:
         vault = Vault(TEST_VAULT)
         config = vault.load()
 
-        # These keys should be present and valid for SDK
-        assert isinstance(config.get("model"), str)
-        assert isinstance(config.get("max_turns"), int)
-        assert isinstance(config.get("cwd"), str)
-        assert isinstance(config.get("hooks"), dict)
+        # These fields should be present and valid for SDK
+        assert isinstance(config.model, str)
+        assert isinstance(config.max_turns, int)
+        assert isinstance(config.cwd, str)
+        assert isinstance(config.hooks, dict)
 
         # Paths should be strings (SDK expects strings, not Path objects)
-        assert isinstance(config.get("system_prompt_file"), str)
+        assert isinstance(config.system_prompt_file, str)
 
     def test_reload_works(self):
         """Reload clears cache and re-reads config."""
@@ -178,11 +174,11 @@ class TestVaultSecondBrainExperience:
         vault = Vault(TEST_VAULT)
         config = vault.load()
 
-        assert "opus" in config["model"].lower()
+        assert "opus" in config.model.lower()
 
     def test_generous_turn_limit(self):
         """Has enough turns for complex tasks."""
         vault = Vault(TEST_VAULT)
         config = vault.load()
 
-        assert config["max_turns"] >= 50
+        assert config.max_turns >= 50

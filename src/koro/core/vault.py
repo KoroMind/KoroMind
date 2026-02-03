@@ -1,7 +1,7 @@
 """Vault - configuration loader for KoroMind.
 
 The Vault loads configuration from vault-config.yaml and provides it
-as a dict that passes directly to the Claude SDK via Brain.
+as a typed VaultConfig that passes to the Claude SDK via Brain.
 """
 
 import logging
@@ -9,8 +9,85 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel, ConfigDict
 
 logger = logging.getLogger(__name__)
+
+
+# --- Typed Configuration Models ---
+
+
+class HookConfig(BaseModel):
+    """Configuration for a single hook."""
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    type: str = "command"
+    command: str
+
+
+class HookMatcher(BaseModel):
+    """Matcher configuration for hooks."""
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    matcher: str
+    hooks: list[HookConfig] = []
+
+
+class McpServerConfig(BaseModel):
+    """Configuration for an MCP server."""
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    command: str
+    args: list[str] = []
+
+
+class AgentConfig(BaseModel):
+    """Configuration for a subagent."""
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    model: str | None = None
+    system_prompt: str | None = None
+    allowed_tools: list[str] = []
+
+
+class SandboxConfig(BaseModel):
+    """Sandbox settings."""
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    enabled: bool = False
+    autoAllowBashIfSandboxed: bool = True
+    excludedCommands: list[str] = []
+
+
+class VaultConfig(BaseModel):
+    """Typed configuration loaded from vault-config.yaml.
+
+    All fields are optional to allow partial configs.
+    Frozen to prevent accidental mutation.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    # SDK core options
+    cwd: str | None = None
+    add_dirs: list[str] = []
+    model: str | None = None
+    fallback_model: str | None = None
+    max_turns: int | None = None
+    max_budget_usd: float | None = None
+    system_prompt_file: str | None = None
+
+    # Extensibility
+    hooks: dict[str, list[HookMatcher]] = {}
+    mcp_servers: dict[str, McpServerConfig] = {}
+    agents: dict[str, AgentConfig] = {}
+    sandbox: SandboxConfig | None = None
+    plugins: list[Any] = []
 
 
 class VaultError(Exception):
@@ -25,15 +102,18 @@ class Vault:
     The Vault is a thin loader that:
     1. Loads YAML configuration from vault root
     2. Resolves relative paths to absolute paths within the vault
-    3. Returns a dict that Brain passes to ClaudeClient
+    3. Returns a typed VaultConfig that Brain passes to ClaudeClient
 
     Example:
         vault = Vault("~/.koromind")
         config = vault.load()
-        # config is a dict with cwd, add_dirs, mcp_servers, etc.
+        # config is a VaultConfig with cwd, add_dirs, mcp_servers, etc.
     """
 
     CONFIG_FILENAME = "vault-config.yaml"
+
+    # Empty config singleton (frozen, so safe to share)
+    _EMPTY_CONFIG = VaultConfig()
 
     def __init__(self, path: Path | str):
         """Initialize vault with root directory path.
@@ -43,13 +123,13 @@ class Vault:
         """
         self.root = Path(path).expanduser().resolve()
         self.config_file = self.root / self.CONFIG_FILENAME
-        self._config: dict[str, Any] | None = None
+        self._config: VaultConfig | None = None
 
-    def load(self) -> dict[str, Any]:
+    def load(self) -> VaultConfig:
         """Load configuration, resolving paths relative to vault root.
 
         Returns:
-            Dict with SDK-compatible configuration. Empty dict if no config file.
+            VaultConfig with SDK-compatible configuration. Empty config if no config file.
 
         Raises:
             VaultError: If config file exists but is invalid YAML.
@@ -60,7 +140,7 @@ class Vault:
 
         if not self.config_file.exists():
             logger.debug(f"No config file at {self.config_file}")
-            self._config = {}
+            self._config = self._EMPTY_CONFIG
             return self._config
 
         logger.debug(f"Loading config from {self.config_file}")
@@ -74,7 +154,7 @@ class Vault:
 
         if raw is None:
             logger.debug("Config file is empty or null")
-            self._config = {}
+            self._config = self._EMPTY_CONFIG
             return self._config
 
         if not isinstance(raw, dict):
@@ -83,18 +163,19 @@ class Vault:
                 f"vault-config.yaml must be a mapping, got {type(raw).__name__}"
             )
 
-        self._config = self._resolve_paths(raw)
+        resolved = self._resolve_paths(raw)
+        self._config = VaultConfig.model_validate(resolved)
         logger.info(
-            f"Vault config loaded: {len(self._config)} keys, "
-            f"model={self._config.get('model')}"
+            f"Vault config loaded: model={self._config.model}, "
+            f"max_turns={self._config.max_turns}"
         )
         return self._config
 
-    def reload(self) -> dict[str, Any]:
+    def reload(self) -> VaultConfig:
         """Force reload configuration from disk.
 
         Returns:
-            Fresh configuration dict.
+            Fresh VaultConfig.
         """
         self._config = None
         return self.load()
@@ -154,9 +235,7 @@ class Vault:
             return p
         return self.root / p
 
-    def _resolve_mcp_paths(
-        self, mcp_servers: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _resolve_mcp_paths(self, mcp_servers: dict[str, Any]) -> dict[str, Any]:
         """Resolve paths in MCP server configurations.
 
         Looks for paths starting with ./ in args lists.
@@ -170,7 +249,11 @@ class Vault:
             server_copy = server.copy()
             if "args" in server_copy and isinstance(server_copy["args"], list):
                 server_copy["args"] = [
-                    str(self._resolve(arg)) if isinstance(arg, str) and arg.startswith("./") else arg
+                    (
+                        str(self._resolve(arg))
+                        if isinstance(arg, str) and arg.startswith("./")
+                        else arg
+                    )
                     for arg in server_copy["args"]
                 ]
             resolved[name] = server_copy

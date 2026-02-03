@@ -15,9 +15,9 @@ validated: 2026-02-03
 - Passes SDK-compatible config to Brain → ClaudeClient
 
 ## Why
-- Stateless configuration: no environment variables or runtime state
-- Portable: copy vault directory, everything works
-- User-friendly: one YAML file configures entire experience
+- **User ownership**: User owns their data, not the service
+- **Portable**: Copy vault directory anywhere, everything works
+- **Easy to eject**: No vendor lock-in, plain files on disk
 
 ## How
 - Core: `src/koro/core/vault.py` - `Vault` class, `VaultConfig` model

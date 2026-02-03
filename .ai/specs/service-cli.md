@@ -15,9 +15,9 @@ validated: 2026-02-01
 - Supports vault configuration and debug logging
 
 ## Why
-- Quick testing without Telegram setup
-- Debugging and development workflows
-- Headless server access
+- **Testing**: Easy access to Brain and its dependencies without Telegram setup
+- **Development**: Debug workflows, verify integrations locally
+- **Headless access**: Server environments without GUI
 
 ## How
 - Core: `src/koro/interfaces/cli/app.py`

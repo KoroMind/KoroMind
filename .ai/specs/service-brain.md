@@ -77,10 +77,19 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - `ResultMessage`: Final completion data
 
 ### Vault Integration
-- `Brain(vault_path=...)` loads config from vault directory
-- Vault config merged with explicit kwargs (kwargs take precedence)
-- Supports: model, max_turns, cwd, add_dirs, system_prompt_file, hooks, mcp_servers, agents, sandbox
-- See `service-vault.md` for details
+Brain loads user config from vault directory at `src/koro/core/brain.py:180-195`:
+
+```python
+Brain(vault_path="~/.koromind")  # Load user's vault
+```
+
+**Config flow:**
+1. `Vault.load()` returns frozen `VaultConfig` from `vault-config.yaml`
+2. Brain calls `vault_config.model_dump()` to get dict
+3. Dict merged with explicit kwargs (kwargs win)
+4. Merged config passed to `ClaudeClient._build_options()`
+
+**Supported options:** model, max_turns, cwd, add_dirs, system_prompt_file, hooks, mcp_servers, agents, sandbox
 
 ### Dependencies
 - `Vault` - configuration loading (optional)

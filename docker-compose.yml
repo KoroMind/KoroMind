@@ -19,6 +19,11 @@ services:
     env_file:
       - .env
     volumes:
+      # Dirs from .env
+      # work dir
+      - ${HOME}/claude-work-dir:/claude-work-dir
+      # sandbox dir
+      - ${HOME}/claude-voice-sandbox:/claude-voice-sandbox
       # Persistent state (session history, user settings)
       - koro-state:/home/claude/state
       # Sandbox for Claude file operations

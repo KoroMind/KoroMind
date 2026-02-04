@@ -38,14 +38,16 @@ class TestVaultLoad:
         """Loads simple configuration correctly."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("""
-model: "claude-sonnet-4-20250514"
-max_turns: 50
+mcp_servers:
+  sqlite:
+    command: "uvx"
+    args: ["mcp-server-sqlite"]
 """)
         vault = Vault(tmp_path)
         config = vault.load()
 
-        assert config.model == "claude-sonnet-4-20250514"
-        assert config.max_turns == 50
+        assert "sqlite" in config.mcp_servers
+        assert config.mcp_servers["sqlite"].command == "uvx"
 
     def test_load_raises_on_invalid_yaml(self, tmp_path: Path):
         """Raises VaultError on invalid YAML syntax."""
@@ -68,18 +70,26 @@ max_turns: 50
     def test_load_caches_config(self, tmp_path: Path):
         """Config is cached after first load."""
         config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text("model: test-model")
+        config_file.write_text("""
+agents:
+  test:
+    system_prompt: "Test agent"
+""")
 
         vault = Vault(tmp_path)
         config1 = vault.load()
 
         # Modify file
-        config_file.write_text("model: different-model")
+        config_file.write_text("""
+agents:
+  different:
+    system_prompt: "Different agent"
+""")
 
         # Should return cached version
         config2 = vault.load()
         assert config1 is config2
-        assert config2.model == "test-model"
+        assert "test" in config2.agents
 
 
 class TestVaultReload:
@@ -88,80 +98,30 @@ class TestVaultReload:
     def test_reload_clears_cache(self, tmp_path: Path):
         """Reload clears cache and reads fresh config."""
         config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text("model: original")
+        config_file.write_text("""
+agents:
+  original:
+    system_prompt: "Original"
+""")
 
         vault = Vault(tmp_path)
         config1 = vault.load()
-        assert config1.model == "original"
+        assert "original" in config1.agents
 
         # Modify file
-        config_file.write_text("model: updated")
+        config_file.write_text("""
+agents:
+  updated:
+    system_prompt: "Updated"
+""")
 
         # Reload should get fresh content
         config2 = vault.reload()
-        assert config2.model == "updated"
+        assert "updated" in config2.agents
 
 
 class TestVaultPathResolution:
     """Tests for path resolution in Vault."""
-
-    def test_resolves_relative_cwd(self, tmp_path: Path):
-        """Relative cwd is resolved to absolute path."""
-        config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text('cwd: "."')
-
-        vault = Vault(tmp_path)
-        config = vault.load()
-
-        assert config.cwd == str(tmp_path)
-
-    def test_resolves_relative_cwd_subdirectory(self, tmp_path: Path):
-        """Relative cwd with subdirectory is resolved correctly."""
-        config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text('cwd: "./sandbox"')
-
-        vault = Vault(tmp_path)
-        config = vault.load()
-
-        assert config.cwd == str(tmp_path / "sandbox")
-
-    def test_preserves_absolute_cwd(self, tmp_path: Path):
-        """Absolute cwd paths are preserved as-is."""
-        config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text('cwd: "/usr/local/bin"')
-
-        vault = Vault(tmp_path)
-        config = vault.load()
-
-        assert config.cwd == "/usr/local/bin"
-
-    def test_resolves_add_dirs(self, tmp_path: Path):
-        """add_dirs list is resolved correctly."""
-        config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text("""
-add_dirs:
-  - "."
-  - "./projects"
-  - "/absolute/path"
-""")
-        vault = Vault(tmp_path)
-        config = vault.load()
-
-        assert config.add_dirs == [
-            str(tmp_path),
-            str(tmp_path / "projects"),
-            "/absolute/path",
-        ]
-
-    def test_resolves_system_prompt_file(self, tmp_path: Path):
-        """system_prompt_file is resolved correctly."""
-        config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text('system_prompt_file: "./prompts/main.md"')
-
-        vault = Vault(tmp_path)
-        config = vault.load()
-
-        assert config.system_prompt_file == str(tmp_path / "prompts" / "main.md")
 
     def test_resolves_mcp_server_paths(self, tmp_path: Path):
         """Paths in MCP server args are resolved."""
@@ -198,15 +158,20 @@ hooks:
         hook_cmd = config.hooks["PreToolUse"][0].hooks[0].command
         assert hook_cmd == str(tmp_path / "hooks" / "validate.sh")
 
-    def test_expands_home_directory(self, tmp_path: Path):
-        """Tilde is expanded to home directory."""
+    def test_preserves_absolute_mcp_paths(self, tmp_path: Path):
+        """Absolute paths in MCP args are preserved."""
         config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text('cwd: "~/Documents"')
-
+        config_file.write_text("""
+mcp_servers:
+  test:
+    command: "test"
+    args: ["/absolute/path", "relative"]
+""")
         vault = Vault(tmp_path)
         config = vault.load()
 
-        assert config.cwd == str(Path.home() / "Documents")
+        # Absolute path preserved, relative not starting with ./ also preserved
+        assert config.mcp_servers["test"].args == ["/absolute/path", "relative"]
 
 
 class TestVaultProperties:
@@ -215,7 +180,7 @@ class TestVaultProperties:
     def test_exists_true_when_config_file_exists(self, tmp_path: Path):
         """exists property returns True when config file exists."""
         config_file = tmp_path / "vault-config.yaml"
-        config_file.write_text("model: test")
+        config_file.write_text("plugins: []")
 
         vault = Vault(tmp_path)
         assert vault.exists is True
@@ -246,15 +211,6 @@ class TestVaultFullConfig:
         """Loads a complete configuration with all sections."""
         config_file = tmp_path / "vault-config.yaml"
         config_file.write_text("""
-cwd: "."
-add_dirs:
-  - "./projects"
-
-model: "claude-sonnet-4-20250514"
-fallback_model: "claude-sonnet-4-20250514"
-max_turns: 50
-max_budget_usd: 5.0
-
 mcp_servers:
   sqlite:
     command: "uvx"
@@ -276,7 +232,7 @@ hooks:
 sandbox:
   enabled: false
   autoAllowBashIfSandboxed: true
-  excludedCommands:
+  whiteListedCommands:
     - git
     - docker
 
@@ -286,13 +242,47 @@ plugins: []
         config = vault.load()
 
         # Check all sections are present
-        assert config.cwd == str(tmp_path)
-        assert config.add_dirs == [str(tmp_path / "projects")]
-        assert config.model == "claude-sonnet-4-20250514"
-        assert config.max_turns == 50
-        assert config.max_budget_usd == 5.0
         assert "sqlite" in config.mcp_servers
         assert "researcher" in config.agents
         assert "PreToolUse" in config.hooks
         assert config.sandbox.enabled is False
+        assert config.sandbox.white_listed_commands == ["git", "docker"]
         assert config.plugins == []
+
+
+class TestSandboxConfig:
+    """Tests for SandboxConfig with aliases."""
+
+    def test_snake_case_fields(self, tmp_path: Path):
+        """Snake case field names work."""
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text("""
+sandbox:
+  enabled: true
+  auto_allow_bash_if_sandboxed: false
+  white_listed_commands:
+    - npm
+""")
+        vault = Vault(tmp_path)
+        config = vault.load()
+
+        assert config.sandbox.enabled is True
+        assert config.sandbox.auto_allow_bash_if_sandboxed is False
+        assert config.sandbox.white_listed_commands == ["npm"]
+
+    def test_camel_case_aliases(self, tmp_path: Path):
+        """CamelCase aliases work for backwards compatibility."""
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text("""
+sandbox:
+  enabled: true
+  autoAllowBashIfSandboxed: false
+  whiteListedCommands:
+    - yarn
+""")
+        vault = Vault(tmp_path)
+        config = vault.load()
+
+        assert config.sandbox.enabled is True
+        assert config.sandbox.auto_allow_bash_if_sandboxed is False
+        assert config.sandbox.white_listed_commands == ["yarn"]

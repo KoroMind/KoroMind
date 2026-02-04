@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,15 @@ class AgentConfig(BaseModel):
 class SandboxConfig(BaseModel):
     """Sandbox settings."""
 
-    model_config = ConfigDict(frozen=True, extra="allow")
+    model_config = ConfigDict(frozen=True, extra="allow", populate_by_name=True)
 
     enabled: bool = False
-    autoAllowBashIfSandboxed: bool = True
-    excludedCommands: list[str] = []
+    auto_allow_bash_if_sandboxed: bool = Field(
+        default=True, alias="autoAllowBashIfSandboxed"
+    )
+    white_listed_commands: list[str] = Field(
+        default=[], alias="whiteListedCommands"
+    )
 
 
 class VaultConfig(BaseModel):
@@ -69,20 +73,14 @@ class VaultConfig(BaseModel):
 
     All fields are optional to allow partial configs.
     Frozen to prevent accidental mutation.
+
+    Note: Core SDK options (model, cwd, max_turns, etc.) are provided
+    via environment variables, not vault config.
     """
 
     model_config = ConfigDict(frozen=True, extra="allow")
 
-    # SDK core options
-    cwd: str | None = None
-    add_dirs: list[str] = []
-    model: str | None = None
-    fallback_model: str | None = None
-    max_turns: int | None = None
-    max_budget_usd: float | None = None
-    system_prompt_file: str | None = None
-
-    # Extensibility
+    # Extensibility - user-specific configurations
     hooks: dict[str, list[HookMatcher]] = {}
     mcp_servers: dict[str, McpServerConfig] = {}
     agents: dict[str, AgentConfig] = {}
@@ -166,8 +164,10 @@ class Vault:
         resolved = self._resolve_paths(raw)
         self._config = VaultConfig.model_validate(resolved)
         logger.info(
-            f"Vault config loaded: model={self._config.model}, "
-            f"max_turns={self._config.max_turns}"
+            f"Vault config loaded: "
+            f"mcp_servers={len(self._config.mcp_servers)}, "
+            f"agents={len(self._config.agents)}, "
+            f"hooks={len(self._config.hooks)}"
         )
         return self._config
 
@@ -184,10 +184,8 @@ class Vault:
         """Resolve relative paths to absolute paths within vault.
 
         Handles:
-        - cwd: working directory
-        - add_dirs: additional directories
-        - system_prompt_file: prompt file path
         - Paths in mcp_servers args that start with ./
+        - Paths in hooks commands that start with ./
 
         Args:
             config: Raw configuration dict
@@ -196,20 +194,6 @@ class Vault:
             Config with resolved paths
         """
         result = config.copy()
-
-        # Resolve cwd
-        if "cwd" in result:
-            result["cwd"] = str(self._resolve(result["cwd"]))
-
-        # Resolve add_dirs (list of directories)
-        if "add_dirs" in result:
-            result["add_dirs"] = [str(self._resolve(p)) for p in result["add_dirs"]]
-
-        # Resolve system_prompt_file
-        if "system_prompt_file" in result:
-            result["system_prompt_file"] = str(
-                self._resolve(result["system_prompt_file"])
-            )
 
         # Resolve paths in MCP server args
         if "mcp_servers" in result and isinstance(result["mcp_servers"], dict):

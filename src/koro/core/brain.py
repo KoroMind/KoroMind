@@ -61,7 +61,10 @@ class Brain:
         if self._vault:
             logger.debug(f"Brain initialized with vault: {vault_path}")
         else:
-            logger.debug("Brain initialized without vault")
+            logger.warning(
+                "Brain initialized without vault. "
+                "Consider using --vault or setting KOROMIND_VAULT for configuration."
+            )
 
     @property
     def vault(self) -> Vault | None:
@@ -242,23 +245,24 @@ class Brain:
         }
 
         allowed_keys = {
+            # Core SDK options (from env vars or explicit kwargs)
+            "model",
+            "fallback_model",
+            "max_turns",
+            "max_budget_usd",
+            "cwd",
+            "add_dirs",
+            "system_prompt_file",
+            "include_partial_messages",
+            "enable_file_checkpointing",
+            "output_format",
             "include_megg",
+            # Vault config options
             "hooks",
             "mcp_servers",
             "agents",
             "plugins",
             "sandbox",
-            "output_format",
-            "max_turns",
-            "max_budget_usd",
-            "model",
-            "fallback_model",
-            "include_partial_messages",
-            "enable_file_checkpointing",
-            # Vault config additions
-            "cwd",
-            "add_dirs",
-            "system_prompt_file",
         }
 
         for key in list(kwargs.keys()):

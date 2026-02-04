@@ -257,7 +257,20 @@ async def repl(user_id: str, vault_path: Optional[Path] = None):
     if brain.vault and brain.vault.exists:
         config = brain.vault.load()
         console.print(f"[dim]Vault: {brain.vault.root}[/dim]")
-        console.print(f"[dim]Model: {config.model or 'default'}[/dim]")
+        parts = []
+        if config.mcp_servers:
+            parts.append(f"{len(config.mcp_servers)} MCP servers")
+        if config.agents:
+            parts.append(f"{len(config.agents)} agents")
+        if config.hooks:
+            parts.append(f"{len(config.hooks)} hooks")
+        if parts:
+            console.print(f"[dim]Loaded: {', '.join(parts)}[/dim]")
+    else:
+        console.print(
+            "[yellow]Warning: No vault configured. "
+            "Use --vault or set KOROMIND_VAULT for custom configuration.[/yellow]"
+        )
     console.print()
 
     while True:

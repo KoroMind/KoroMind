@@ -5,6 +5,10 @@ These tests verify the complete vault experience:
 - Paths resolve to absolute paths
 - All referenced files exist
 - Config is SDK-compatible
+
+Note: Core SDK options (model, cwd, max_turns) are provided via
+environment variables, not vault config. Vault config contains
+user-specific settings like hooks, mcp_servers, and agents.
 """
 
 import os
@@ -32,39 +36,6 @@ class TestVaultIntegration:
         assert config is not None
         assert isinstance(config, VaultConfig)
 
-    def test_model_configuration(self):
-        """Verify model is set to Opus 4.5."""
-        vault = Vault(TEST_VAULT)
-        config = vault.load()
-
-        assert config.model == "claude-opus-4-5-20250514"
-        assert config.max_turns == 100
-
-    def test_system_prompt_file_resolves(self):
-        """System prompt file path resolves to absolute path."""
-        vault = Vault(TEST_VAULT)
-        config = vault.load()
-
-        prompt_path = Path(config.system_prompt_file)
-
-        # Should be absolute
-        assert prompt_path.is_absolute()
-
-        # Should exist
-        assert prompt_path.exists(), f"System prompt not found: {prompt_path}"
-
-        # Should contain second brain content
-        content = prompt_path.read_text()
-        assert "KoroMind" in content
-        assert "Second Brain" in content
-
-    def test_cwd_resolves(self):
-        """CWD resolves to vault root."""
-        vault = Vault(TEST_VAULT)
-        config = vault.load()
-
-        assert config.cwd == str(TEST_VAULT)
-
     def test_hooks_command_resolves(self):
         """Hook command paths resolve to absolute paths."""
         vault = Vault(TEST_VAULT)
@@ -91,10 +62,6 @@ class TestVaultIntegration:
         vault = Vault(TEST_VAULT)
         config = vault.load()
 
-        # Check system prompt
-        if config.system_prompt_file:
-            assert Path(config.system_prompt_file).exists()
-
         # Check hooks
         if config.hooks:
             for event, matchers in config.hooks.items():
@@ -120,14 +87,11 @@ class TestVaultIntegration:
         vault = Vault(TEST_VAULT)
         config = vault.load()
 
-        # These fields should be present and valid for SDK
-        assert isinstance(config.model, str)
-        assert isinstance(config.max_turns, int)
-        assert isinstance(config.cwd, str)
+        # Vault config contains extensibility options
         assert isinstance(config.hooks, dict)
-
-        # Paths should be strings (SDK expects strings, not Path objects)
-        assert isinstance(config.system_prompt_file, str)
+        assert isinstance(config.mcp_servers, dict)
+        assert isinstance(config.agents, dict)
+        assert isinstance(config.plugins, list)
 
     def test_reload_works(self):
         """Reload clears cache and re-reads config."""
@@ -139,6 +103,16 @@ class TestVaultIntegration:
         # Should return fresh config
         assert config1 is not config2
         assert config1 == config2  # But same content
+
+    def test_sandbox_config(self):
+        """Sandbox config loads with correct values."""
+        vault = Vault(TEST_VAULT)
+        config = vault.load()
+
+        assert config.sandbox is not None
+        assert config.sandbox.enabled is False
+        assert config.sandbox.auto_allow_bash_if_sandboxed is True
+        assert config.sandbox.white_listed_commands == ["git", "docker"]
 
 
 class TestVaultSecondBrainExperience:
@@ -168,17 +142,3 @@ class TestVaultSecondBrainExperience:
 
         # Should block dangerous rm
         assert "rm" in content or "dangerous" in content.lower()
-
-    def test_uses_opus(self):
-        """Uses the best model for a second brain."""
-        vault = Vault(TEST_VAULT)
-        config = vault.load()
-
-        assert "opus" in config.model.lower()
-
-    def test_generous_turn_limit(self):
-        """Has enough turns for complex tasks."""
-        vault = Vault(TEST_VAULT)
-        config = vault.load()
-
-        assert config.max_turns >= 50

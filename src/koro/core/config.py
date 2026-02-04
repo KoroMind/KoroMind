@@ -78,7 +78,7 @@ VOICE_SETTINGS = {
 }
 
 # Rate limiting
-RATE_LIMIT_SECONDS = 2
+RATE_LIMIT_SECONDS = 0.00001
 RATE_LIMIT_PER_MINUTE = 10
 
 # API Server settings

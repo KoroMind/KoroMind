@@ -177,7 +177,9 @@ class Brain:
         # Explicit kwargs take precedence over vault config
         vault_config = self._vault.load() if self._vault else None
         if vault_config:
-            vault_dict = vault_config.model_dump(exclude_none=True, exclude_defaults=True)
+            vault_dict = vault_config.model_dump(
+                exclude_none=True, exclude_defaults=True
+            )
             kwargs = {**vault_dict, **kwargs}
             logger.debug(f"Merged vault config: {list(vault_dict.keys())}")
 
@@ -309,7 +311,9 @@ class Brain:
         # Load vault config if available, merge with explicit kwargs
         vault_config = self._vault.load() if self._vault else None
         if vault_config:
-            vault_dict = vault_config.model_dump(exclude_none=True, exclude_defaults=True)
+            vault_dict = vault_config.model_dump(
+                exclude_none=True, exclude_defaults=True
+            )
             kwargs = {**vault_dict, **kwargs}
 
         config = self._build_query_config(

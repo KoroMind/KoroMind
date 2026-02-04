@@ -73,12 +73,13 @@ class VaultConfig(BaseModel):
 
     All fields are optional to allow partial configs.
     Frozen to prevent accidental mutation.
+    Extra fields are forbidden to catch typos in config.
 
     Note: Core SDK options (model, cwd, max_turns, etc.) are provided
     via environment variables, not vault config.
     """
 
-    model_config = ConfigDict(frozen=True, extra="allow")
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     # Extensibility - user-specific configurations
     hooks: dict[str, list[HookMatcher]] = {}
@@ -196,11 +197,19 @@ class Vault:
         result = config.copy()
 
         # Resolve paths in MCP server args
-        if "mcp_servers" in result and isinstance(result["mcp_servers"], dict):
+        if "mcp_servers" in result:
+            if not isinstance(result["mcp_servers"], dict):
+                raise VaultError(
+                    f"mcp_servers must be a dict, got {type(result['mcp_servers']).__name__}"
+                )
             result["mcp_servers"] = self._resolve_mcp_paths(result["mcp_servers"])
 
         # Resolve paths in hooks
-        if "hooks" in result and isinstance(result["hooks"], dict):
+        if "hooks" in result:
+            if not isinstance(result["hooks"], dict):
+                raise VaultError(
+                    f"hooks must be a dict, got {type(result['hooks']).__name__}"
+                )
             result["hooks"] = self._resolve_hook_paths(result["hooks"])
 
         return result

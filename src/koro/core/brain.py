@@ -290,8 +290,12 @@ class Brain:
         """
         Process a message and yield streaming events.
 
+        Unlike process_message() which waits for completion and returns
+        a BrainResponse, this method yields events as they arrive from
+        the Claude SDK. Use this for real-time streaming UIs (CLI, web).
+
         Args:
-            Same as process_message, but returns an iterator.
+            Same as process_message, but returns an async iterator of events.
         """
         # Transcribe voice if needed (blocking step before stream starts)
         if content_type == MessageType.VOICE:

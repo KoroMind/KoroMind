@@ -149,15 +149,25 @@ koro-cli
 
 ```bash
 docker compose run --rm uv-lock
-docker-compose up --build -d
+
+# Telegram bot
+docker compose --profile telegram up --build -d
+
+# REST API
+docker compose --profile api up --build -d
 ```
 
-### Docker (dev hot reload for Telegram bot)
+### Docker (dev hot reload)
 
-This uses `watchfiles` to restart the Telegram bot on Python file changes in `src/`.
+Telegram uses `watchfiles` to restart on Python file changes in `src/`.
+API uses `uvicorn --reload`.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Telegram bot
+docker compose -f docker-compose.dev.yml --profile telegram up --build
+
+# REST API
+docker compose -f docker-compose.dev.yml --profile api up --build
 ```
 
 ---

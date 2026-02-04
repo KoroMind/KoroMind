@@ -16,6 +16,7 @@ services:
   koro:
     build: .
     container_name: claude-voice-koro
+    profiles: ["telegram"]
     env_file:
       - .env
     volumes:
@@ -44,6 +45,23 @@ services:
       start_period: 40s
 
   # Helper to generate uv.lock without local Python
+
+  koro-api:
+    build: .
+    container_name: claude-voice-koro-api
+    profiles: ["api"]
+    env_file:
+      - .env
+    command: ["uvicorn", "koro.api.app:app", "--host", "0.0.0.0", "--port", "8420"]
+    ports:
+      - "8420:8420"
+    volumes:
+      - koro-state:/home/claude/state
+      - koro-sandbox:/home/claude/sandbox
+      - ./src/prompts:/home/claude/app/src/prompts:ro
+      - koro-claude-config:/home/claude/.claude
+    restart: unless-stopped
+
   uv-lock:
     image: python:3.12-slim-bookworm
     working_dir: /repo

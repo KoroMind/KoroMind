@@ -3,6 +3,7 @@
 import os
 
 import pytest
+from claude_agent_sdk.types import ResultMessage
 from dotenv import load_dotenv
 
 from koro.claude import ClaudeClient
@@ -148,7 +149,7 @@ class TestClaudeStreaming:
         async for event in claude_client.query_stream(
             "Say exactly: 'streaming works'", include_megg=False
         ):
-            if hasattr(event, "result"):
+            if isinstance(event, ResultMessage):
                 result_text = event.result
 
         assert result_text is not None

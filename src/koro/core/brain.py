@@ -22,7 +22,7 @@ from koro.core.types import (
     ToolCall,
     UserSettings,
 )
-from koro.core.vault import Vault
+from koro.core.vault import Vault, VaultConfig
 from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
 logger = logging.getLogger(__name__)
@@ -176,15 +176,8 @@ class Brain:
             if on_tool_call and watch_enabled:
                 await on_tool_call(tool_name, detail)
 
-        # Load vault config if available, merge with explicit kwargs
-        # Explicit kwargs take precedence over vault config
+        # Load vault config if available
         vault_config = self._vault.load() if self._vault else None
-        if vault_config:
-            vault_dict = vault_config.model_dump(
-                exclude_none=True, exclude_defaults=True
-            )
-            kwargs = {**vault_dict, **kwargs}
-            logger.debug(f"Merged vault config: {list(vault_dict.keys())}")
 
         config = self._build_query_config(
             prompt=text,
@@ -194,6 +187,7 @@ class Brain:
             mode=mode,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            vault_config=vault_config,
             **kwargs,
         )
 
@@ -232,6 +226,7 @@ class Brain:
         mode: Mode,
         on_tool_call: OnToolCall | None,
         can_use_tool: CanUseTool | None,
+        vault_config: VaultConfig | None = None,
         **kwargs,
     ) -> QueryConfig:
         config_kwargs: dict[str, Any] = {
@@ -244,6 +239,25 @@ class Brain:
             "can_use_tool": can_use_tool,
         }
 
+        # Apply vault config (if provided) - typed access, no dict conversion
+        if vault_config:
+            if vault_config.hooks:
+                config_kwargs["hooks"] = vault_config.hooks
+            if vault_config.mcp_servers:
+                config_kwargs["mcp_servers"] = vault_config.mcp_servers
+            if vault_config.agents:
+                config_kwargs["agents"] = vault_config.agents
+            if vault_config.sandbox:
+                config_kwargs["sandbox"] = vault_config.sandbox
+            if vault_config.plugins:
+                config_kwargs["plugins"] = vault_config.plugins
+            logger.debug(
+                f"Applied vault config: hooks={len(vault_config.hooks)}, "
+                f"mcp_servers={len(vault_config.mcp_servers)}, "
+                f"agents={len(vault_config.agents)}"
+            )
+
+        # Allowed kwargs (can override vault config)
         allowed_keys = {
             # Core SDK options (from env vars or explicit kwargs)
             "model",
@@ -257,7 +271,7 @@ class Brain:
             "enable_file_checkpointing",
             "output_format",
             "include_megg",
-            # Vault config options
+            # Vault config options (explicit kwargs override vault)
             "hooks",
             "mcp_servers",
             "agents",
@@ -265,6 +279,7 @@ class Brain:
             "sandbox",
         }
 
+        # Explicit kwargs override vault config
         for key in list(kwargs.keys()):
             if key in allowed_keys:
                 config_kwargs[key] = kwargs.pop(key)
@@ -316,13 +331,8 @@ class Brain:
 
         user_settings = UserSettings(mode=mode, watch_enabled=watch_enabled)
 
-        # Load vault config if available, merge with explicit kwargs
+        # Load vault config if available
         vault_config = self._vault.load() if self._vault else None
-        if vault_config:
-            vault_dict = vault_config.model_dump(
-                exclude_none=True, exclude_defaults=True
-            )
-            kwargs = {**vault_dict, **kwargs}
 
         config = self._build_query_config(
             prompt=text,
@@ -332,6 +342,7 @@ class Brain:
             mode=mode,
             on_tool_call=on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            vault_config=vault_config,
             **kwargs,
         )
 

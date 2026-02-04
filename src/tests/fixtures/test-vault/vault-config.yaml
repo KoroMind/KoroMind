@@ -1,6 +1,18 @@
 # KoroMind Vault Configuration
 # Your second brain, configured.
 
+# Subagents with tools
+agents:
+  researcher:
+    model: "claude-sonnet-4-20250514"
+    system_prompt_file: "./agents/researcher.md"
+    allowed_tools:
+      - WebSearch
+      - WebFetch
+      - Read
+      - Grep
+      - Glob
+
 # Safety rails
 hooks:
   PreToolUse:

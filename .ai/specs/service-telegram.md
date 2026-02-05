@@ -26,7 +26,6 @@ validated: 2026-01-29
 ### Commands
 | Command | Purpose |
 |---------|---------|
-| `/start` | Welcome message |
 | `/new` | Create new session |
 | `/sessions` | List sessions |
 | `/switch <id>` | Switch session |

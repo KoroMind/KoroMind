@@ -18,7 +18,6 @@ def _format_command_help() -> str:
         (
             "General",
             [
-                ("/start", "Welcome message and command list"),
                 ("/help", "Show command list"),
             ],
         ),
@@ -80,22 +79,6 @@ def _format_sessions(state: dict, limit: int = 10) -> str:
 
 def _switch_usage() -> str:
     return "Usage: /switch <session_id>"
-
-
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
-    message = (
-        "KoroMind\n\n"
-        "Send me a voice message and I'll think with you.\n\n"
-        f"{_format_command_help()}"
-    )
-    await update.message.reply_text(message)
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):

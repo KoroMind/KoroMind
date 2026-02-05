@@ -53,7 +53,7 @@ def validate_environment() -> tuple[bool, str]:
     if not chat_id:
         return (
             False,
-            "Missing required environment variable:\n  - TELEGRAM_DEFAULT_CHAT_ID: Your Telegram chat ID (run /start to get it)",
+            "Missing required environment variable:\n  - TELEGRAM_DEFAULT_CHAT_ID: Your Telegram chat ID",
         )
 
     try:

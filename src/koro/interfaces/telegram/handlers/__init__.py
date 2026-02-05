@@ -16,14 +16,12 @@ from koro.interfaces.telegram.handlers.commands import (
     cmd_sessions,
     cmd_settings,
     cmd_setup,
-    cmd_start,
     cmd_status,
     cmd_switch,
 )
 from koro.interfaces.telegram.handlers.messages import handle_text, handle_voice
 
 __all__ = [
-    "cmd_start",
     "cmd_help",
     "cmd_new",
     "cmd_model",

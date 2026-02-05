@@ -36,7 +36,6 @@ from koro.interfaces.telegram.handlers import (
     cmd_sessions,
     cmd_settings,
     cmd_setup,
-    cmd_start,
     cmd_status,
     cmd_switch,
     handle_approval_callback,
@@ -115,7 +114,6 @@ def run_telegram_bot():
 
     async def _post_init(application):
         commands = [
-            BotCommand("start", "Welcome message and command list"),
             BotCommand("help", "Show help and available commands"),
             BotCommand("new", "Start a new session"),
             BotCommand("continue", "Resume last session"),
@@ -149,7 +147,6 @@ def run_telegram_bot():
     )
 
     # Register command handlers
-    app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("new", cmd_new))
     app.add_handler(CommandHandler("continue", cmd_continue))

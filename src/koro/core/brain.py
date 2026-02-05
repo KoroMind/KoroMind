@@ -149,6 +149,8 @@ class Brain:
         continue_last = session_id is not None
 
         stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
         user_settings = UserSettings(
             mode=mode,
             audio_enabled=include_audio,
@@ -288,7 +290,9 @@ class Brain:
 
         continue_last = session_id is not None
 
-        stored_settings = await self.state_manager.get_settings(user_id)
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
         user_settings = UserSettings(
             mode=mode,
             watch_enabled=watch_enabled,

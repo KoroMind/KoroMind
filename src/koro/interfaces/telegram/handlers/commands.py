@@ -168,13 +168,15 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    if not context.args:
-        await update.message.reply_text("Usage: /switch <session_id>")
-        return
-
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = state_manager.get_user_state(user_id)
+    if not context.args:
+        if not state["sessions"]:
+            await update.message.reply_text("No sessions yet.")
+        else:
+            await update.message.reply_text("Usage: /switch <session_id>")
+        return
     session_id = context.args[0]
 
     matches = [s for s in state["sessions"] if s.startswith(session_id)]

@@ -3,8 +3,10 @@
 import asyncio
 import time
 import uuid
+from contextlib import suppress
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from koro.claude import format_tool_call, get_claude_client
@@ -69,6 +71,16 @@ def cleanup_stale_approvals(max_age_seconds: int = 300) -> None:
         del pending_approvals[approval_id]
 
 
+async def _chat_action_loop(update: Update, action: str) -> None:
+    """Send a chat action periodically until cancelled."""
+    while True:
+        try:
+            await update.effective_chat.send_chat_action(action=action)
+        except Exception as exc:
+            debug(f"Failed to send chat action: {exc}")
+        await asyncio.sleep(4)
+
+
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming voice messages."""
     if update.effective_user.is_bot is True:
@@ -96,6 +108,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     settings = state_manager.get_user_settings(user_id)
 
     processing_msg = await update.message.reply_text("Processing voice message...")
+    action_task = asyncio.create_task(_chat_action_loop(update, ChatAction.TYPING))
 
     try:
         # Download voice
@@ -137,6 +150,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         debug(f"Error in handle_voice: {e}")
         await processing_msg.edit_text(f"Error: {e}")
+    finally:
+        action_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await action_task
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -167,6 +184,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     processing_msg = await update.message.reply_text("Asking Koro...")
+    action_task = asyncio.create_task(_chat_action_loop(update, ChatAction.TYPING))
 
     try:
         response, new_session_id, metadata = await _call_claude_with_settings(
@@ -191,6 +209,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         debug(f"Error in handle_text: {e}")
         await processing_msg.edit_text(f"Error: {e}")
+    finally:
+        action_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await action_task
 
 
 async def _call_claude_with_settings(

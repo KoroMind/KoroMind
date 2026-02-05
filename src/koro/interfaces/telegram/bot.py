@@ -115,6 +115,7 @@ def run_telegram_bot():
 
     async def _post_init(application):
         commands = [
+            BotCommand("start", "Welcome message and command list"),
             BotCommand("help", "Show help and available commands"),
             BotCommand("new", "Start a new session"),
             BotCommand("continue", "Resume last session"),

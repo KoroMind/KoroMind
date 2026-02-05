@@ -3,8 +3,9 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from koro.config import ALLOWED_CHAT_ID
 from koro.interfaces.telegram.handlers.messages import pending_approvals
-from koro.interfaces.telegram.handlers.utils import debug
+from koro.interfaces.telegram.handlers.utils import debug, should_handle_message
 from koro.state import get_state_manager
 
 
@@ -130,3 +131,35 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
             await query.edit_message_text(f"Rejected: {tool_name}")
         else:
             await query.edit_message_text("Approval expired")
+
+
+async def handle_switch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle session switch button callbacks."""
+    query = update.callback_query
+    callback_data = query.data
+
+    if not should_handle_message(getattr(query.message, "message_thread_id", None)):
+        await query.answer()
+        return
+
+    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+        await query.answer()
+        return
+
+    if not callback_data.startswith("switch_"):
+        await query.answer()
+        return
+
+    session_id = callback_data.replace("switch_", "", 1)
+    user_id = str(update.effective_user.id)
+    state_manager = get_state_manager()
+    state = state_manager.get_user_state(user_id)
+
+    if session_id not in state.get("sessions", []):
+        await query.edit_message_text("Session not found. Use /sessions to list.")
+        await query.answer()
+        return
+
+    await state_manager.update_session(user_id, session_id)
+    await query.edit_message_text(f"Switched to session: {session_id[:8]}...")
+    await query.answer()

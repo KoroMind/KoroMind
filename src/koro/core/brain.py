@@ -141,11 +141,13 @@ class Brain:
         # Determine if we're continuing a session
         continue_last = session_id is not None
 
+        stored_settings = await self.state_manager.get_settings(user_id)
         user_settings = UserSettings(
             mode=mode,
             audio_enabled=include_audio,
             voice_speed=voice_speed,
             watch_enabled=watch_enabled,
+            model=stored_settings.model,
         )
 
         # Tool call tracking wrapper
@@ -162,6 +164,7 @@ class Brain:
             mode=mode,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            model=stored_settings.model or None,
             **kwargs,
         )
 
@@ -273,7 +276,12 @@ class Brain:
 
         continue_last = session_id is not None
 
-        user_settings = UserSettings(mode=mode, watch_enabled=watch_enabled)
+        stored_settings = await self.state_manager.get_settings(user_id)
+        user_settings = UserSettings(
+            mode=mode,
+            watch_enabled=watch_enabled,
+            model=stored_settings.model,
+        )
 
         config = self._build_query_config(
             prompt=text,
@@ -283,6 +291,7 @@ class Brain:
             mode=mode,
             on_tool_call=on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            model=stored_settings.model or None,
             **kwargs,
         )
 

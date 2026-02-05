@@ -50,6 +50,7 @@ def print_help():
         ("/settings", "View/modify settings"),
         ("/audio on|off", "Toggle audio responses"),
         ("/mode go_all|approve", "Set execution mode"),
+        ("/model [name]", "Show or set Claude model"),
         ("/health", "Check system health"),
         ("/help", "Show this help message"),
         ("/quit", "Exit the CLI"),
@@ -134,6 +135,7 @@ async def handle_command(brain: Brain, user_id: str, command: str) -> bool:
         table.add_row("Audio", "enabled" if settings.audio_enabled else "disabled")
         table.add_row("Voice Speed", f"{settings.voice_speed}x")
         table.add_row("Watch Mode", "enabled" if settings.watch_enabled else "disabled")
+        table.add_row("Model", settings.model or "default")
 
         console.print(table)
 
@@ -158,6 +160,19 @@ async def handle_command(brain: Brain, user_id: str, command: str) -> bool:
             )
         else:
             console.print("[red]Usage: /mode go_all|approve[/red]")
+
+    elif cmd == "/model":
+        if not args:
+            settings = await brain.get_settings(user_id)
+            current = settings.model or "default"
+            console.print(f"[cyan]Current model:[/cyan] {current}")
+            console.print("[dim]Usage: /model <name> | /model default[/dim]")
+        elif args.lower() == "default":
+            await brain.update_settings(user_id, model="")
+            console.print("[green]Model set to default[/green]")
+        else:
+            await brain.update_settings(user_id, model=args)
+            console.print(f"[green]Model set to: {args}[/green]")
 
     elif cmd == "/health":
         health = brain.health_check()
@@ -189,6 +204,7 @@ async def process_message(brain: Brain, user_id: str, text: str):
             text=text,
             mode=settings.mode,
             include_audio=False,  # No audio in CLI for now
+            model=settings.model or None,
         )
 
     # Display response

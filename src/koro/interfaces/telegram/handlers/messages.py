@@ -221,6 +221,7 @@ async def _call_claude_with_settings(
         settings_model = settings
     mode = settings_model.mode
     watch_enabled = settings_model.watch_enabled
+    model = settings_model.model or None
     continue_last = state["current_session"] is not None
 
     # Watch mode callback
@@ -288,6 +289,7 @@ async def _call_claude_with_settings(
         continue_last=continue_last,
         user_settings=settings_model,
         mode=mode,
+        model=model,
         on_tool_call=on_tool_call if watch_enabled else None,
         can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
     )

@@ -63,7 +63,8 @@ class StateManager:
                     mode TEXT DEFAULT 'go_all',
                     audio_enabled INTEGER DEFAULT 1,
                     voice_speed REAL DEFAULT 1.1,
-                    watch_enabled INTEGER DEFAULT 0
+                    watch_enabled INTEGER DEFAULT 0,
+                    model TEXT DEFAULT ''
                 );
 
                 CREATE TABLE IF NOT EXISTS memory (
@@ -80,6 +81,13 @@ class StateManager:
                     completed_at TEXT NOT NULL
                 );
             """)
+
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(settings)").fetchall()
+            }
+            if "model" not in columns:
+                conn.execute("ALTER TABLE settings ADD COLUMN model TEXT DEFAULT ''")
 
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -154,8 +162,8 @@ class StateManager:
                         conn.execute(
                             """
                             INSERT OR IGNORE INTO settings
-                            (user_id, mode, audio_enabled, voice_speed, watch_enabled)
-                            VALUES (?, ?, ?, ?, ?)
+                            (user_id, mode, audio_enabled, voice_speed, watch_enabled, model)
+                            VALUES (?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 user_id,
@@ -165,6 +173,7 @@ class StateManager:
                                     "voice_speed", VOICE_SETTINGS["speed"]
                                 ),
                                 1 if user_settings.get("watch_enabled", False) else 0,
+                                user_settings.get("model", ""),
                             ),
                         )
                 except (json.JSONDecodeError, OSError) as exc:
@@ -369,7 +378,7 @@ class StateManager:
         """Get settings for a user, creating defaults if not exists."""
         with self._get_connection() as conn:
             row = conn.execute(
-                "SELECT mode, audio_enabled, voice_speed, watch_enabled FROM settings WHERE user_id = ?",
+                "SELECT mode, audio_enabled, voice_speed, watch_enabled, model FROM settings WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
 
@@ -379,14 +388,15 @@ class StateManager:
                     audio_enabled=bool(row["audio_enabled"]),
                     voice_speed=row["voice_speed"],
                     watch_enabled=bool(row["watch_enabled"]),
+                    model=row["model"] or "",
                 )
 
             # Create default settings
             default_settings = UserSettings()
             conn.execute(
                 """
-                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -394,6 +404,7 @@ class StateManager:
                     1 if default_settings.audio_enabled else 0,
                     default_settings.voice_speed,
                     1 if default_settings.watch_enabled else 0,
+                    default_settings.model,
                 ),
             )
             return default_settings
@@ -413,6 +424,8 @@ class StateManager:
             updates["voice_speed"] = kwargs["voice_speed"]
         if "watch_enabled" in kwargs:
             updates["watch_enabled"] = kwargs["watch_enabled"]
+        if "model" in kwargs:
+            updates["model"] = kwargs["model"]
 
         if updates:
             current = current.model_copy(update=updates)
@@ -422,7 +435,7 @@ class StateManager:
             conn.execute(
                 """
                 UPDATE settings
-                SET mode = ?, audio_enabled = ?, voice_speed = ?, watch_enabled = ?
+                SET mode = ?, audio_enabled = ?, voice_speed = ?, watch_enabled = ?, model = ?
                 WHERE user_id = ?
                 """,
                 (
@@ -430,6 +443,7 @@ class StateManager:
                     1 if current.audio_enabled else 0,
                     current.voice_speed,
                     1 if current.watch_enabled else 0,
+                    current.model,
                     user_id,
                 ),
             )
@@ -507,7 +521,7 @@ class StateManager:
         user_id_str = str(user_id)
         with self._get_connection() as conn:
             row = conn.execute(
-                "SELECT mode, audio_enabled, voice_speed, watch_enabled FROM settings WHERE user_id = ?",
+                "SELECT mode, audio_enabled, voice_speed, watch_enabled, model FROM settings WHERE user_id = ?",
                 (user_id_str,),
             ).fetchone()
 
@@ -517,14 +531,15 @@ class StateManager:
                     audio_enabled=bool(row["audio_enabled"]),
                     voice_speed=row["voice_speed"],
                     watch_enabled=bool(row["watch_enabled"]),
+                    model=row["model"] or "",
                 )
 
             # Create default settings
             default_settings = UserSettings()
             conn.execute(
                 """
-                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id_str,
@@ -532,6 +547,7 @@ class StateManager:
                     1 if default_settings.audio_enabled else 0,
                     default_settings.voice_speed,
                     1 if default_settings.watch_enabled else 0,
+                    default_settings.model,
                 ),
             )
             return default_settings
@@ -546,7 +562,13 @@ class StateManager:
         # Ensure user has settings
         self.get_user_settings(user_id)
 
-        if key not in {"mode", "audio_enabled", "voice_speed", "watch_enabled"}:
+        if key not in {
+            "mode",
+            "audio_enabled",
+            "voice_speed",
+            "watch_enabled",
+            "model",
+        }:
             return
 
         with self._get_connection() as conn:
@@ -570,6 +592,11 @@ class StateManager:
             elif key == "watch_enabled":
                 conn.execute(
                     "UPDATE settings SET watch_enabled = ? WHERE user_id = ?",
+                    (value, user_id_str),
+                )
+            elif key == "model":
+                conn.execute(
+                    "UPDATE settings SET model = ? WHERE user_id = ?",
                     (value, user_id_str),
                 )
 

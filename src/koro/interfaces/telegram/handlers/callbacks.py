@@ -53,8 +53,12 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     mode = settings.mode.value
     mode_display = "Go All" if mode == "go_all" else "Approve"
     watch_status = "ON" if settings.watch_enabled else "OFF"
+    model_display = settings.model or "default"
 
-    message = f"Settings:\n\nMode: {mode_display}\nWatch: {watch_status}\nAudio: {audio_status}\nVoice Speed: {speed}x"
+    message = (
+        f"Settings:\n\nMode: {mode_display}\nWatch: {watch_status}\n"
+        f"Audio: {audio_status}\nVoice Speed: {speed}x\nModel: {model_display}"
+    )
 
     keyboard = [
         [

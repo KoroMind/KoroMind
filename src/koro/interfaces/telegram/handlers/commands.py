@@ -13,6 +13,75 @@ from koro.state import get_state_manager
 from koro.voice import get_voice_engine
 
 
+def _format_command_help() -> str:
+    sections = [
+        (
+            "General",
+            [
+                ("/start", "Welcome message and command list"),
+                ("/help", "Show command list"),
+            ],
+        ),
+        (
+            "Sessions",
+            [
+                ("/new [name]", "Start new session"),
+                ("/continue", "Resume last session"),
+                ("/sessions", "List recent sessions"),
+                ("/switch <id>", "Switch to session"),
+                ("/status", "Current session info"),
+            ],
+        ),
+        (
+            "Settings",
+            [
+                ("/settings", "Configure mode, audio, and voice speed"),
+                ("/model [name]", "Show or set Claude model"),
+            ],
+        ),
+        (
+            "Credentials",
+            [
+                ("/setup", "Show credential status"),
+                ("/claude_token <token>", "Set Claude token"),
+                ("/elevenlabs_key <key>", "Set ElevenLabs key"),
+            ],
+        ),
+        (
+            "Diagnostics",
+            [
+                ("/health", "Run health checks"),
+            ],
+        ),
+    ]
+
+    lines = ["Commands:"]
+    for section, items in sections:
+        lines.append("")
+        lines.append(f"{section}:")
+        for command, desc in items:
+            lines.append(f"{command} - {desc}")
+    return "\n".join(lines)
+
+
+def _format_sessions(state: dict, limit: int = 10) -> str:
+    sessions = state.get("sessions") or []
+    if not sessions:
+        return "No sessions yet."
+
+    current = state.get("current_session")
+    recent = list(reversed(sessions[-limit:]))
+    lines = ["Sessions (recent):"]
+    for idx, sess in enumerate(recent, 1):
+        marker = " (current)" if sess == current else ""
+        lines.append(f"{idx}. {sess[:8]}...{marker}")
+    return "\n".join(lines)
+
+
+def _switch_usage() -> str:
+    return "Usage: /switch <session_id>"
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
     if not should_handle_message(update.message.message_thread_id):
@@ -21,18 +90,23 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
         return
 
-    await update.message.reply_text(
+    message = (
         "KoroMind\n\n"
         "Send me a voice message and I'll think with you.\n\n"
-        "Commands:\n"
-        "/setup - Configure API credentials\n"
-        "/new [name] - Start new session\n"
-        "/continue - Resume last session\n"
-        "/sessions - List all sessions\n"
-        "/switch <name> - Switch to session\n"
-        "/status - Current session info\n"
-        "/settings - Configure audio and voice speed"
+        f"{_format_command_help()}"
     )
+    await update.message.reply_text(message)
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /help command - show command list."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
+
+    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+        return
+
+    await update.message.reply_text(_format_command_help())
 
 
 async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -215,13 +289,15 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = settings.mode.value
     mode_display = "Go All" if mode == "go_all" else "Approve"
     watch_status = "ON" if settings.watch_enabled else "OFF"
+    model_display = settings.model or "default"
 
     message = (
         f"Settings:\n\n"
         f"Mode: {mode_display}\n"
         f"Watch: {watch_status}\n"
         f"Audio: {audio_status}\n"
-        f"Voice Speed: {speed}x"
+        f"Voice Speed: {speed}x\n"
+        f"Model: {model_display}"
     )
 
     keyboard = [
@@ -249,6 +325,39 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(message, reply_markup=reply_markup)
+
+
+async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /model command - show or set model."""
+    if not should_handle_message(update.message.message_thread_id):
+        return
+
+    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+        return
+
+    user_id = str(update.effective_user.id)
+    state_manager = get_state_manager()
+
+    if not context.args:
+        settings = state_manager.get_user_settings(user_id)
+        current = settings.model or "default"
+        message = (
+            f"Current model: {current}\n\n"
+            "Usage:\n"
+            "/model <name>\n"
+            "/model default"
+        )
+        await update.message.reply_text(message)
+        return
+
+    model = " ".join(context.args).strip()
+    if model.lower() == "default":
+        state_manager.update_setting(user_id, "model", "")
+        await update.message.reply_text("Model set to default.")
+        return
+
+    state_manager.update_setting(user_id, "model", model)
+    await update.message.reply_text(f"Model set to: {model}")
 
 
 async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -30,6 +30,7 @@ validated: 2026-01-29
 | `/new` | Create new session |
 | `/sessions` | List sessions |
 | `/switch <id>` | Switch session |
+| `/model [name]` | Show or set model |
 | `/settings` | Settings menu (inline keyboard) |
 | `/status` | Current session info |
 | `/health` | System health check |
@@ -63,3 +64,5 @@ validated: 2026-01-29
 
 ### 2026-01-29
 - Initial spec from codebase exploration
+### 2026-02-05
+- Expand command list, add /help and /model, improve session switching UX

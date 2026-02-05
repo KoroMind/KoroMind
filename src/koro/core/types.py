@@ -137,6 +137,7 @@ class UserSettings(BaseModel, frozen=True):
     audio_enabled: bool = True
     voice_speed: float = 1.1
     watch_enabled: bool = False
+    model: str = ""
 
 
 @dataclass(frozen=True)

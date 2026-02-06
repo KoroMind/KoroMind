@@ -64,4 +64,4 @@ validated: 2026-01-29
 ### 2026-01-29
 - Initial spec from codebase exploration
 ### 2026-02-05
-- Expand command list, add /help and /model, improve session switching UX
+- Expand command list, add /model, delete /start, improve UX

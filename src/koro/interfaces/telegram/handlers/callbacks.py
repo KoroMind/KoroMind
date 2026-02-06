@@ -153,13 +153,15 @@ async def handle_switch_callback(update: Update, context: ContextTypes.DEFAULT_T
     session_id = callback_data.replace("switch_", "", 1)
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
+    state = await state_manager.get_session_state(user_id)
 
-    if session_id not in state.get("sessions", []):
+    known_session_ids = {session.id for session in state.sessions}
+    if session_id not in known_session_ids:
         await query.edit_message_text("Session not found. Use /sessions to list.")
         await query.answer()
         return
 
-    await state_manager.update_session(user_id, session_id)
-    await query.edit_message_text(f"Switched to session: {session_id[:8]}...")
+    await state_manager.set_current_session(user_id, session_id)
+    await state_manager.set_pending_session_name(user_id, None)
+    await query.edit_message_text(f"Switched to session: {session_id[:8]}")
     await query.answer()

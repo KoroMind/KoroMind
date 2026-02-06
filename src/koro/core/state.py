@@ -11,7 +11,13 @@ from typing import Generator
 from uuid import uuid4
 
 from koro.core.config import DATABASE_PATH, SETTINGS_FILE, STATE_FILE, VOICE_SETTINGS
-from koro.core.types import Mode, Session, UserSettings
+from koro.core.types import (
+    Mode,
+    Session,
+    SessionStateItem,
+    UserSessionState,
+    UserSettings,
+)
 
 # Maximum number of sessions to keep per user (FIFO eviction)
 MAX_SESSIONS = 100
@@ -64,7 +70,8 @@ class StateManager:
                     audio_enabled INTEGER DEFAULT 1,
                     voice_speed REAL DEFAULT 1.1,
                     watch_enabled INTEGER DEFAULT 0,
-                    model TEXT DEFAULT ''
+                    model TEXT DEFAULT '',
+                    pending_session_name TEXT DEFAULT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS memory (
@@ -88,6 +95,17 @@ class StateManager:
             }
             if "model" not in columns:
                 conn.execute("ALTER TABLE settings ADD COLUMN model TEXT DEFAULT ''")
+            if "pending_session_name" not in columns:
+                conn.execute(
+                    "ALTER TABLE settings ADD COLUMN pending_session_name TEXT DEFAULT NULL"
+                )
+
+            session_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+            }
+            if "name" not in session_columns:
+                conn.execute("ALTER TABLE sessions ADD COLUMN name TEXT DEFAULT NULL")
 
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -221,12 +239,65 @@ class StateManager:
                 for row in rows
             ]
 
+    async def get_session_state(
+        self, user_id: str, limit: int | None = None
+    ) -> UserSessionState:
+        """Get typed session state for a user."""
+        with self._get_connection() as conn:
+            pending_row = conn.execute(
+                "SELECT pending_session_name FROM settings WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            pending_session_name = (
+                pending_row["pending_session_name"]
+                if pending_row and pending_row["pending_session_name"]
+                else None
+            )
+
+            query = """
+                SELECT id, name, is_current
+                FROM sessions
+                WHERE user_id = ?
+                ORDER BY last_active DESC
+            """
+            params: tuple[str, int] | tuple[str]
+            params = (user_id,)
+            if limit is not None:
+                query += " LIMIT ?"
+                params = (user_id, limit)
+
+            rows = conn.execute(query, params).fetchall()
+            sessions = [
+                SessionStateItem(
+                    id=row["id"],
+                    name=row["name"],
+                    is_current=bool(row["is_current"]),
+                )
+                for row in rows
+            ]
+            current = next((s.id for s in sessions if s.is_current), None)
+            return UserSessionState(
+                current_session_id=current,
+                sessions=sessions,
+                pending_session_name=pending_session_name,
+            )
+
     async def create_session(self, user_id: str) -> Session:
         """Create a new session for a user."""
         now = datetime.now()
         session_id = str(uuid4())
 
         with self._get_connection() as conn:
+            pending_name_row = conn.execute(
+                "SELECT pending_session_name FROM settings WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            pending_name = (
+                pending_name_row["pending_session_name"]
+                if pending_name_row and pending_name_row["pending_session_name"]
+                else None
+            )
+
             # Clear current flag from all user sessions
             conn.execute(
                 "UPDATE sessions SET is_current = 0 WHERE user_id = ?",
@@ -236,10 +307,15 @@ class StateManager:
             # Insert new session as current
             conn.execute(
                 """
-                INSERT INTO sessions (id, user_id, created_at, last_active, is_current)
-                VALUES (?, ?, ?, ?, 1)
+                INSERT INTO sessions (id, user_id, created_at, last_active, is_current, name)
+                VALUES (?, ?, ?, ?, 1, ?)
                 """,
-                (session_id, user_id, now.isoformat(), now.isoformat()),
+                (session_id, user_id, now.isoformat(), now.isoformat(), pending_name),
+            )
+
+            conn.execute(
+                "UPDATE settings SET pending_session_name = NULL WHERE user_id = ?",
+                (user_id,),
             )
 
             # FIFO eviction: remove oldest sessions if exceeding limit
@@ -312,7 +388,24 @@ class StateManager:
                 (user_id,),
             )
 
-    async def update_session(self, user_id: str, session_id: str) -> None:
+    async def set_pending_session_name(self, user_id: str, name: str | None) -> None:
+        """Store an optional name for the next newly created session."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO settings (
+                    user_id, mode, audio_enabled, voice_speed, watch_enabled, model,
+                    pending_session_name
+                )
+                VALUES (?, 'go_all', 1, 1.1, 0, '', ?)
+                ON CONFLICT(user_id) DO UPDATE SET pending_session_name = excluded.pending_session_name
+                """,
+                (user_id, name),
+            )
+
+    async def update_session(
+        self, user_id: str, session_id: str, session_name: str | None = None
+    ) -> None:
         """
         Update or create a session as current.
 
@@ -323,10 +416,20 @@ class StateManager:
 
         with self._get_connection() as conn:
             now = datetime.now().isoformat()
+            requested_name = session_name.strip() if session_name else None
+
+            pending_name = None
+            if not requested_name:
+                pending_row = conn.execute(
+                    "SELECT pending_session_name FROM settings WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+                if pending_row and pending_row["pending_session_name"]:
+                    pending_name = pending_row["pending_session_name"].strip() or None
 
             # Check if session exists
             existing = conn.execute(
-                "SELECT 1 FROM sessions WHERE id = ? AND user_id = ?",
+                "SELECT name FROM sessions WHERE id = ? AND user_id = ?",
                 (session_id, user_id),
             ).fetchone()
 
@@ -339,10 +442,10 @@ class StateManager:
                 conn.execute(
                     """
                     UPDATE sessions
-                    SET is_current = 1, last_active = ?
+                    SET is_current = 1, last_active = ?, name = COALESCE(?, name)
                     WHERE id = ? AND user_id = ?
                     """,
-                    (now, session_id, user_id),
+                    (now, requested_name, session_id, user_id),
                 )
             else:
                 # Create new session
@@ -352,10 +455,10 @@ class StateManager:
                 )
                 conn.execute(
                     """
-                    INSERT INTO sessions (id, user_id, created_at, last_active, is_current)
-                    VALUES (?, ?, ?, ?, 1)
+                    INSERT INTO sessions (id, user_id, created_at, last_active, is_current, name)
+                    VALUES (?, ?, ?, ?, 1, ?)
                     """,
-                    (session_id, user_id, now, now),
+                    (session_id, user_id, now, now, requested_name or pending_name),
                 )
 
                 # FIFO eviction
@@ -370,6 +473,12 @@ class StateManager:
                     )
                     """,
                     (user_id, user_id, MAX_SESSIONS),
+                )
+
+            if requested_name or pending_name:
+                conn.execute(
+                    "UPDATE settings SET pending_session_name = NULL WHERE user_id = ?",
+                    (user_id,),
                 )
 
     # Settings Management

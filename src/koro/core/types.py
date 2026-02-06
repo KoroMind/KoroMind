@@ -107,11 +107,13 @@ __all__ = [
     "SdkMcpTool",
     "SdkPluginConfig",
     "Session",
+    "SessionStateItem",
     "StreamEvent",
     "ThinkingBlock",
     "ToolCall",
     "ToolPermissionContext",
     "QueryConfig",
+    "UserSessionState",
     "UserSettings",
 ]
 
@@ -186,6 +188,22 @@ class Session:
             created_at=datetime.fromisoformat(data["created_at"]),
             last_active=datetime.fromisoformat(data["last_active"]),
         )
+
+
+class SessionStateItem(BaseModel, frozen=True):
+    """Typed session summary for interface state views."""
+
+    id: str
+    name: str | None = None
+    is_current: bool = False
+
+
+class UserSessionState(BaseModel, frozen=True):
+    """Typed session state for a user."""
+
+    current_session_id: str | None = None
+    sessions: list[SessionStateItem] = Field(default_factory=list)
+    pending_session_name: str | None = None
 
 
 class ProjectConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):

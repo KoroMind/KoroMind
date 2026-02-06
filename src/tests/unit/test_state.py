@@ -84,6 +84,15 @@ class TestStateManagerAsync:
     """Tests for async StateManager methods."""
 
     @pytest.mark.asyncio
+    async def test_get_session_state_typed_for_new_user(self, state_manager):
+        """get_session_state returns typed empty state for new users."""
+        state = await state_manager.get_session_state("99999")
+
+        assert state.current_session_id is None
+        assert state.sessions == []
+        assert state.pending_session_name is None
+
+    @pytest.mark.asyncio
     async def test_update_session_sets_current(self, state_manager):
         """update_session sets current session and adds to list."""
         await state_manager.update_session("12345", "new_session_xyz")
@@ -91,6 +100,11 @@ class TestStateManagerAsync:
         state = state_manager.get_user_state(12345)
         assert state["current_session"] == "new_session_xyz"
         assert "new_session_xyz" in state["sessions"]
+
+        typed = await state_manager.get_session_state("12345")
+        assert typed.current_session_id == "new_session_xyz"
+        assert typed.sessions[0].id == "new_session_xyz"
+        assert typed.sessions[0].is_current is True
 
     @pytest.mark.asyncio
     async def test_update_session_no_duplicate(self, state_manager):
@@ -149,6 +163,25 @@ class TestStateManagerAsync:
 
         current = await state_manager.get_current_session("12345")
         assert current.id == session1.id
+
+    @pytest.mark.asyncio
+    async def test_update_session_uses_pending_name(self, state_manager):
+        """Pending session name is consumed when first session is created."""
+        await state_manager.set_pending_session_name("12345", "project-x")
+
+        await state_manager.update_session("12345", "sess-1")
+        state = await state_manager.get_session_state("12345")
+
+        assert state.pending_session_name is None
+        assert state.sessions[0].name == "project-x"
+
+    @pytest.mark.asyncio
+    async def test_update_session_can_set_name(self, state_manager):
+        """update_session persists explicit session names."""
+        await state_manager.update_session("12345", "sess-1", session_name="alpha")
+        state = await state_manager.get_session_state("12345")
+
+        assert state.sessions[0].name == "alpha"
 
     @pytest.mark.asyncio
     async def test_get_sessions(self, state_manager):

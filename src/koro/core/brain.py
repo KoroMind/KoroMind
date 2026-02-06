@@ -145,8 +145,8 @@ class Brain:
             current_session = await self.state_manager.get_current_session(user_id)
             session_id = current_session.id if current_session else None
 
-        # Determine if we're continuing a session
-        continue_last = session_id is not None
+        # Always prefer explicit resume by session_id when available.
+        continue_last = False
 
         stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
         if not isinstance(stored_settings, UserSettings):
@@ -288,7 +288,8 @@ class Brain:
             current_session = await self.state_manager.get_current_session(user_id)
             session_id = current_session.id if current_session else None
 
-        continue_last = session_id is not None
+        # Always prefer explicit resume by session_id when available.
+        continue_last = False
 
         stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
         if not isinstance(stored_settings, UserSettings):

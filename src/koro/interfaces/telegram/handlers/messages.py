@@ -9,7 +9,7 @@ from telegram.ext import ContextTypes
 
 from koro.claude import format_tool_call, get_claude_client
 from koro.config import ALLOWED_CHAT_ID
-from koro.core.types import Mode, QueryConfig, UserSettings
+from koro.core.types import Mode, QueryConfig, UserSessionState, UserSettings
 from koro.interfaces.telegram.handlers.utils import (
     debug,
     send_long_message,
@@ -94,7 +94,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
+    state = await state_manager.get_session_state(user_id)
     settings = state_manager.get_user_settings(user_id)
 
     processing_msg = await update.message.reply_text("Processing voice message...")
@@ -124,7 +124,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         # Update session
-        await state_manager.update_session(str(user_id), new_session_id)
+        await state_manager.update_session(
+            user_id, new_session_id, session_name=state.pending_session_name
+        )
 
         # Send response
         await send_long_message(update, processing_msg, response)
@@ -167,7 +169,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
+    state = await state_manager.get_session_state(user_id)
     settings = state_manager.get_user_settings(user_id)
     text = update.message.text
 
@@ -180,7 +182,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         # Update session
-        await state_manager.update_session(str(user_id), new_session_id)
+        await state_manager.update_session(
+            user_id, new_session_id, session_name=state.pending_session_name
+        )
 
         # Send response
         await send_long_message(update, processing_msg, response)
@@ -203,7 +207,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _call_claude_with_settings(
     text: str,
-    state: dict,
+    state: UserSessionState,
     settings,
     user_id: str,
     update: Update,
@@ -230,7 +234,7 @@ async def _call_claude_with_settings(
     mode = settings_model.mode
     watch_enabled = settings_model.watch_enabled
     model = settings_model.model or None
-    continue_last = state["current_session"] is not None
+    continue_last = False
 
     # Watch mode callback
     async def on_tool_call(tool_name: str, detail: str | None):
@@ -293,7 +297,7 @@ async def _call_claude_with_settings(
     claude_client = get_claude_client()
     config = QueryConfig(
         prompt=text,
-        session_id=state["current_session"],
+        session_id=state.current_session_id,
         continue_last=continue_last,
         user_settings=settings_model,
         mode=mode,

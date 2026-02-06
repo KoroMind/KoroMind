@@ -138,6 +138,8 @@ class TestCommandHandlers:
 
         call_text = update.message.reply_text.call_args.args[0]
         assert "my session" in call_text
+        typed_state = await state_manager.get_session_state("12345")
+        assert typed_state.pending_session_name == "my session"
 
     @pytest.mark.asyncio
     async def test_cmd_continue_with_session(
@@ -196,9 +198,24 @@ class TestCommandHandlers:
         await commands.cmd_sessions(update, MagicMock())
 
         call_text = update.message.reply_text.call_args.args[0]
-        assert "sess1-abcdef" in call_text
-        assert "sess2-fedcba" in call_text
-        assert "..." not in call_text
+        assert "sess1-ab" in call_text
+        assert "sess2-fe" in call_text
+        assert "(current)" in call_text
+        assert "Use /switch <name|id-prefix>" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_sessions_shows_pending_name(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_sessions includes pending new-session label."""
+        await state_manager.set_pending_session_name("12345", "project-z")
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        await commands.cmd_sessions(update, MagicMock())
+
+        call_text = update.message.reply_text.call_args.args[0]
+        assert "Pending new session: project-z" in call_text
 
     @pytest.mark.asyncio
     async def test_cmd_switch_no_args(
@@ -233,6 +250,42 @@ class TestCommandHandlers:
 
         state = state_manager.get_user_state(12345)
         assert state["current_session"] == "abc123456789"
+
+    @pytest.mark.asyncio
+    async def test_cmd_switch_finds_session_by_name(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_switch switches by session name."""
+        await state_manager.update_session("12345", "id-1", session_name="alpha")
+        await state_manager.update_session("12345", "id-2", session_name="beta")
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["alpha"]
+
+        await commands.cmd_switch(update, context)
+
+        typed_state = await state_manager.get_session_state("12345")
+        assert typed_state.current_session_id == "id-1"
+
+    @pytest.mark.asyncio
+    async def test_cmd_switch_by_name_reports_ambiguous(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_switch reports ambiguity for non-unique name prefix."""
+        await state_manager.update_session("12345", "id-1", session_name="project-a")
+        await state_manager.update_session("12345", "id-2", session_name="project-b")
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["project"]
+
+        await commands.cmd_switch(update, context)
+
+        call_text = update.message.reply_text.call_args.args[0]
+        assert "Multiple matches" in call_text
 
     @pytest.mark.asyncio
     async def test_cmd_switch_not_found(

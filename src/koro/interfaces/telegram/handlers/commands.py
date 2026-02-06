@@ -102,11 +102,11 @@ def _format_sessions(state: UserSessionState, limit: int = 10) -> str:
             )
         return "No sessions yet."
 
-    lines = ["Sessions (recent):"]
+    lines = [f"Sessions (last {limit}):"]
     for idx, sess in enumerate(sessions, 1):
-        marker = " (current)" if sess.is_current else ""
+        marker = " (👈 current)" if sess.is_current else ""
         if sess.name:
-            lines.append(f"{idx}. {sess.name} [{sess.id[:8]}]{marker}")
+            lines.append(f"{idx}. {sess.id[:8]} [{sess.name}] {marker}")
         else:
             lines.append(f"{idx}. {sess.id[:8]}{marker}")
 

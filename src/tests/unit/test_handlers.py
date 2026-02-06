@@ -196,8 +196,9 @@ class TestCommandHandlers:
         await commands.cmd_sessions(update, MagicMock())
 
         call_text = update.message.reply_text.call_args.args[0]
-        assert "sess1-abc" in call_text
-        assert "sess2-fed" in call_text
+        assert "sess1-abcdef" in call_text
+        assert "sess2-fedcba" in call_text
+        assert "..." not in call_text
 
     @pytest.mark.asyncio
     async def test_cmd_switch_no_args(

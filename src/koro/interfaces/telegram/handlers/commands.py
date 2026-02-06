@@ -70,6 +70,29 @@ def _session_label(session: SessionStateItem) -> str:
     return session.name if session.name else short_id
 
 
+def _session_button_label(session: SessionStateItem) -> str:
+    """Compact label used in session picker buttons."""
+    short_id = session.id[:8]
+    if session.name:
+        return f"{session.name} ({short_id})"
+    return short_id
+
+
+def _switch_picker_markup(
+    sessions: list[SessionStateItem], limit: int = 10
+) -> InlineKeyboardMarkup:
+    """Build inline keyboard for session selection."""
+    rows = [
+        [
+            InlineKeyboardButton(
+                _session_button_label(session), callback_data=f"switch_{session.id}"
+            )
+        ]
+        for session in sessions[:limit]
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
 def _format_sessions(state: UserSessionState, limit: int = 10) -> str:
     sessions = state.sessions[:limit]
     if not sessions:
@@ -188,7 +211,10 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not state.sessions:
             await update.message.reply_text("No sessions yet.")
         else:
-            await update.message.reply_text(_switch_usage())
+            await update.message.reply_text(
+                "Select a session to switch:",
+                reply_markup=_switch_picker_markup(state.sessions),
+            )
         return
     query = " ".join(context.args).strip()
     lower_query = query.lower()
@@ -232,7 +258,8 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif matches:
         options = ", ".join(_session_label(match) for match in matches[:5])
         await update.message.reply_text(
-            f"Multiple matches. Be more specific.\nMatches: {options}"
+            f"Multiple matches. Pick one below or be more specific.\nMatches: {options}",
+            reply_markup=_switch_picker_markup(matches),
         )
     else:
         await update.message.reply_text(f"Session not found: {query}")

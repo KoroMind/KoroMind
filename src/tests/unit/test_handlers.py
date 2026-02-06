@@ -234,6 +234,25 @@ class TestCommandHandlers:
         assert "No sessions yet" in call_text
 
     @pytest.mark.asyncio
+    async def test_cmd_switch_no_args_shows_picker(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_switch without args shows inline selector when sessions exist."""
+        await state_manager.update_session("12345", "abc123456789")
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(chat_id=12345)
+        context = MagicMock()
+        context.args = []
+
+        await commands.cmd_switch(update, context)
+
+        call_text = update.message.reply_text.call_args.args[0]
+        call_kwargs = update.message.reply_text.call_args.kwargs
+        assert "Select a session to switch" in call_text
+        assert call_kwargs.get("reply_markup") is not None
+
+    @pytest.mark.asyncio
     async def test_cmd_switch_finds_session(
         self, make_update, allow_all_commands, state_manager, monkeypatch
     ):
@@ -286,6 +305,8 @@ class TestCommandHandlers:
 
         call_text = update.message.reply_text.call_args.args[0]
         assert "Multiple matches" in call_text
+        call_kwargs = update.message.reply_text.call_args.kwargs
+        assert call_kwargs.get("reply_markup") is not None
 
     @pytest.mark.asyncio
     async def test_cmd_switch_not_found(

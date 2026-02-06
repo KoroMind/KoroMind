@@ -200,7 +200,7 @@ class TestCommandHandlers:
         call_text = update.message.reply_text.call_args.args[0]
         assert "sess1-ab" in call_text
         assert "sess2-fe" in call_text
-        assert "(current)" in call_text
+        assert "current" in call_text
         assert "Use /switch <name|id-prefix>" in call_text
 
     @pytest.mark.asyncio

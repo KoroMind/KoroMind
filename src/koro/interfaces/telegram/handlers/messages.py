@@ -14,6 +14,8 @@ from koro.interfaces.telegram.handlers.utils import (
     debug,
     send_long_message,
     should_handle_message,
+    start_chat_action,
+    stop_chat_action,
 )
 from koro.rate_limit import get_rate_limiter
 from koro.state import get_state_manager
@@ -96,6 +98,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     settings = state_manager.get_user_settings(user_id)
 
     processing_msg = await update.message.reply_text("Processing voice message...")
+    typing_task = start_chat_action(update, context)
 
     try:
         # Download voice
@@ -137,6 +140,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         debug(f"Error in handle_voice: {e}")
         await processing_msg.edit_text(f"Error: {e}")
+    finally:
+        await stop_chat_action(typing_task)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -167,6 +172,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     processing_msg = await update.message.reply_text("Asking Koro...")
+    typing_task = start_chat_action(update, context)
 
     try:
         response, new_session_id, metadata = await _call_claude_with_settings(
@@ -191,6 +197,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         debug(f"Error in handle_text: {e}")
         await processing_msg.edit_text(f"Error: {e}")
+    finally:
+        await stop_chat_action(typing_task)
 
 
 async def _call_claude_with_settings(
@@ -221,6 +229,7 @@ async def _call_claude_with_settings(
         settings_model = settings
     mode = settings_model.mode
     watch_enabled = settings_model.watch_enabled
+    model = settings_model.model or None
     continue_last = state["current_session"] is not None
 
     # Watch mode callback
@@ -288,6 +297,7 @@ async def _call_claude_with_settings(
         continue_last=continue_last,
         user_settings=settings_model,
         mode=mode,
+        model=model,
         on_tool_call=on_tool_call if watch_enabled else None,
         can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
     )

@@ -1,6 +1,9 @@
 """Utility functions for Telegram handlers."""
 
+import asyncio
 from datetime import datetime
+
+from telegram.constants import ChatAction
 
 from koro.config import TOPIC_ID
 
@@ -34,6 +37,33 @@ def should_handle_message(message_thread_id: int | None) -> bool:
         return False
 
     return message_thread_id == allowed_topic
+
+
+async def _chat_action_loop(update, context, action: str, interval: float) -> None:
+    """Continuously send a chat action until cancelled."""
+    chat_id = update.effective_chat.id
+    while True:
+        await context.bot.send_chat_action(chat_id=chat_id, action=action)
+        await asyncio.sleep(interval)
+
+
+def start_chat_action(update, context, interval: float = 4.0) -> asyncio.Task:
+    """Start sending 'typing' chat actions periodically."""
+    return asyncio.create_task(
+        _chat_action_loop(update, context, ChatAction.TYPING, interval)
+    )
+
+
+async def stop_chat_action(task: asyncio.Task | None) -> None:
+    """Stop a running chat action task."""
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        # Task cancellation is expected here; we intentionally ignore the exception.
+        pass
 
 
 async def send_long_message(update, first_msg, text: str, chunk_size: int = 4000):

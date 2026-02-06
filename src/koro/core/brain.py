@@ -1,5 +1,6 @@
 """The Brain - central orchestration layer for KoroMind."""
 
+import inspect
 from collections.abc import AsyncIterator
 from threading import Lock
 from typing import Any
@@ -23,6 +24,12 @@ from koro.core.types import (
 from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
 StreamedEvent = AssistantMessage | ResultMessage | StreamEvent
+
+
+async def _maybe_await(value: Any) -> Any:
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 class Brain:
@@ -141,11 +148,15 @@ class Brain:
         # Determine if we're continuing a session
         continue_last = session_id is not None
 
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
         user_settings = UserSettings(
             mode=mode,
             audio_enabled=include_audio,
             voice_speed=voice_speed,
             watch_enabled=watch_enabled,
+            model=stored_settings.model,
         )
 
         # Tool call tracking wrapper
@@ -153,6 +164,11 @@ class Brain:
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if on_tool_call and watch_enabled:
                 await on_tool_call(tool_name, detail)
+
+        if "model" in kwargs:
+            model_override = kwargs.pop("model")
+        else:
+            model_override = stored_settings.model
 
         config = self._build_query_config(
             prompt=text,
@@ -162,6 +178,7 @@ class Brain:
             mode=mode,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            model=model_override or None,
             **kwargs,
         )
 
@@ -273,7 +290,19 @@ class Brain:
 
         continue_last = session_id is not None
 
-        user_settings = UserSettings(mode=mode, watch_enabled=watch_enabled)
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
+        user_settings = UserSettings(
+            mode=mode,
+            watch_enabled=watch_enabled,
+            model=stored_settings.model,
+        )
+
+        if "model" in kwargs:
+            model_override = kwargs.pop("model")
+        else:
+            model_override = stored_settings.model
 
         config = self._build_query_config(
             prompt=text,
@@ -283,6 +312,7 @@ class Brain:
             mode=mode,
             on_tool_call=on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
+            model=model_override or None,
             **kwargs,
         )
 

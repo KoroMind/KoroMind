@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+from telegram import BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -29,15 +30,17 @@ from koro.interfaces.telegram.handlers import (
     cmd_continue,
     cmd_elevenlabs_key,
     cmd_health,
+    cmd_help,
+    cmd_model,
     cmd_new,
     cmd_sessions,
     cmd_settings,
     cmd_setup,
-    cmd_start,
     cmd_status,
     cmd_switch,
     handle_approval_callback,
     handle_settings_callback,
+    handle_switch_callback,
     handle_text,
     handle_voice,
 )
@@ -110,6 +113,24 @@ def run_telegram_bot():
     setup_logging()
 
     async def _post_init(application):
+        commands = [
+            BotCommand("help", "Show help and available commands"),
+            BotCommand("new", "Start a new session"),
+            BotCommand("continue", "Resume last session"),
+            BotCommand("sessions", "List sessions"),
+            BotCommand("switch", "Switch to a session"),
+            BotCommand("model", "Show or set model"),
+            BotCommand("status", "Show current session info"),
+            BotCommand("health", "Run health checks"),
+            BotCommand("settings", "Configure audio and mode"),
+            BotCommand("setup", "Show credential status"),
+            BotCommand("claude_token", "Set Claude token"),
+            BotCommand("elevenlabs_key", "Set ElevenLabs key"),
+        ]
+        try:
+            await application.bot.set_my_commands(commands)
+        except Exception as exc:
+            debug(f"Failed to set bot commands: {exc}")
         application.job_queue.run_repeating(
             _periodic_approval_cleanup,
             interval=60,
@@ -126,11 +147,12 @@ def run_telegram_bot():
     )
 
     # Register command handlers
-    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("new", cmd_new))
     app.add_handler(CommandHandler("continue", cmd_continue))
     app.add_handler(CommandHandler("sessions", cmd_sessions))
     app.add_handler(CommandHandler("switch", cmd_switch))
+    app.add_handler(CommandHandler("model", cmd_model))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("settings", cmd_settings))
@@ -140,6 +162,7 @@ def run_telegram_bot():
 
     # Register callback handlers
     app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^setting_"))
+    app.add_handler(CallbackQueryHandler(handle_switch_callback, pattern="^switch_"))
     app.add_handler(
         CallbackQueryHandler(handle_approval_callback, pattern="^(approve_|reject_)")
     )

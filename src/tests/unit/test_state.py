@@ -39,6 +39,7 @@ class TestStateManager:
         assert settings.mode.value == "go_all"
         assert settings.watch_enabled is False
         assert settings.voice_speed is not None
+        assert settings.model == ""
 
     @pytest.mark.parametrize(
         "key,value,expected_attr,expected_value",
@@ -47,6 +48,7 @@ class TestStateManager:
             ("mode", "approve", "mode", "approve"),
             ("voice_speed", 0.9, "voice_speed", 0.9),
             ("watch_enabled", True, "watch_enabled", True),
+            ("model", "claude-test", "model", "claude-test"),
         ],
     )
     def test_update_setting_saves(
@@ -166,6 +168,7 @@ class TestStateManagerAsync:
 
         assert settings.audio_enabled is True
         assert settings.mode.value == "go_all"
+        assert settings.model == ""
 
     @pytest.mark.asyncio
     async def test_update_settings_async(self, state_manager):

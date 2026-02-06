@@ -14,7 +14,6 @@ from koro.interfaces.telegram.handlers import (
     cmd_sessions,
     cmd_settings,
     cmd_setup,
-    cmd_start,
     cmd_status,
     cmd_switch,
     handle_approval_callback,
@@ -24,7 +23,6 @@ from koro.interfaces.telegram.handlers import (
 )
 
 __all__ = [
-    "cmd_start",
     "cmd_new",
     "cmd_continue",
     "cmd_sessions",

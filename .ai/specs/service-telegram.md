@@ -26,10 +26,10 @@ validated: 2026-01-29
 ### Commands
 | Command | Purpose |
 |---------|---------|
-| `/start` | Welcome message |
 | `/new` | Create new session |
 | `/sessions` | List sessions |
 | `/switch <id>` | Switch session |
+| `/model [name]` | Show or set model |
 | `/settings` | Settings menu (inline keyboard) |
 | `/status` | Current session info |
 | `/health` | System health check |
@@ -63,3 +63,5 @@ validated: 2026-01-29
 
 ### 2026-01-29
 - Initial spec from codebase exploration
+### 2026-02-05
+- Expand command list, add /model, delete /start, improve UX

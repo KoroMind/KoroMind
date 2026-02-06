@@ -106,42 +106,6 @@ class TestCommandHandlers:
     """Tests for command handler authentication and responses."""
 
     @pytest.mark.asyncio
-    async def test_cmd_start_ignores_wrong_chat(self, make_update, allow_all_commands):
-        """cmd_start ignores unauthorized chats."""
-        commands.ALLOWED_CHAT_ID = 12345
-        update = make_update(chat_id=99999)
-
-        await commands.cmd_start(update, MagicMock())
-
-        update.message.reply_text.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_cmd_start_responds_to_correct_chat(
-        self, make_update, allow_all_commands
-    ):
-        """cmd_start responds to authorized chat."""
-        commands.ALLOWED_CHAT_ID = 12345
-        update = make_update(chat_id=12345)
-
-        await commands.cmd_start(update, MagicMock())
-
-        update.message.reply_text.assert_called_once()
-        call_text = update.message.reply_text.call_args.args[0]
-        assert "KoroMind" in call_text
-
-    @pytest.mark.asyncio
-    async def test_cmd_start_allows_all_when_chat_id_zero(
-        self, make_update, allow_all_commands
-    ):
-        """cmd_start allows all chats when ALLOWED_CHAT_ID is 0."""
-        commands.ALLOWED_CHAT_ID = 0
-        update = make_update(chat_id=99999)
-
-        await commands.cmd_start(update, MagicMock())
-
-        update.message.reply_text.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_cmd_new_creates_session(
         self, make_update, allow_all_commands, state_manager, monkeypatch
     ):
@@ -232,12 +196,17 @@ class TestCommandHandlers:
         await commands.cmd_sessions(update, MagicMock())
 
         call_text = update.message.reply_text.call_args.args[0]
-        assert "sess1-abc" in call_text
-        assert "sess2-fed" in call_text
+        assert "sess1-abcdef" in call_text
+        assert "sess2-fedcba" in call_text
+        assert "..." not in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_switch_no_args(self, make_update, allow_all_commands):
-        """cmd_switch shows usage without args."""
+    async def test_cmd_switch_no_args(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_switch shows empty state when no sessions exist."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
         update = make_update(chat_id=12345)
         context = MagicMock()
         context.args = []
@@ -245,7 +214,7 @@ class TestCommandHandlers:
         await commands.cmd_switch(update, context)
 
         call_text = update.message.reply_text.call_args.args[0]
-        assert "Usage" in call_text
+        assert "No sessions yet" in call_text
 
     @pytest.mark.asyncio
     async def test_cmd_switch_finds_session(
@@ -363,8 +332,38 @@ class TestCommandHandlers:
 
         call_text = update.message.reply_text.call_args.args[0]
         assert "Settings" in call_text
-        assert "Mode" in call_text
-        assert "Audio" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_model_shows_current(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_model shows current model."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = []
+
+        await commands.cmd_model(update, context)
+
+        call_text = update.message.reply_text.call_args.args[0]
+        assert "Current model" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_model_sets_value(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_model sets the model."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["claude-test"]
+
+        await commands.cmd_model(update, context)
+
+        settings = state_manager.get_user_settings(12345)
+        assert settings.model == "claude-test"
 
     @pytest.mark.asyncio
     async def test_cmd_claude_token_no_args(self, make_update, allow_all_commands):

@@ -181,7 +181,6 @@ Send voice or text messages to your bot. Full agentic capabilities with voice re
 **Commands:**
 | Command | Description |
 |---------|-------------|
-| `/start` | Show help |
 | `/new [name]` | Start new session |
 | `/continue` | Resume last session |
 | `/sessions` | List all sessions |

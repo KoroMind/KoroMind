@@ -62,6 +62,7 @@ async def stop_chat_action(task: asyncio.Task | None) -> None:
     try:
         await task
     except asyncio.CancelledError:
+        # Task cancellation is expected here; we intentionally ignore the exception.
         pass
 
 

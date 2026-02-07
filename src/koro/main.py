@@ -10,7 +10,7 @@ import argparse
 import sys
 
 
-def main():
+def main() -> None:
     """Main entry point with interface selection."""
     parser = argparse.ArgumentParser(
         description="KoroMind - Your Personal AI Assistant",

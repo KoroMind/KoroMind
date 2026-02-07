@@ -1,6 +1,13 @@
 """Callback query handlers for inline keyboards."""
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    CallbackQuery,
+    Chat,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
+    User,
+)
 from telegram.ext import ContextTypes
 
 from koro.config import ALLOWED_CHAT_ID
@@ -10,7 +17,9 @@ from koro.interfaces.telegram.handlers.utils import debug, should_handle_message
 from koro.state import get_state_manager
 
 
-def _extract_callback_context(update: Update):
+def _extract_callback_context(
+    update: Update,
+) -> tuple[CallbackQuery, User, Chat] | None:
     """Return required entities for callback handlers."""
     query = update.callback_query
     user = update.effective_user
@@ -20,7 +29,9 @@ def _extract_callback_context(update: Update):
     return query, user, chat
 
 
-async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_settings_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle settings button callbacks."""
     callback_ctx = _extract_callback_context(update)
     if callback_ctx is None:
@@ -112,7 +123,9 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
 
-async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_approval_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle approval/rejection button callbacks."""
     callback_ctx = _extract_callback_context(update)
     if callback_ctx is None:
@@ -160,7 +173,9 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
             await query.edit_message_text("Approval expired")
 
 
-async def handle_switch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_switch_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle session switch button callbacks."""
     callback_ctx = _extract_callback_context(update)
     if callback_ctx is None:

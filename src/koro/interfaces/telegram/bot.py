@@ -2,12 +2,14 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from telegram import BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
@@ -52,11 +54,11 @@ from koro.voice import get_voice_engine
 logger = logging.getLogger(__name__)
 
 
-async def _periodic_approval_cleanup(_context) -> None:
+async def _periodic_approval_cleanup(_context: object) -> None:
     cleanup_stale_approvals()
 
 
-async def error_handler(update, context):
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle errors in the telegram bot.
 
@@ -65,16 +67,15 @@ async def error_handler(update, context):
         context: Telegram context containing error info
     """
     logger.error(f"Exception while handling an update: {context.error}")
-    if update and update.effective_chat:
+    chat = getattr(update, "effective_chat", None)
+    if chat:
         try:
-            await update.effective_chat.send_message(
-                "An error occurred while processing your request."
-            )
+            await chat.send_message("An error occurred while processing your request.")
         except Exception as exc:
             logger.warning("Failed to send Telegram error message: %s", exc)
 
 
-def run_telegram_bot():
+def run_telegram_bot() -> None:
     """Run the Telegram bot."""
     # Apply any saved credentials first
     claude_token, elevenlabs_key = apply_saved_credentials()
@@ -117,7 +118,7 @@ def run_telegram_bot():
     # Setup logging
     setup_logging()
 
-    async def _post_init(application):
+    async def _post_init(application: Any) -> None:
         commands = [
             BotCommand("help", "Show help and available commands"),
             BotCommand("new", "Start a new session"),

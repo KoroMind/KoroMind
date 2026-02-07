@@ -60,7 +60,7 @@ def load_megg_context(working_dir: str | None = None) -> str:
         return ""
 
 
-def format_tool_call(tool_name: str, tool_input: dict) -> str:
+def format_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
     """
     Format a tool call for display.
 
@@ -77,7 +77,7 @@ def format_tool_call(tool_name: str, tool_input: dict) -> str:
     return f"Tool: {tool_name}\n```\n{input_str}\n```"
 
 
-def get_tool_detail(tool_name: str, tool_input: dict) -> str | None:
+def get_tool_detail(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """
     Extract key detail from tool input for display.
 
@@ -90,17 +90,24 @@ def get_tool_detail(tool_name: str, tool_input: dict) -> str | None:
     """
     if tool_name == "Bash" and "command" in tool_input:
         cmd = tool_input["command"]
+        if not isinstance(cmd, str):
+            return None
         return cmd[:80] + "..." if len(cmd) > 80 else cmd
     elif tool_name == "Read" and "file_path" in tool_input:
-        return tool_input["file_path"]
+        file_path = tool_input["file_path"]
+        return file_path if isinstance(file_path, str) else None
     elif tool_name == "Edit" and "file_path" in tool_input:
-        return tool_input["file_path"]
+        file_path = tool_input["file_path"]
+        return file_path if isinstance(file_path, str) else None
     elif tool_name == "Write" and "file_path" in tool_input:
-        return tool_input["file_path"]
+        file_path = tool_input["file_path"]
+        return file_path if isinstance(file_path, str) else None
     elif tool_name == "Grep" and "pattern" in tool_input:
-        return f"/{tool_input['pattern']}/"
+        pattern = tool_input["pattern"]
+        return f"/{pattern}/" if isinstance(pattern, str) else None
     elif tool_name == "Glob" and "pattern" in tool_input:
-        return tool_input["pattern"]
+        pattern = tool_input["pattern"]
+        return pattern if isinstance(pattern, str) else None
     return None
 
 

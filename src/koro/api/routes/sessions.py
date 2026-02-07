@@ -112,7 +112,7 @@ async def get_current_session(
 async def switch_session(
     request: SwitchSessionRequest,
     http_request: Request,
-) -> dict:
+) -> dict[str, str]:
     """
     Switch to a different session.
 

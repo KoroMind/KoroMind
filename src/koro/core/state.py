@@ -540,7 +540,7 @@ class StateManager:
             )
             return default_settings
 
-    async def update_settings(self, user_id: str, **kwargs) -> UserSettings:
+    async def update_settings(self, user_id: str, **kwargs: object) -> UserSettings:
         """Update settings for a user."""
         # Get current settings first
         current = await self.get_settings(user_id)

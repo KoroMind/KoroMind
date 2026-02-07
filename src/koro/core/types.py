@@ -170,7 +170,7 @@ class Session:
     created_at: datetime
     last_active: datetime
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, str]:
         """Convert to dictionary for serialization."""
         return {
             "id": self.id,
@@ -180,7 +180,7 @@ class Session:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Session":
+    def from_dict(cls, data: dict[str, str]) -> "Session":
         """Create from dictionary."""
         return cls(
             id=data["id"],

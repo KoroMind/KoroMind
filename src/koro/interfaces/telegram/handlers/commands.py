@@ -154,7 +154,7 @@ def _extract_update_context(update: Update) -> tuple[Message, Chat, User] | None
     return message, chat, user
 
 
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command - show command list."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -170,7 +170,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text(_format_command_help())
 
 
-async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /new command - start new session."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -201,7 +201,7 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /continue command - resume last session."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -226,7 +226,7 @@ async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("No previous session. Send a voice message to start.")
 
 
-async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /sessions command - list all sessions."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -245,7 +245,7 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text(_format_sessions(state))
 
 
-async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /switch command - switch to specific session."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -287,7 +287,7 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(f"Session not found: {query}")
 
 
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /status command - show current session info."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -320,7 +320,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(msg)
 
 
-async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /health command - check all systems."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -368,7 +368,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text("\n".join(status))
 
 
-async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /settings command - show settings menu."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -428,7 +428,7 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text(settings_text, reply_markup=reply_markup)
 
 
-async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /model command - show or set model."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -466,7 +466,7 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text(f"Model set to: {model}")
 
 
-async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /setup command - show API credentials status."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -529,7 +529,7 @@ async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text("\n".join(message_lines), parse_mode="Markdown")
 
 
-async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /claude_token command - set Claude OAuth token."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -578,7 +578,9 @@ async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def cmd_elevenlabs_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_elevenlabs_key(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle /elevenlabs_key command - set ElevenLabs API key."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:

@@ -6,7 +6,7 @@ from typing import Any
 
 from elevenlabs.client import ElevenLabs
 from elevenlabs.core import ApiError
-from elevenlabs.types import VoiceSettings
+from elevenlabs.types import SpeechToTextChunkResponseModel, VoiceSettings
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
@@ -57,7 +57,7 @@ class VoiceEngine:
             raise VoiceNotConfiguredError("ElevenLabs not configured")
         client = self.client
 
-        def _transcribe_sync() -> Any:
+        def _transcribe_sync() -> SpeechToTextChunkResponseModel:
             return client.speech_to_text.convert(
                 file=BytesIO(voice_bytes),
                 model_id="scribe_v1",
@@ -66,8 +66,7 @@ class VoiceEngine:
 
         try:
             transcription = await asyncio.to_thread(_transcribe_sync)
-            text = getattr(transcription, "text", "")
-            return str(text)
+            return transcription.text
         except ApiError as exc:
             return f"Error: {exc}"
         except (RuntimeError, ValueError, TypeError) as exc:

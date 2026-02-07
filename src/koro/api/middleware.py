@@ -23,6 +23,14 @@ def _derive_user_id(api_key: str | None) -> str:
     return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
 
 
+def _request_user_id(request: Request) -> str | None:
+    try:
+        user_id = request.state.user_id
+    except AttributeError:
+        return None
+    return str(user_id) if user_id else None
+
+
 async def api_key_middleware(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
@@ -87,7 +95,7 @@ async def rate_limit_middleware(
         response = await call_next(request)
         return response
 
-    user_id = getattr(request.state, "user_id", None) or _derive_user_id(
+    user_id = _request_user_id(request) or _derive_user_id(
         request.headers.get("X-API-Key")
     )
 

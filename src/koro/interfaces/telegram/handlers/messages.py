@@ -8,13 +8,11 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from koro.claude import format_tool_call, get_claude_client
-from koro.config import ALLOWED_CHAT_ID
 from koro.core.types import Mode, QueryConfig, UserSessionState, UserSettings
 from koro.interfaces.telegram.handlers.utils import (
     authorized_handler,
     debug,
     send_long_message,
-    should_handle_message,
     start_chat_action,
     stop_chat_action,
 )

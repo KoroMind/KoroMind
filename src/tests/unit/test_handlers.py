@@ -23,15 +23,15 @@ def state_manager(tmp_path):
 @pytest.fixture
 def allow_all_commands(monkeypatch):
     """Allow commands to run for any chat/topic."""
-    monkeypatch.setattr(commands, "ALLOWED_CHAT_ID", 0)
-    monkeypatch.setattr(commands, "should_handle_message", lambda _: True)
+    monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
+    monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
 
 
 @pytest.fixture
 def allow_all_messages(monkeypatch):
     """Allow messages to run for any chat/topic."""
-    monkeypatch.setattr(messages, "ALLOWED_CHAT_ID", 0)
-    monkeypatch.setattr(messages, "should_handle_message", lambda _: True)
+    monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
+    monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
 
 
 @pytest.fixture
@@ -600,7 +600,7 @@ class TestMessageHandlers:
     @pytest.mark.asyncio
     async def test_handle_voice_ignores_wrong_topic(self, make_update, monkeypatch):
         """handle_voice ignores wrong topic."""
-        monkeypatch.setattr(messages, "should_handle_message", lambda _: False)
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: False)
         update = make_update(thread_id=999)
 
         await messages.handle_voice(update, MagicMock())
@@ -610,7 +610,7 @@ class TestMessageHandlers:
     @pytest.mark.asyncio
     async def test_handle_text_ignores_wrong_topic(self, make_update, monkeypatch):
         """handle_text ignores wrong topic."""
-        monkeypatch.setattr(messages, "should_handle_message", lambda _: False)
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: False)
         update = make_update(thread_id=999)
 
         await messages.handle_text(update, MagicMock())
@@ -620,8 +620,8 @@ class TestMessageHandlers:
     @pytest.mark.asyncio
     async def test_handle_voice_ignores_wrong_chat(self, make_update, monkeypatch):
         """handle_voice ignores unauthorized chat."""
-        monkeypatch.setattr(messages, "should_handle_message", lambda _: True)
-        monkeypatch.setattr(messages, "ALLOWED_CHAT_ID", 12345)
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 12345)
         update = make_update(chat_id=99999)
 
         await messages.handle_voice(update, MagicMock())
@@ -631,8 +631,8 @@ class TestMessageHandlers:
     @pytest.mark.asyncio
     async def test_handle_text_ignores_wrong_chat(self, make_update, monkeypatch):
         """handle_text ignores unauthorized chat."""
-        monkeypatch.setattr(messages, "should_handle_message", lambda _: True)
-        monkeypatch.setattr(messages, "ALLOWED_CHAT_ID", 12345)
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 12345)
         update = make_update(chat_id=99999)
 
         await messages.handle_text(update, MagicMock())

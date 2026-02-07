@@ -78,9 +78,9 @@ class TestVoiceEngine:
         engine = VoiceEngine(api_key="test_key")
         engine.client = MagicMock()
         if method == "transcribe":
-            engine.client.speech_to_text.convert.side_effect = Exception("API error")
+            engine.client.speech_to_text.convert.side_effect = RuntimeError("API error")
         else:
-            engine.client.text_to_speech.convert.side_effect = Exception("API error")
+            engine.client.text_to_speech.convert.side_effect = RuntimeError("API error")
         if method == "transcribe":
             with pytest.raises(Exception) as exc_info:
                 await getattr(engine, method)(*args)

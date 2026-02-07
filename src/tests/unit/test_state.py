@@ -176,6 +176,18 @@ class TestStateManagerAsync:
         assert state.sessions[0].name == "project-x"
 
     @pytest.mark.asyncio
+    async def test_create_session_does_not_consume_pending_name(self, state_manager):
+        """create_session leaves pending name intact for explicit update_session flow."""
+        await state_manager.set_pending_session_name("12345", "project-x")
+
+        session = await state_manager.create_session("12345")
+        state = await state_manager.get_session_state("12345")
+
+        assert state.pending_session_name == "project-x"
+        assert state.sessions[0].id == session.id
+        assert state.sessions[0].name is None
+
+    @pytest.mark.asyncio
     async def test_update_session_can_set_name(self, state_manager):
         """update_session persists explicit session names."""
         await state_manager.update_session("12345", "sess-1", session_name="alpha")

@@ -288,16 +288,6 @@ class StateManager:
         session_id = str(uuid4())
 
         with self._get_connection() as conn:
-            pending_name_row = conn.execute(
-                "SELECT pending_session_name FROM settings WHERE user_id = ?",
-                (user_id,),
-            ).fetchone()
-            pending_name = (
-                pending_name_row["pending_session_name"]
-                if pending_name_row and pending_name_row["pending_session_name"]
-                else None
-            )
-
             # Clear current flag from all user sessions
             conn.execute(
                 "UPDATE sessions SET is_current = 0 WHERE user_id = ?",
@@ -310,12 +300,7 @@ class StateManager:
                 INSERT INTO sessions (id, user_id, created_at, last_active, is_current, name)
                 VALUES (?, ?, ?, ?, 1, ?)
                 """,
-                (session_id, user_id, now.isoformat(), now.isoformat(), pending_name),
-            )
-
-            conn.execute(
-                "UPDATE settings SET pending_session_name = NULL WHERE user_id = ?",
-                (user_id,),
+                (session_id, user_id, now.isoformat(), now.isoformat(), None),
             )
 
             # FIFO eviction: remove oldest sessions if exceeding limit

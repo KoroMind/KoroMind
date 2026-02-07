@@ -19,10 +19,12 @@ from claude_agent_sdk.types import (
     AssistantMessage,
     ResultMessage,
     StreamEvent,
+    SystemMessage,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
 )
 
 from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
@@ -31,10 +33,12 @@ from koro.core.types import DEFAULT_CLAUDE_TOOLS, Mode, QueryConfig
 
 logger = logging.getLogger(__name__)
 
-StreamedEvent = AssistantMessage | ResultMessage | StreamEvent
+StreamedEvent = (
+    AssistantMessage | ResultMessage | StreamEvent | UserMessage | SystemMessage
+)
 
 
-def load_megg_context(working_dir: str = None) -> str:
+def load_megg_context(working_dir: str | None = None) -> str:
     """
     Load megg context for enhanced prompts.
 
@@ -105,8 +109,8 @@ class ClaudeClient:
 
     def __init__(
         self,
-        sandbox_dir: str = None,
-        working_dir: str = None,
+        sandbox_dir: str | None = None,
+        working_dir: str | None = None,
     ):
         """
         Initialize Claude client.
@@ -115,8 +119,8 @@ class ClaudeClient:
             sandbox_dir: Directory for Claude to write/execute
             working_dir: Directory Claude can read from
         """
-        self.sandbox_dir = sandbox_dir or SANDBOX_DIR
-        self.working_dir = working_dir or CLAUDE_WORKING_DIR
+        self.sandbox_dir = sandbox_dir or SANDBOX_DIR or str(Path.home())
+        self.working_dir = working_dir or CLAUDE_WORKING_DIR or str(Path.home())
         self.prompt_manager = get_prompt_manager()
         self._active_client: ClaudeSDKClient | None = None
         logger.debug(
@@ -154,7 +158,7 @@ class ClaudeClient:
             agents=config.agents,
             plugins=config.plugins,
             sandbox=config.sandbox,
-            output_format=config.output_format,
+            output_format=dict(config.output_format) if config.output_format else None,
             max_turns=config.max_turns,
             max_budget_usd=config.max_budget_usd,
             model=config.model,
@@ -196,7 +200,7 @@ class ClaudeClient:
     async def query(
         self,
         config: QueryConfig,
-    ) -> tuple[str, str, dict]:
+    ) -> tuple[str, str, dict[str, Any]]:
         """
         Query Claude and return response.
         """
@@ -211,8 +215,8 @@ class ClaudeClient:
         full_prompt, options = self._prepare_query(config)
 
         result_text = ""
-        new_session_id = config.session_id
-        metadata = {}
+        new_session_id = config.session_id or ""
+        metadata: dict[str, Any] = {}
         tool_count = 0
         tool_results: list[dict[str, Any]] = []
         tool_use_map: dict[str, dict[str, Any]] = {}

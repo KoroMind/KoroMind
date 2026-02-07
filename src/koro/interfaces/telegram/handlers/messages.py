@@ -151,7 +151,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.is_bot is True:
         return
 
-    debug(f"TEXT received: '{update.message.text[:50]}'")
+    text = update.message.text or ""
+    debug(f"TEXT received: '{text[:50]}'")
 
     if not should_handle_message(update.message.message_thread_id):
         return
@@ -171,8 +172,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id)
     settings = await state_manager.get_settings(user_id)
-    text = update.message.text
-
     processing_msg = await update.message.reply_text("Asking Koro...")
     typing_task = start_chat_action(update, context)
 

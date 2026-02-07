@@ -12,7 +12,7 @@ from koro.core.config import (
 from koro.core.types import UserSettings
 
 
-def load_system_prompt(prompt_file: str = None) -> str:
+def load_system_prompt(prompt_file: str | None = None) -> str:
     """
     Load system prompt from file or use default.
 
@@ -44,14 +44,14 @@ def load_system_prompt(prompt_file: str = None) -> str:
                     pass
                 elif resolved_path.exists():
                     content = resolved_path.read_text()
-                    content = content.replace("{sandbox_dir}", SANDBOX_DIR)
-                    content = content.replace("{read_dir}", CLAUDE_WORKING_DIR)
+                    content = content.replace("{sandbox_dir}", SANDBOX_DIR or "")
+                    content = content.replace("{read_dir}", CLAUDE_WORKING_DIR or "")
                     return content
             elif resolved_path.exists():
                 # Absolute paths are trusted (admin-configured)
                 content = resolved_path.read_text()
-                content = content.replace("{sandbox_dir}", SANDBOX_DIR)
-                content = content.replace("{read_dir}", CLAUDE_WORKING_DIR)
+                content = content.replace("{sandbox_dir}", SANDBOX_DIR or "")
+                content = content.replace("{read_dir}", CLAUDE_WORKING_DIR or "")
                 return content
         except (OSError, ValueError):
             # Invalid path - fall through to default prompt
@@ -106,7 +106,7 @@ def build_dynamic_prompt(
 class PromptManager:
     """Manages system prompt loading and caching."""
 
-    def __init__(self, prompt_file: str = None):
+    def __init__(self, prompt_file: str | None = None):
         """
         Initialize prompt manager.
 

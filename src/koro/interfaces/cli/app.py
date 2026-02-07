@@ -164,8 +164,8 @@ async def handle_command(brain: Brain, user_id: str, command: str) -> bool:
     elif cmd == "/model":
         if not args:
             settings = await brain.get_settings(user_id)
-            current = settings.model or "default"
-            console.print(f"[cyan]Current model:[/cyan] {current}")
+            current_model = settings.model or "default"
+            console.print(f"[cyan]Current model:[/cyan] {current_model}")
             console.print("[dim]Usage: /model <name> | /model default[/dim]")
         elif args.lower() == "default":
             await brain.update_settings(user_id, model="")

@@ -31,6 +31,7 @@ include = ["koro*"]
 dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
+    "mypy>=1.11.0",
     "pre-commit>=4.5.1",
     "httpx>=0.27.0",  # For API testing
     "watchfiles>=0.21.0",
@@ -64,6 +65,14 @@ line_length = 88
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/koro"]
+exclude = ["^src/tests/"]
+implicit_optional = true
+ignore_missing_imports = true
+disable_error_code = ["union-attr"]
 
 [tool.coverage.run]
 source = ["koro"]

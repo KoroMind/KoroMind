@@ -63,6 +63,7 @@ async def process_message(
     user_id = http_request.state.user_id
 
     # Decode voice content if needed
+    content: str | bytes
     if request.content_type == "voice":
         try:
             content = base64.b64decode(request.content)

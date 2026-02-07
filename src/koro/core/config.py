@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_env(key: str, default: str = None) -> str | None:
+def get_env(key: str, default: str | None = None) -> str | None:
     """Get environment variable with optional default."""
     return os.getenv(key, default)
 
@@ -43,6 +43,7 @@ ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY")
 # KoroMind Data Directory (XDG-style, defaults to ~/.koromind)
 KOROMIND_DATA_DIR = Path(
     get_env("KOROMIND_DATA_DIR", os.path.expanduser("~/.koromind"))
+    or os.path.expanduser("~/.koromind")
 )
 
 # Ensure data directory exists
@@ -88,7 +89,10 @@ KOROMIND_PORT = get_env_int("KOROMIND_PORT", 8420)
 KOROMIND_ALLOW_NO_AUTH = get_env_bool("KOROMIND_ALLOW_NO_AUTH", False)
 KOROMIND_CORS_ORIGINS = [
     origin.strip()
-    for origin in get_env("KOROMIND_CORS_ORIGINS", "http://localhost:3000").split(",")
+    for origin in (
+        get_env("KOROMIND_CORS_ORIGINS", "http://localhost:3000")
+        or "http://localhost:3000"
+    ).split(",")
     if origin.strip()
 ]
 

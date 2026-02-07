@@ -95,7 +95,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id)
-    settings = state_manager.get_user_settings(user_id)
+    settings = await state_manager.get_settings(user_id)
 
     processing_msg = await update.message.reply_text("Processing voice message...")
     typing_task = start_chat_action(update, context)
@@ -170,7 +170,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id)
-    settings = state_manager.get_user_settings(user_id)
+    settings = await state_manager.get_settings(user_id)
     text = update.message.text
 
     processing_msg = await update.message.reply_text("Asking Koro...")
@@ -208,7 +208,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _call_claude_with_settings(
     text: str,
     state: UserSessionState,
-    settings,
+    settings: UserSettings,
     user_id: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -219,21 +219,16 @@ async def _call_claude_with_settings(
     Args:
         text: User message
         state: User session state
-        settings: User settings (UserSettings object)
+        settings: User settings
         update: Telegram update
         context: Telegram context
 
     Returns:
         (response, session_id, metadata)
     """
-    # Handle both UserSettings objects and dicts for backward compatibility
-    if isinstance(settings, dict):
-        settings_model = UserSettings.model_validate(settings)
-    else:
-        settings_model = settings
-    mode = settings_model.mode
-    watch_enabled = settings_model.watch_enabled
-    model = settings_model.model or None
+    mode = settings.mode
+    watch_enabled = settings.watch_enabled
+    model = settings.model or None
     continue_last = False
 
     # Watch mode callback
@@ -249,7 +244,7 @@ async def _call_claude_with_settings(
     async def can_use_tool(tool_name: str, tool_input: dict, ctx):
         from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
 
-        if mode != "approve":
+        if mode != Mode.APPROVE:
             return PermissionResultAllow()
 
         approval_id = str(uuid.uuid4())[:8]
@@ -299,7 +294,7 @@ async def _call_claude_with_settings(
         prompt=text,
         session_id=state.current_session_id,
         continue_last=continue_last,
-        user_settings=settings_model,
+        user_settings=settings,
         mode=mode,
         model=model,
         on_tool_call=on_tool_call if watch_enabled else None,

@@ -119,8 +119,8 @@ class TestCommandHandlers:
 
         await commands.cmd_new(update, context)
 
-        state = state_manager.get_user_state(12345)
-        assert state["current_session"] is None
+        state = await state_manager.get_session_state("12345")
+        assert state.current_session_id is None
         update.message.reply_text.assert_called_once()
 
     @pytest.mark.asyncio
@@ -267,8 +267,8 @@ class TestCommandHandlers:
 
         await commands.cmd_switch(update, context)
 
-        state = state_manager.get_user_state(12345)
-        assert state["current_session"] == "abc123456789"
+        state = await state_manager.get_session_state("12345")
+        assert state.current_session_id == "abc123456789"
 
     @pytest.mark.asyncio
     async def test_cmd_switch_finds_session_by_name(
@@ -436,7 +436,7 @@ class TestCommandHandlers:
 
         await commands.cmd_model(update, context)
 
-        settings = state_manager.get_user_settings(12345)
+        settings = await state_manager.get_settings("12345")
         assert settings.model == "claude-test"
 
     @pytest.mark.asyncio
@@ -682,7 +682,7 @@ class TestCallbackHandlers:
         self, make_callback_query, state_manager, monkeypatch
     ):
         """Settings callback toggles audio."""
-        state_manager.update_setting(12345, "audio_enabled", True)
+        await state_manager.update_settings("12345", audio_enabled=True)
         monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
 
         query = make_callback_query("setting_audio_toggle")
@@ -692,7 +692,7 @@ class TestCallbackHandlers:
 
         await callbacks.handle_settings_callback(update, MagicMock())
 
-        settings = state_manager.get_user_settings(12345)
+        settings = await state_manager.get_settings("12345")
         assert settings.audio_enabled is False
 
     @pytest.mark.asyncio
@@ -700,7 +700,7 @@ class TestCallbackHandlers:
         self, make_callback_query, state_manager, monkeypatch
     ):
         """Settings callback toggles mode."""
-        state_manager.update_setting(12345, "mode", "go_all")
+        await state_manager.update_settings("12345", mode="go_all")
         monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
 
         query = make_callback_query("setting_mode_toggle")
@@ -710,7 +710,7 @@ class TestCallbackHandlers:
 
         await callbacks.handle_settings_callback(update, MagicMock())
 
-        settings = state_manager.get_user_settings(12345)
+        settings = await state_manager.get_settings("12345")
         assert settings.mode.value == "approve"
 
     @pytest.mark.asyncio
@@ -718,7 +718,7 @@ class TestCallbackHandlers:
         self, make_callback_query, state_manager, monkeypatch
     ):
         """Settings callback sets voice speed."""
-        state_manager.update_setting(12345, "voice_speed", 1.0)
+        await state_manager.update_settings("12345", voice_speed=1.0)
         monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
 
         query = make_callback_query("setting_speed_0.9")
@@ -728,7 +728,7 @@ class TestCallbackHandlers:
 
         await callbacks.handle_settings_callback(update, MagicMock())
 
-        settings = state_manager.get_user_settings(12345)
+        settings = await state_manager.get_settings("12345")
         assert settings.voice_speed == 0.9
 
     @pytest.mark.asyncio
@@ -736,7 +736,7 @@ class TestCallbackHandlers:
         self, make_callback_query, state_manager, monkeypatch
     ):
         """Settings callback rejects invalid speed."""
-        state_manager.update_setting(12345, "voice_speed", 1.0)
+        await state_manager.update_settings("12345", voice_speed=1.0)
         monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
 
         query = make_callback_query("setting_speed_5.0")
@@ -746,7 +746,7 @@ class TestCallbackHandlers:
 
         await callbacks.handle_settings_callback(update, MagicMock())
 
-        settings = state_manager.get_user_settings(12345)
+        settings = await state_manager.get_settings("12345")
         assert settings.voice_speed == 1.0
         query.answer.assert_called_with("Invalid speed range")
 
@@ -801,7 +801,7 @@ class TestMessageHandlersFullFlow:
         monkeypatch,
     ):
         """handle_text skips audio when disabled."""
-        state_manager.update_setting(12345, "audio_enabled", False)
+        await state_manager.update_settings("12345", audio_enabled=False)
 
         limiter = MagicMock()
         limiter.check.return_value = (True, "")

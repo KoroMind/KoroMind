@@ -24,16 +24,18 @@ class TestStateManager:
         assert manager.db_path == db_file
         assert db_file.exists()
 
-    def test_get_user_state_creates_default(self, state_manager):
-        """get_user_state creates default state for new user."""
-        state = state_manager.get_user_state(99999)
+    @pytest.mark.asyncio
+    async def test_get_session_state_creates_default(self, state_manager):
+        """get_session_state creates default state for new user."""
+        state = await state_manager.get_session_state("99999")
 
-        assert state["current_session"] is None
-        assert state["sessions"] == []
+        assert state.current_session_id is None
+        assert state.sessions == []
 
-    def test_get_user_settings_creates_defaults(self, state_manager):
-        """get_user_settings creates default settings for new user."""
-        settings = state_manager.get_user_settings(99999)
+    @pytest.mark.asyncio
+    async def test_get_settings_creates_defaults(self, state_manager):
+        """get_settings creates default settings for new user."""
+        settings = await state_manager.get_settings("99999")
 
         assert settings.audio_enabled is True
         assert settings.mode.value == "go_all"
@@ -51,30 +53,32 @@ class TestStateManager:
             ("model", "claude-test", "model", "claude-test"),
         ],
     )
-    def test_update_setting_saves(
+    @pytest.mark.asyncio
+    async def test_update_settings_saves(
         self, state_manager, key, value, expected_attr, expected_value
     ):
-        """update_setting updates and saves settings."""
-        state_manager.update_setting(12345, key, value)
+        """update_settings updates and saves settings."""
+        await state_manager.update_settings("12345", **{key: value})
 
-        settings = state_manager.get_user_settings(12345)
+        settings = await state_manager.get_settings("12345")
         actual = getattr(settings, expected_attr)
         # Mode is an enum, compare values
         if expected_attr == "mode":
             actual = actual.value
         assert actual == expected_value
 
-    def test_settings_persist_after_recreation(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_settings_persist_after_recreation(self, tmp_path):
         """Settings persist across StateManager instances."""
         db_file = tmp_path / "test.db"
 
         manager1 = StateManager(db_path=db_file)
-        manager1.update_setting(12345, "audio_enabled", False)
-        manager1.update_setting(12345, "mode", "approve")
+        await manager1.update_settings("12345", audio_enabled=False)
+        await manager1.update_settings("12345", mode="approve")
 
         # Create new instance with same db
         manager2 = StateManager(db_path=db_file)
-        settings = manager2.get_user_settings(12345)
+        settings = await manager2.get_settings("12345")
 
         assert settings.audio_enabled is False
         assert settings.mode.value == "approve"
@@ -97,10 +101,6 @@ class TestStateManagerAsync:
         """update_session sets current session and adds to list."""
         await state_manager.update_session("12345", "new_session_xyz")
 
-        state = state_manager.get_user_state(12345)
-        assert state["current_session"] == "new_session_xyz"
-        assert "new_session_xyz" in state["sessions"]
-
         typed = await state_manager.get_session_state("12345")
         assert typed.current_session_id == "new_session_xyz"
         assert typed.sessions[0].id == "new_session_xyz"
@@ -112,8 +112,8 @@ class TestStateManagerAsync:
         await state_manager.update_session("12345", "abc")
         await state_manager.update_session("12345", "abc")
 
-        state = state_manager.get_user_state(12345)
-        assert state["sessions"].count("abc") == 1
+        state = await state_manager.get_session_state("12345")
+        assert [session.id for session in state.sessions].count("abc") == 1
 
     @pytest.mark.asyncio
     async def test_create_session(self, state_manager):
@@ -122,8 +122,8 @@ class TestStateManagerAsync:
 
         assert session.id is not None
         assert session.user_id == "12345"
-        state = state_manager.get_user_state(12345)
-        assert state["current_session"] == session.id
+        state = await state_manager.get_session_state("12345")
+        assert state.current_session_id == session.id
 
     @pytest.mark.asyncio
     async def test_get_current_session(self, state_manager):
@@ -150,8 +150,8 @@ class TestStateManagerAsync:
         current = await state_manager.get_current_session("12345")
         assert current is None
         # But session should still exist in the list
-        state = state_manager.get_user_state(12345)
-        assert len(state["sessions"]) == 1
+        state = await state_manager.get_session_state("12345")
+        assert len(state.sessions) == 1
 
     @pytest.mark.asyncio
     async def test_set_current_session(self, state_manager):
@@ -239,8 +239,8 @@ class TestStateManagerConcurrency:
 
         # Verify all sessions exist
         for i in range(50):
-            state = state_manager.get_user_state(i)
-            assert state["current_session"] == f"session_{i}"
+            state = await state_manager.get_session_state(str(i))
+            assert state.current_session_id == f"session_{i}"
 
 
 class TestSessionListLimits:
@@ -253,11 +253,12 @@ class TestSessionListLimits:
         for i in range(MAX_SESSIONS + 20):
             await state_manager.update_session("12345", f"session_{i}")
 
-        state = state_manager.get_user_state(12345)
-        assert len(state["sessions"]) == MAX_SESSIONS
+        state = await state_manager.get_session_state("12345")
+        assert len(state.sessions) == MAX_SESSIONS
         # Oldest sessions should be removed (FIFO)
-        assert "session_0" not in state["sessions"]
-        assert f"session_{MAX_SESSIONS + 19}" in state["sessions"]
+        session_ids = [session.id for session in state.sessions]
+        assert "session_0" not in session_ids
+        assert f"session_{MAX_SESSIONS + 19}" in session_ids
 
 
 class TestMemoryOperations:

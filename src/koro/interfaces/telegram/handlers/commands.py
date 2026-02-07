@@ -102,7 +102,7 @@ def _format_sessions(state: UserSessionState, limit: int = 10) -> str:
             )
         return "No sessions yet."
 
-    lines = [f"Sessions (last {limit}):"]
+    lines = [f"Sessions ({len(sessions)}):"]
     for idx, sess in enumerate(sessions, 1):
         marker = " (👈 current)" if sess.is_current else ""
         if sess.name:
@@ -119,8 +119,22 @@ def _format_sessions(state: UserSessionState, limit: int = 10) -> str:
     return "\n".join(lines)
 
 
-def _switch_usage() -> str:
-    return "Usage: /switch <session_name_or_id_prefix>"
+def _resolve_session(
+    sessions: list[SessionStateItem], query: str
+) -> tuple[SessionStateItem | None, list[SessionStateItem]]:
+    """Resolve a session query by exact name, then name prefix, then ID prefix."""
+    lower_query = query.lower()
+    candidate_lists = [
+        [s for s in sessions if s.name and s.name.lower() == lower_query],
+        [s for s in sessions if s.name and s.name.lower().startswith(lower_query)],
+        [s for s in sessions if s.id.startswith(query)],
+    ]
+    for matches in candidate_lists:
+        if len(matches) == 1:
+            return matches[0], []
+        if matches:
+            return None, matches
+    return None, []
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -217,37 +231,7 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
     query = " ".join(context.args).strip()
-    lower_query = query.lower()
-
-    by_exact_name = [
-        s for s in state.sessions if s.name and s.name.lower() == lower_query
-    ]
-    if len(by_exact_name) == 1:
-        target = by_exact_name[0]
-    elif len(by_exact_name) > 1:
-        target = None
-        matches = by_exact_name
-    else:
-        by_name_prefix = [
-            s
-            for s in state.sessions
-            if s.name and s.name.lower().startswith(lower_query)
-        ]
-        if len(by_name_prefix) == 1:
-            target = by_name_prefix[0]
-        elif len(by_name_prefix) > 1:
-            target = None
-            matches = by_name_prefix
-        else:
-            by_id = [s for s in state.sessions if s.id.startswith(query)]
-            if len(by_id) == 1:
-                target = by_id[0]
-            elif len(by_id) > 1:
-                target = None
-                matches = by_id
-            else:
-                target = None
-                matches = []
+    target, matches = _resolve_session(state.sessions, query)
 
     if target:
         await state_manager.set_current_session(user_id, target.id)
@@ -346,7 +330,7 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    settings = state_manager.get_user_settings(user_id)
+    settings = await state_manager.get_settings(user_id)
 
     audio_status = "ON" if settings.audio_enabled else "OFF"
     speed = settings.voice_speed
@@ -403,7 +387,7 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state_manager = get_state_manager()
 
     if not context.args:
-        settings = state_manager.get_user_settings(user_id)
+        settings = await state_manager.get_settings(user_id)
         current = settings.model or "default"
         message = (
             f"Current model: {current}\n\n"
@@ -416,11 +400,11 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     model = " ".join(context.args).strip()
     if model.lower() == "default":
-        state_manager.update_setting(user_id, "model", "")
+        await state_manager.update_settings(user_id, model="")
         await update.message.reply_text("Model set to default.")
         return
 
-    state_manager.update_setting(user_id, "model", model)
+    await state_manager.update_settings(user_id, model=model)
     await update.message.reply_text(f"Model set to: {model}")
 
 

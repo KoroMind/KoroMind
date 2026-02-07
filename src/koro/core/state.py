@@ -239,6 +239,28 @@ class StateManager:
                 for row in rows
             ]
 
+    async def get_session_item(
+        self, user_id: str, session_id: str
+    ) -> SessionStateItem | None:
+        """Get a single typed session by ID for a user."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id, name, is_current
+                FROM sessions
+                WHERE user_id = ? AND id = ?
+                LIMIT 1
+                """,
+                (user_id, session_id),
+            ).fetchone()
+            if row is None:
+                return None
+            return SessionStateItem(
+                id=row["id"],
+                name=row["name"],
+                is_current=bool(row["is_current"]),
+            )
+
     async def get_session_state(
         self, user_id: str, limit: int | None = None
     ) -> UserSessionState:
@@ -588,121 +610,6 @@ class StateManager:
                 (user_id,),
             ).fetchall()
             return [row["key"] for row in rows]
-
-    # Backward Compatibility Methods
-
-    def get_user_state(self, user_id: int) -> dict:
-        """
-        Get user session state in legacy format.
-
-        Deprecated: Use async methods instead.
-        """
-        user_id_str = str(user_id)
-        with self._get_connection() as conn:
-            # Get current session
-            current_row = conn.execute(
-                "SELECT id FROM sessions WHERE user_id = ? AND is_current = 1",
-                (user_id_str,),
-            ).fetchone()
-
-            # Get all sessions
-            session_rows = conn.execute(
-                "SELECT id FROM sessions WHERE user_id = ? ORDER BY last_active DESC",
-                (user_id_str,),
-            ).fetchall()
-
-            return {
-                "current_session": current_row["id"] if current_row else None,
-                "sessions": [row["id"] for row in session_rows],
-            }
-
-    def get_user_settings(self, user_id: int) -> UserSettings:
-        """
-        Get user settings.
-
-        Deprecated: Use async get_settings instead.
-        """
-        user_id_str = str(user_id)
-        with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT mode, audio_enabled, voice_speed, watch_enabled, model FROM settings WHERE user_id = ?",
-                (user_id_str,),
-            ).fetchone()
-
-            if row:
-                return UserSettings(
-                    mode=Mode(row["mode"]),
-                    audio_enabled=bool(row["audio_enabled"]),
-                    voice_speed=row["voice_speed"],
-                    watch_enabled=bool(row["watch_enabled"]),
-                    model=row["model"] or "",
-                )
-
-            # Create default settings
-            default_settings = UserSettings()
-            conn.execute(
-                """
-                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    user_id_str,
-                    default_settings.mode.value,
-                    1 if default_settings.audio_enabled else 0,
-                    default_settings.voice_speed,
-                    1 if default_settings.watch_enabled else 0,
-                    default_settings.model,
-                ),
-            )
-            return default_settings
-
-    def update_setting(self, user_id: int, key: str, value) -> None:
-        """
-        Update a single setting.
-
-        Deprecated: Use async update_settings instead.
-        """
-        user_id_str = str(user_id)
-        # Ensure user has settings
-        self.get_user_settings(user_id)
-
-        if key not in {
-            "mode",
-            "audio_enabled",
-            "voice_speed",
-            "watch_enabled",
-            "model",
-        }:
-            return
-
-        with self._get_connection() as conn:
-            if key in ("audio_enabled", "watch_enabled"):
-                value = 1 if value else 0
-            if key == "mode":
-                conn.execute(
-                    "UPDATE settings SET mode = ? WHERE user_id = ?",
-                    (value, user_id_str),
-                )
-            elif key == "audio_enabled":
-                conn.execute(
-                    "UPDATE settings SET audio_enabled = ? WHERE user_id = ?",
-                    (value, user_id_str),
-                )
-            elif key == "voice_speed":
-                conn.execute(
-                    "UPDATE settings SET voice_speed = ? WHERE user_id = ?",
-                    (value, user_id_str),
-                )
-            elif key == "watch_enabled":
-                conn.execute(
-                    "UPDATE settings SET watch_enabled = ? WHERE user_id = ?",
-                    (value, user_id_str),
-                )
-            elif key == "model":
-                conn.execute(
-                    "UPDATE settings SET model = ? WHERE user_id = ?",
-                    (value, user_id_str),
-                )
 
 
 # Default instance

@@ -3,13 +3,13 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from koro.config import ALLOWED_CHAT_ID
 from koro.interfaces.telegram.handlers.commands import _session_label
 from koro.interfaces.telegram.handlers.messages import pending_approvals
-from koro.interfaces.telegram.handlers.utils import debug, should_handle_message
+from koro.interfaces.telegram.handlers.utils import authorized_handler, debug
 from koro.state import get_state_manager
 
 
+@authorized_handler
 async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle settings button callbacks."""
     query = update.callback_query
@@ -94,6 +94,7 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
 
+@authorized_handler
 async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle approval/rejection button callbacks."""
     query = update.callback_query
@@ -134,18 +135,11 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
             await query.edit_message_text("Approval expired")
 
 
+@authorized_handler
 async def handle_switch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle session switch button callbacks."""
     query = update.callback_query
     callback_data = query.data
-
-    if not should_handle_message(getattr(query.message, "message_thread_id", None)):
-        await query.answer()
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        await query.answer()
-        return
 
     if not callback_data.startswith("switch_"):
         await query.answer()

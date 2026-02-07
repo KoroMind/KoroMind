@@ -11,6 +11,7 @@ from koro.claude import format_tool_call, get_claude_client
 from koro.config import ALLOWED_CHAT_ID
 from koro.core.types import Mode, QueryConfig, UserSessionState, UserSettings
 from koro.interfaces.telegram.handlers.utils import (
+    authorized_handler,
     debug,
     send_long_message,
     should_handle_message,
@@ -71,18 +72,13 @@ def cleanup_stale_approvals(max_age_seconds: int = 300) -> None:
         del pending_approvals[approval_id]
 
 
+@authorized_handler
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming voice messages."""
     if update.effective_user.is_bot is True:
         return
 
     debug(f"VOICE received from user {update.effective_user.id}")
-
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
 
     user_id = str(update.effective_user.id)
 
@@ -146,18 +142,13 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await stop_chat_action(typing_task)
 
 
+@authorized_handler
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages."""
     if update.effective_user.is_bot is True:
         return
 
     debug(f"TEXT received: '{update.message.text[:50]}'")
-
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
 
     user_id = str(update.effective_user.id)
 

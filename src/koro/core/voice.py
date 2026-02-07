@@ -2,6 +2,7 @@
 
 import asyncio
 from io import BytesIO
+from threading import Lock
 
 from elevenlabs.client import ElevenLabs
 from elevenlabs.core import ApiError
@@ -65,7 +66,7 @@ class VoiceEngine:
             transcription = await asyncio.to_thread(_transcribe_sync)
             return transcription.text
         except ApiError as exc:
-            return f"Error: {exc}"
+            raise VoiceTranscriptionError(f"ElevenLabs API error: {exc}") from exc
         except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
 
@@ -109,7 +110,9 @@ class VoiceEngine:
                     audio_buffer.write(chunk)
             audio_buffer.seek(0)
             return audio_buffer
-        except Exception:
+        except ApiError:
+            return None
+        except (RuntimeError, ValueError, TypeError):
             return None
 
     def health_check(self) -> tuple[bool, str]:
@@ -136,13 +139,16 @@ class VoiceEngine:
 
 # Default instance
 _voice_engine: VoiceEngine | None = None
+_voice_engine_lock = Lock()
 
 
 def get_voice_engine() -> VoiceEngine:
     """Get or create the default voice engine instance."""
     global _voice_engine
     if _voice_engine is None:
-        _voice_engine = VoiceEngine(api_key=ELEVENLABS_API_KEY)
+        with _voice_engine_lock:
+            if _voice_engine is None:
+                _voice_engine = VoiceEngine(api_key=ELEVENLABS_API_KEY)
     return _voice_engine
 
 

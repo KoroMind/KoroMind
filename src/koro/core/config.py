@@ -87,13 +87,12 @@ KOROMIND_API_KEY = get_env("KOROMIND_API_KEY")
 KOROMIND_HOST = get_env("KOROMIND_HOST", "127.0.0.1")
 KOROMIND_PORT = get_env_int("KOROMIND_PORT", 8420)
 KOROMIND_ALLOW_NO_AUTH = get_env_bool("KOROMIND_ALLOW_NO_AUTH", False)
+_cors_origins_raw = get_env("KOROMIND_CORS_ORIGINS")
+if _cors_origins_raw is None:
+    _cors_origins_raw = "http://localhost:3000"
+
 KOROMIND_CORS_ORIGINS = [
-    origin.strip()
-    for origin in (
-        get_env("KOROMIND_CORS_ORIGINS", "http://localhost:3000")
-        or "http://localhost:3000"
-    ).split(",")
-    if origin.strip()
+    origin.strip() for origin in _cors_origins_raw.split(",") if origin.strip()
 ]
 
 # Legacy paths (for backward compatibility during migration)

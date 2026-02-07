@@ -64,9 +64,10 @@ def run_server():
     """Run the API server."""
     import uvicorn
 
+    host = KOROMIND_HOST or "127.0.0.1"
     uvicorn.run(
         "koro.api.app:app",
-        host=KOROMIND_HOST,
+        host=host,
         port=KOROMIND_PORT,
         reload=False,
     )

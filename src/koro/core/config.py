@@ -107,7 +107,7 @@ def setup_logging() -> logging.Logger:
     """Configure and return logger."""
     logging.basicConfig(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
+        level=getattr(logging, (LOG_LEVEL or "INFO").upper(), logging.INFO),
     )
     return logging.getLogger(__name__)
 

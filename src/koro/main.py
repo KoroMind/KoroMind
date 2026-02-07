@@ -62,7 +62,7 @@ Examples:
 
         from koro.core.config import KOROMIND_HOST, KOROMIND_PORT
 
-        host = args.host or KOROMIND_HOST
+        host = args.host or KOROMIND_HOST or "127.0.0.1"
         port = args.port or KOROMIND_PORT
 
         print(f"Starting KoroMind API server on {host}:{port}")

@@ -94,6 +94,11 @@ def run_telegram_bot():
     if message:
         print(f"WARNING: {message}")
 
+    bot_token = TELEGRAM_BOT_TOKEN
+    if not bot_token:
+        print("ERROR: Missing TELEGRAM_BOT_TOKEN.")
+        raise SystemExit(1)
+
     # Check Claude auth
     is_auth, auth_method = check_claude_auth()
     if not is_auth:
@@ -140,7 +145,7 @@ def run_telegram_bot():
     # Build application with concurrent updates for approve mode
     app = (
         ApplicationBuilder()
-        .token(TELEGRAM_BOT_TOKEN)
+        .token(bot_token)
         .concurrent_updates(True)
         .post_init(_post_init)
         .build()
@@ -175,14 +180,15 @@ def run_telegram_bot():
     app.add_error_handler(error_handler)
 
     # Ensure sandbox exists
-    Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)
+    sandbox_dir = SANDBOX_DIR or str(Path.home() / "claude-voice-sandbox")
+    Path(sandbox_dir).mkdir(parents=True, exist_ok=True)
 
     # Startup info
     debug("Bot starting...")
     debug(f"Persona: {PERSONA_NAME}")
     debug(f"Voice ID: {ELEVENLABS_VOICE_ID}")
     debug("TTS: eleven_turbo_v2_5 with expressive settings")
-    debug(f"Sandbox: {SANDBOX_DIR}")
+    debug(f"Sandbox: {sandbox_dir}")
     debug(f"Read access: {CLAUDE_WORKING_DIR}")
     debug(f"Chat ID: {ALLOWED_CHAT_ID}")
     debug(f"Topic ID: {TOPIC_ID or 'ALL (no filter)'}")

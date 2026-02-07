@@ -410,7 +410,17 @@ class StateManager:
                     (user_id,),
                 ).fetchone()
                 if pending_row and pending_row["pending_session_name"]:
-                    pending_name = pending_row["pending_session_name"].strip() or None
+                    candidate_name = pending_row["pending_session_name"]
+                    consumed = conn.execute(
+                        """
+                        UPDATE settings
+                        SET pending_session_name = NULL
+                        WHERE user_id = ? AND pending_session_name = ?
+                        """,
+                        (user_id, candidate_name),
+                    )
+                    if consumed.rowcount == 1:
+                        pending_name = candidate_name.strip() or None
 
             # Check if session exists
             existing = conn.execute(
@@ -460,7 +470,7 @@ class StateManager:
                     (user_id, user_id, MAX_SESSIONS),
                 )
 
-            if requested_name or pending_name:
+            if requested_name:
                 conn.execute(
                     "UPDATE settings SET pending_session_name = NULL WHERE user_id = ?",
                     (user_id,),

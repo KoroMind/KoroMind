@@ -3,8 +3,8 @@ id: SVC-005
 type: service
 status: active
 severity: high
-issue: null
-validated: 2026-01-29
+issue: 39
+validated: 2026-02-06
 ---
 
 # Telegram Interface
@@ -26,14 +26,23 @@ validated: 2026-01-29
 ### Commands
 | Command | Purpose |
 |---------|---------|
-| `/new` | Create new session |
+| `/new [name]` | Stage a new session (optional name) |
 | `/sessions` | List sessions |
-| `/switch <id>` | Switch session |
+| `/switch <name|id>` | Switch session by name or id prefix |
 | `/model [name]` | Show or set model |
 | `/settings` | Settings menu (inline keyboard) |
 | `/status` | Current session info |
 | `/health` | System health check |
 | `/setup` | Configure credentials |
+
+### Session UX Semantics
+- `/new [name]` clears current session and stages optional name for the next Claude session ID
+- `/sessions` shows recent sessions with `(current)` marker and optional pending new-session label
+- `/switch` resolves in this order:
+  - exact name match
+  - unique name prefix
+  - unique id prefix
+- Ambiguous matches return a disambiguation message
 
 ### Message Handling
 - **Voice**: Transcribe via VoiceEngine → Brain → TTS response
@@ -60,6 +69,10 @@ validated: 2026-01-29
 - Commands work in correct topic only
 
 ## Changelog
+
+### 2026-02-06
+- Updated session command semantics and matching rules (`/new`, `/sessions`, `/switch`)
+- Session listings now include explicit current marker and pending new-session visibility
 
 ### 2026-01-29
 - Initial spec from codebase exploration

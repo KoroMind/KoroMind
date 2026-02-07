@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 from koro.auth import check_claude_auth, load_credentials, save_credentials
 from koro.claude import get_claude_client
 from koro.config import ALLOWED_CHAT_ID, SANDBOX_DIR
+from koro.core.types import SessionStateItem, UserSessionState
 from koro.interfaces.telegram.handlers.utils import debug, should_handle_message
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
@@ -27,7 +28,7 @@ def _format_command_help() -> str:
                 ("/new [name]", "Start new session"),
                 ("/continue", "Resume last session"),
                 ("/sessions", "List recent sessions"),
-                ("/switch <id>", "Switch to session"),
+                ("/switch <name|id>", "Switch to session"),
                 ("/status", "Current session info"),
             ],
         ),
@@ -63,22 +64,77 @@ def _format_command_help() -> str:
     return "\n".join(lines)
 
 
-def _format_sessions(state: dict, limit: int = 10) -> str:
-    sessions = state.get("sessions") or []
+def _session_label(session: SessionStateItem) -> str:
+    """Human-friendly display label for a session."""
+    short_id = session.id[:8]
+    return session.name if session.name else short_id
+
+
+def _session_button_label(session: SessionStateItem) -> str:
+    """Compact label used in session picker buttons."""
+    short_id = session.id[:8]
+    if session.name:
+        return f"{session.name} ({short_id})"
+    return short_id
+
+
+def _switch_picker_markup(
+    sessions: list[SessionStateItem], limit: int = 10
+) -> InlineKeyboardMarkup:
+    """Build inline keyboard for session selection."""
+    rows = [
+        [
+            InlineKeyboardButton(
+                _session_button_label(session), callback_data=f"switch_{session.id}"
+            )
+        ]
+        for session in sessions[:limit]
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def _format_sessions(state: UserSessionState, limit: int = 10) -> str:
+    sessions = state.sessions[:limit]
     if not sessions:
+        if state.pending_session_name:
+            return (
+                f"No sessions yet.\nPending new session: {state.pending_session_name}"
+            )
         return "No sessions yet."
 
-    current = state.get("current_session")
-    recent = list(reversed(sessions[-limit:]))
-    lines = ["Sessions (recent):"]
-    for idx, sess in enumerate(recent, 1):
-        marker = " (current)" if sess == current else ""
-        lines.append(f"{idx}. {sess[:8]}...{marker}")
+    lines = [f"Sessions ({len(sessions)}):"]
+    for idx, sess in enumerate(sessions, 1):
+        marker = " (👈 current)" if sess.is_current else ""
+        if sess.name:
+            lines.append(f"{idx}. {sess.id[:8]} [{sess.name}] {marker}")
+        else:
+            lines.append(f"{idx}. {sess.id[:8]}{marker}")
+
+    if state.pending_session_name:
+        lines.append("")
+        lines.append(f"Pending new session: {state.pending_session_name}")
+
+    lines.append("")
+    lines.append("Use /switch <name|id-prefix> to switch.")
     return "\n".join(lines)
 
 
-def _switch_usage() -> str:
-    return "Usage: /switch <session_id>"
+def _resolve_session(
+    sessions: list[SessionStateItem], query: str
+) -> tuple[SessionStateItem | None, list[SessionStateItem]]:
+    """Resolve a session query by exact name, then name prefix, then ID prefix."""
+    lower_query = query.lower()
+    candidate_lists = [
+        [s for s in sessions if s.name and s.name.lower() == lower_query],
+        [s for s in sessions if s.name and s.name.lower().startswith(lower_query)],
+        [s for s in sessions if s.id.startswith(query)],
+    ]
+    for matches in candidate_lists:
+        if len(matches) == 1:
+            return matches[0], []
+        if matches:
+            return None, matches
+    return None, []
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,14 +159,18 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
 
-    session_name = " ".join(context.args) if context.args else None
-    await state_manager.clear_current_session(str(user_id))
+    session_name = " ".join(context.args).strip() if context.args else None
+    session_name = session_name or None
+    await state_manager.clear_current_session(user_id)
+    await state_manager.set_pending_session_name(user_id, session_name)
 
     if session_name:
-        await update.message.reply_text(f"New session started: {session_name}")
+        await update.message.reply_text(
+            f"New session selected: {session_name}\n" "Your next message will start it."
+        )
     else:
         await update.message.reply_text(
-            "New session started. Send a voice message to begin."
+            "New session selected. Your next message will start it."
         )
 
 
@@ -124,12 +184,12 @@ async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
+    state = await state_manager.get_session_state(user_id, limit=1)
 
-    if state["current_session"]:
-        await update.message.reply_text(
-            f"Continuing session: {state['current_session'][:8]}..."
-        )
+    if state.current_session_id:
+        current = next((s for s in state.sessions if s.is_current), None)
+        label = _session_label(current) if current else state.current_session_id[:8]
+        await update.message.reply_text(f"Continuing session: {label}")
     else:
         await update.message.reply_text(
             "No previous session. Send a voice message to start."
@@ -146,18 +206,8 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
-
-    if not state["sessions"]:
-        await update.message.reply_text("No sessions yet.")
-        return
-
-    msg = "Sessions:\n"
-    for i, sess in enumerate(state["sessions"][-10:], 1):
-        current = " (current)" if sess == state["current_session"] else ""
-        msg += f"{i}. {sess}{current}\n"
-
-    await update.message.reply_text(msg)
+    state = await state_manager.get_session_state(user_id, limit=10)
+    await update.message.reply_text(_format_sessions(state))
 
 
 async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -170,24 +220,33 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
+    state = await state_manager.get_session_state(user_id)
     if not context.args:
-        if not state["sessions"]:
+        if not state.sessions:
             await update.message.reply_text("No sessions yet.")
         else:
-            await update.message.reply_text("Usage: /switch <session_id>")
+            await update.message.reply_text(
+                "Select a session to switch:",
+                reply_markup=_switch_picker_markup(state.sessions),
+            )
         return
-    session_id = context.args[0]
+    query = " ".join(context.args).strip()
+    target, matches = _resolve_session(state.sessions, query)
 
-    matches = [s for s in state["sessions"] if s.startswith(session_id)]
-
-    if len(matches) == 1:
-        await state_manager.update_session(str(user_id), matches[0])
-        await update.message.reply_text(f"Switched to session: {matches[0][:8]}...")
-    elif len(matches) > 1:
-        await update.message.reply_text("Multiple matches. Be more specific.")
+    if target:
+        await state_manager.set_current_session(user_id, target.id)
+        await state_manager.set_pending_session_name(user_id, None)
+        await update.message.reply_text(
+            f"Switched to session: {_session_label(target)}"
+        )
+    elif matches:
+        options = ", ".join(_session_label(match) for match in matches[:5])
+        await update.message.reply_text(
+            f"Multiple matches. Pick one below or be more specific.\nMatches: {options}",
+            reply_markup=_switch_picker_markup(matches),
+        )
     else:
-        await update.message.reply_text(f"Session not found: {session_id}")
+        await update.message.reply_text(f"Session not found: {query}")
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -200,17 +259,22 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
+    state = await state_manager.get_session_state(user_id)
 
-    if state["current_session"]:
+    if state.current_session_id:
+        current = next((s for s in state.sessions if s.is_current), None)
+        current_label = (
+            _session_label(current) if current else state.current_session_id[:8]
+        )
         await update.message.reply_text(
-            f"Current session: {state['current_session'][:8]}...\n"
-            f"Total sessions: {len(state['sessions'])}"
+            f"Current session: {current_label}\n"
+            f"Total sessions: {len(state.sessions)}"
         )
     else:
-        await update.message.reply_text(
-            "No active session. Send a voice message or /new to start."
-        )
+        msg = "No active session. Send a message or /new to start."
+        if state.pending_session_name:
+            msg += f"\nPending new session: {state.pending_session_name}"
+        await update.message.reply_text(msg)
 
 
 async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -239,11 +303,10 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Session info
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
-    status.append(f"\nSessions: {len(state['sessions'])}")
-    status.append(
-        f"Current: {state['current_session'][:8] if state['current_session'] else 'None'}..."
-    )
+    state = await state_manager.get_session_state(user_id)
+    status.append(f"\nSessions: {len(state.sessions)}")
+    current = next((s for s in state.sessions if s.is_current), None)
+    status.append(f"Current: {_session_label(current) if current else 'None'}")
 
     # Sandbox info
     status.append(f"\nSandbox: {SANDBOX_DIR}")
@@ -267,7 +330,7 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    settings = state_manager.get_user_settings(user_id)
+    settings = await state_manager.get_settings(user_id)
 
     audio_status = "ON" if settings.audio_enabled else "OFF"
     speed = settings.voice_speed
@@ -324,7 +387,7 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state_manager = get_state_manager()
 
     if not context.args:
-        settings = state_manager.get_user_settings(user_id)
+        settings = await state_manager.get_settings(user_id)
         current = settings.model or "default"
         message = (
             f"Current model: {current}\n\n"
@@ -337,11 +400,11 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     model = " ".join(context.args).strip()
     if model.lower() == "default":
-        state_manager.update_setting(user_id, "model", "")
+        await state_manager.update_settings(user_id, model="")
         await update.message.reply_text("Model set to default.")
         return
 
-    state_manager.update_setting(user_id, "model", model)
+    await state_manager.update_settings(user_id, model=model)
     await update.message.reply_text(f"Model set to: {model}")
 
 

@@ -4,6 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from koro.config import ALLOWED_CHAT_ID
+from koro.interfaces.telegram.handlers.commands import _session_label
 from koro.interfaces.telegram.handlers.messages import pending_approvals
 from koro.interfaces.telegram.handlers.utils import debug, should_handle_message
 from koro.state import get_state_manager
@@ -16,21 +17,21 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
 
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    settings = state_manager.get_user_settings(user_id)
+    settings = await state_manager.get_settings(user_id)
     callback_data = query.data
 
     if callback_data == "setting_audio_toggle":
-        state_manager.update_setting(
-            user_id, "audio_enabled", not settings.audio_enabled
+        await state_manager.update_settings(
+            user_id, audio_enabled=not settings.audio_enabled
         )
 
     elif callback_data == "setting_mode_toggle":
         new_mode = "approve" if settings.mode.value == "go_all" else "go_all"
-        state_manager.update_setting(user_id, "mode", new_mode)
+        await state_manager.update_settings(user_id, mode=new_mode)
 
     elif callback_data == "setting_watch_toggle":
-        state_manager.update_setting(
-            user_id, "watch_enabled", not settings.watch_enabled
+        await state_manager.update_settings(
+            user_id, watch_enabled=not settings.watch_enabled
         )
 
     elif callback_data.startswith("setting_speed_"):
@@ -43,10 +44,10 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
             await query.answer("Invalid speed value")
             return
 
-        state_manager.update_setting(user_id, "voice_speed", speed)
+        await state_manager.update_settings(user_id, voice_speed=speed)
 
     # Re-fetch updated settings
-    settings = state_manager.get_user_settings(user_id)
+    settings = await state_manager.get_settings(user_id)
 
     # Build updated menu
     audio_status = "ON" if settings.audio_enabled else "OFF"
@@ -153,13 +154,14 @@ async def handle_switch_callback(update: Update, context: ContextTypes.DEFAULT_T
     session_id = callback_data.replace("switch_", "", 1)
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
-    state = state_manager.get_user_state(user_id)
+    target = await state_manager.get_session_item(user_id, session_id)
 
-    if session_id not in state.get("sessions", []):
+    if target is None:
         await query.edit_message_text("Session not found. Use /sessions to list.")
         await query.answer()
         return
 
-    await state_manager.update_session(user_id, session_id)
-    await query.edit_message_text(f"Switched to session: {session_id[:8]}...")
+    await state_manager.set_current_session(user_id, session_id)
+    await state_manager.set_pending_session_name(user_id, None)
+    await query.edit_message_text(f"Switched to session: {_session_label(target)}")
     await query.answer()

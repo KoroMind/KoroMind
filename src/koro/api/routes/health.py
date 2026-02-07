@@ -1,5 +1,7 @@
 """Health check endpoints."""
 
+from typing import Any
+
 from fastapi import APIRouter
 
 from koro.core.brain import get_brain
@@ -8,7 +10,7 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health_check() -> dict:
+async def health_check() -> dict[str, Any]:
     """
     Check the health of all KoroMind components.
 
@@ -31,7 +33,7 @@ async def health_check() -> dict:
 
 
 @router.get("/health/live")
-async def liveness_check() -> dict:
+async def liveness_check() -> dict[str, str]:
     """
     Kubernetes-style liveness probe.
 
@@ -42,7 +44,7 @@ async def liveness_check() -> dict:
 
 
 @router.get("/health/ready")
-async def readiness_check() -> dict:
+async def readiness_check() -> dict[str, Any]:
     """
     Kubernetes-style readiness probe.
 

@@ -23,7 +23,7 @@ app = typer.Typer(
 console = Console()
 
 
-def print_welcome():
+def print_welcome() -> None:
     """Print welcome message."""
     console.print(
         Panel.fit(
@@ -37,7 +37,7 @@ def print_welcome():
     )
 
 
-def print_help():
+def print_help() -> None:
     """Print help message."""
     table = Table(title="Commands", show_header=True, header_style="bold cyan")
     table.add_column("Command", style="green")
@@ -194,7 +194,7 @@ async def handle_command(brain: Brain, user_id: str, command: str) -> bool:
     return True
 
 
-async def process_message(brain: Brain, user_id: str, text: str):
+async def process_message(brain: Brain, user_id: str, text: str) -> None:
     """Process a user message and display the response."""
     settings = await brain.get_settings(user_id)
 
@@ -227,7 +227,7 @@ async def process_message(brain: Brain, user_id: str, text: str):
     console.print()
 
 
-async def repl(user_id: str):
+async def repl(user_id: str) -> None:
     """Run the REPL (Read-Eval-Print Loop)."""
     brain = Brain()
 
@@ -274,14 +274,14 @@ def chat(
         "-u",
         help="User ID (defaults to 'cli-user')",
     ),
-):
+) -> None:
     """Start an interactive chat session."""
     uid = user_id or "cli-user"
     asyncio.run(repl(uid))
 
 
 @app.command()
-def health():
+def health() -> None:
     """Check system health."""
     brain = Brain()
     health_status = brain.health_check()
@@ -310,10 +310,10 @@ def sessions(
         "-u",
         help="User ID (defaults to 'cli-user')",
     ),
-):
+) -> None:
     """List all sessions for a user."""
 
-    async def _list():
+    async def _list() -> None:
         brain = Brain()
         uid = user_id or "cli-user"
         sess_list = await brain.get_sessions(uid)
@@ -347,14 +347,14 @@ def sessions(
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context):
+def main(ctx: typer.Context) -> None:
     """KoroMind CLI - Your Personal AI Assistant."""
     if ctx.invoked_subcommand is None:
         # Default to chat
         chat()
 
 
-def run_cli():
+def run_cli() -> None:
     """Entry point for the CLI."""
     app()
 

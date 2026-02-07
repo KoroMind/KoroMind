@@ -2,10 +2,11 @@
 
 import asyncio
 from io import BytesIO
+from typing import Any
 
 from elevenlabs.client import ElevenLabs
 from elevenlabs.core import ApiError
-from elevenlabs.types import VoiceSettings
+from elevenlabs.types import SpeechToTextChunkResponseModel, VoiceSettings
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
@@ -54,9 +55,10 @@ class VoiceEngine:
         """
         if not self.client:
             raise VoiceNotConfiguredError("ElevenLabs not configured")
+        client = self.client
 
-        def _transcribe_sync():
-            return self.client.speech_to_text.convert(
+        def _transcribe_sync() -> SpeechToTextChunkResponseModel:
+            return client.speech_to_text.convert(
                 file=BytesIO(voice_bytes),
                 model_id="scribe_v1",
                 language_code="en",
@@ -85,11 +87,12 @@ class VoiceEngine:
         """
         if not self.client:
             return None
+        client = self.client
 
         actual_speed = speed if speed is not None else VOICE_SETTINGS["speed"]
 
-        def _tts_sync():
-            return self.client.text_to_speech.convert(
+        def _tts_sync() -> Any:
+            return client.text_to_speech.convert(
                 text=text,
                 voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
                 model_id="eleven_turbo_v2_5",

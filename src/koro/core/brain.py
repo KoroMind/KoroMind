@@ -113,7 +113,7 @@ class Brain:
         watch_enabled: bool = False,
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a message and return response.
@@ -168,7 +168,7 @@ class Brain:
         )
 
         # Tool call tracking wrapper
-        async def _on_tool_call(tool_name: str, detail: str | None):
+        async def _on_tool_call(tool_name: str, detail: str | None) -> None:
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if on_tool_call and watch_enabled:
                 await on_tool_call(tool_name, detail)
@@ -225,7 +225,7 @@ class Brain:
         mode: Mode,
         on_tool_call: OnToolCall | None,
         can_use_tool: CanUseTool | None,
-        **kwargs,
+        **kwargs: Any,
     ) -> QueryConfig:
         config_kwargs: dict[str, Any] = {
             "prompt": prompt,
@@ -273,7 +273,7 @@ class Brain:
         watch_enabled: bool = False,
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[StreamedEvent]:
         """
         Process a message and yield streaming events.
@@ -350,7 +350,7 @@ class Brain:
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
         voice_speed: float = 1.1,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a text message (convenience method).
@@ -374,7 +374,7 @@ class Brain:
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
         voice_speed: float = 1.1,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a voice message (convenience method).
@@ -414,7 +414,7 @@ class Brain:
         """Get settings for a user."""
         return await self.state_manager.get_settings(user_id)
 
-    async def update_settings(self, user_id: str, **kwargs) -> UserSettings:
+    async def update_settings(self, user_id: str, **kwargs: object) -> UserSettings:
         """Update settings for a user."""
         return await self.state_manager.update_settings(user_id, **kwargs)
 

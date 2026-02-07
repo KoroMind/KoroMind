@@ -3,6 +3,7 @@
 import asyncio
 import time
 import uuid
+from typing import Any
 
 from telegram import (
     Chat,
@@ -29,7 +30,7 @@ from koro.state import get_state_manager
 from koro.voice import VoiceError, get_voice_engine
 
 # Pending tool approvals for approve mode
-pending_approvals: dict = {}
+pending_approvals: dict[str, dict[str, Any]] = {}
 
 # Maximum number of pending approvals to prevent memory leaks
 MAX_PENDING_APPROVALS = 100
@@ -45,7 +46,7 @@ def _extract_update_context(update: Update) -> tuple[Message, Chat, User] | None
     return message, chat, user
 
 
-def add_pending_approval(approval_id: str, data: dict) -> None:
+def add_pending_approval(approval_id: str, data: dict[str, Any]) -> None:
     """
     Add a pending approval with automatic cleanup of old entries.
 
@@ -88,7 +89,7 @@ def cleanup_stale_approvals(max_age_seconds: int = 300) -> None:
         del pending_approvals[approval_id]
 
 
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle incoming voice messages."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -172,7 +173,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await stop_chat_action(typing_task)
 
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle text messages."""
     update_ctx = _extract_update_context(update)
     if update_ctx is None:
@@ -242,7 +243,7 @@ async def _call_claude_with_settings(
     user_id: str,
     message: Message,
     context: ContextTypes.DEFAULT_TYPE,
-) -> tuple[str, str, dict]:
+) -> tuple[str, str, dict[str, Any]]:
     """
     Call Claude with user settings applied.
 
@@ -262,7 +263,7 @@ async def _call_claude_with_settings(
     continue_last = False
 
     # Watch mode callback
-    async def on_tool_call(tool_name: str, detail: str | None):
+    async def on_tool_call(tool_name: str, detail: str | None) -> None:
         if watch_enabled:
             tool_msg = f"{tool_name}: {detail}" if detail else f"Using: {tool_name}"
             try:
@@ -271,7 +272,7 @@ async def _call_claude_with_settings(
                 debug(f"Failed to send tool call update: {exc}")
 
     # Approve mode callback
-    async def can_use_tool(tool_name: str, tool_input: dict, ctx):
+    async def can_use_tool(tool_name: str, tool_input: dict[str, Any], ctx: Any) -> Any:
         from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
 
         if mode != Mode.APPROVE:

@@ -5,6 +5,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 from koro.core.config import CREDENTIALS_FILE
 
@@ -46,18 +47,20 @@ def check_claude_auth() -> tuple[bool, str]:
     return False, "none"
 
 
-def load_credentials() -> dict:
+def load_credentials() -> dict[str, str]:
     """Load saved credentials from file."""
     if CREDENTIALS_FILE.exists():
         try:
             with open(CREDENTIALS_FILE) as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return {str(k): str(v) for k, v in data.items()}
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug("Failed to load credentials file: %s", exc)
     return {}
 
 
-def save_credentials(creds: dict) -> None:
+def save_credentials(creds: dict[str, Any]) -> None:
     """Save credentials to file with secure permissions from creation."""
     # Use os.open to create file with correct permissions atomically
     fd = os.open(CREDENTIALS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

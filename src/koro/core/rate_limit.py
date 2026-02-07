@@ -2,21 +2,12 @@
 
 import sqlite3
 import time
-from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
-from typing import TypedDict
+from typing import Generator
 
 from koro.core.config import DATABASE_PATH, RATE_LIMIT_PER_MINUTE, RATE_LIMIT_SECONDS
-
-
-class UserLimitState(TypedDict):
-    """Per-user rate limit state persisted in-memory and SQLite."""
-
-    last_message: float | None
-    minute_start: float
-    minute_count: int
 
 
 class RateLimiter:
@@ -24,8 +15,8 @@ class RateLimiter:
 
     def __init__(
         self,
-        cooldown_seconds: float | None = None,
-        per_minute_limit: int | None = None,
+        cooldown_seconds: float = None,
+        per_minute_limit: int = None,
         db_path: Path | str | None = None,
     ):
         """
@@ -43,7 +34,9 @@ class RateLimiter:
             RATE_LIMIT_PER_MINUTE if per_minute_limit is None else per_minute_limit
         )
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
-        self.user_limits: dict[str, UserLimitState] = {}
+        self.user_limits: dict[str, dict] = {}
+        self._connection: sqlite3.Connection | None = None
+        self._lock = Lock()
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
@@ -58,16 +51,29 @@ class RateLimiter:
                 """)
 
     @contextmanager
-    def _get_connection(self) -> Iterator[sqlite3.Connection]:
-        conn: sqlite3.Connection = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Get a reusable database connection with thread safety."""
+        with self._lock:
+            if self._connection is None:
+                self._connection = sqlite3.connect(
+                    self.db_path, check_same_thread=False
+                )
+                self._connection.row_factory = sqlite3.Row
+            try:
+                yield self._connection
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
 
-    def _load_limits(self, user_id: str) -> UserLimitState | None:
+    def close(self) -> None:
+        """Close the shared database connection."""
+        with self._lock:
+            if self._connection is not None:
+                self._connection.close()
+                self._connection = None
+
+    def _load_limits(self, user_id: str) -> dict | None:
         with self._get_connection() as conn:
             row = conn.execute(
                 """
@@ -85,7 +91,7 @@ class RateLimiter:
             "minute_count": row["minute_count"],
         }
 
-    def _save_limits(self, user_id: str, limits: "UserLimitState") -> None:
+    def _save_limits(self, user_id: str, limits: dict) -> None:
         with self._get_connection() as conn:
             conn.execute(
                 """
@@ -117,6 +123,13 @@ class RateLimiter:
         now = time.time()
         user_id_str = str(user_id)
 
+        with self._lock:
+            if user_id_str not in self.user_limits:
+                # Release lock temporarily for DB I/O, then re-acquire
+                pass
+
+        # Load from DB if not cached (outside the fast-path lock to avoid
+        # holding it during I/O, but the _get_connection lock serialises DB)
         if user_id_str not in self.user_limits:
             limits = self._load_limits(user_id_str)
             if limits is None:
@@ -161,8 +174,7 @@ class RateLimiter:
     def reset(self, user_id: int | str) -> None:
         """Reset rate limits for a user."""
         user_id_str = str(user_id)
-        if user_id_str in self.user_limits:
-            del self.user_limits[user_id_str]
+        self.user_limits.pop(user_id_str, None)
         with self._get_connection() as conn:
             conn.execute("DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,))
 

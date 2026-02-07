@@ -1,14 +1,12 @@
 """Utility functions for Telegram handlers."""
 
 import asyncio
+import functools
 from datetime import datetime
-from typing import Any
 
-from telegram import Message, Update
 from telegram.constants import ChatAction
-from telegram.ext import ContextTypes
 
-from koro.config import TOPIC_ID
+from koro.config import ALLOWED_CHAT_ID, TOPIC_ID
 
 
 def debug(msg: str) -> None:
@@ -42,31 +40,42 @@ def should_handle_message(message_thread_id: int | None) -> bool:
     return message_thread_id == allowed_topic
 
 
-async def _chat_action_loop(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    action: str,
-    interval: float,
-) -> None:
+def authorized_handler(handler):
+    """
+    Decorator that checks topic filtering and chat authorization.
+
+    Extracts the duplicated pattern:
+        if not should_handle_message(update.message.message_thread_id): return
+        if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID: return
+    """
+
+    @functools.wraps(handler)
+    async def wrapper(update, context, *args, **kwargs):
+        if not should_handle_message(update.message.message_thread_id):
+            return
+        if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+            return
+        return await handler(update, context, *args, **kwargs)
+
+    return wrapper
+
+
+async def _chat_action_loop(update, context, action: str, interval: float) -> None:
     """Continuously send a chat action until cancelled."""
-    if update.effective_chat is None:
-        return
     chat_id = update.effective_chat.id
     while True:
         await context.bot.send_chat_action(chat_id=chat_id, action=action)
         await asyncio.sleep(interval)
 
 
-def start_chat_action(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, interval: float = 4.0
-) -> asyncio.Task[Any]:
+def start_chat_action(update, context, interval: float = 4.0) -> asyncio.Task:
     """Start sending 'typing' chat actions periodically."""
     return asyncio.create_task(
         _chat_action_loop(update, context, ChatAction.TYPING, interval)
     )
 
 
-async def stop_chat_action(task: asyncio.Task[Any] | None) -> None:
+async def stop_chat_action(task: asyncio.Task | None) -> None:
     """Stop a running chat action task."""
     if task is None:
         return
@@ -78,9 +87,7 @@ async def stop_chat_action(task: asyncio.Task[Any] | None) -> None:
         pass
 
 
-async def send_long_message(
-    update: Update, first_msg: Message, text: str, chunk_size: int = 4000
-) -> None:
+async def send_long_message(update, first_msg, text: str, chunk_size: int = 4000):
     """
     Split long text into multiple Telegram messages.
 
@@ -110,6 +117,4 @@ async def send_long_message(
 
     await first_msg.edit_text(chunks[0] + f"\n\n[1/{len(chunks)}]")
     for i, chunk in enumerate(chunks[1:], 2):
-        if update.message is None:
-            return
         await update.message.reply_text(chunk + f"\n\n[{i}/{len(chunks)}]")

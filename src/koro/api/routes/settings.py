@@ -18,6 +18,7 @@ class SettingsResponse(BaseModel):
     audio_enabled: bool
     voice_speed: float
     watch_enabled: bool
+    model: str = Field(default="", description="Claude model override")
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -34,6 +35,9 @@ class UpdateSettingsRequest(BaseModel):
     )
     watch_enabled: bool | None = Field(
         default=None, description="Whether to stream tool calls"
+    )
+    model: str | None = Field(
+        default=None, description="Claude model override (empty string for default)"
     )
 
 
@@ -54,6 +58,7 @@ async def get_settings(
         audio_enabled=settings.audio_enabled,
         voice_speed=settings.voice_speed,
         watch_enabled=settings.watch_enabled,
+        model=settings.model,
     )
 
 
@@ -80,6 +85,8 @@ async def update_settings(
         kwargs["voice_speed"] = request.voice_speed
     if request.watch_enabled is not None:
         kwargs["watch_enabled"] = request.watch_enabled
+    if request.model is not None:
+        kwargs["model"] = request.model
 
     settings = await brain.update_settings(user_id, **kwargs)
 
@@ -88,6 +95,7 @@ async def update_settings(
         audio_enabled=settings.audio_enabled,
         voice_speed=settings.voice_speed,
         watch_enabled=settings.watch_enabled,
+        model=settings.model,
     )
 
 
@@ -115,4 +123,5 @@ async def reset_settings(
         audio_enabled=settings.audio_enabled,
         voice_speed=settings.voice_speed,
         watch_enabled=settings.watch_enabled,
+        model=settings.model,
     )

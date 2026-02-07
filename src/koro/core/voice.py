@@ -2,11 +2,10 @@
 
 import asyncio
 from io import BytesIO
-from typing import Any
+from threading import Lock
 
 from elevenlabs.client import ElevenLabs
 from elevenlabs.core import ApiError
-from elevenlabs.types import SpeechToTextChunkResponseModel, VoiceSettings
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
@@ -55,10 +54,9 @@ class VoiceEngine:
         """
         if not self.client:
             raise VoiceNotConfiguredError("ElevenLabs not configured")
-        client = self.client
 
-        def _transcribe_sync() -> SpeechToTextChunkResponseModel:
-            return client.speech_to_text.convert(
+        def _transcribe_sync():
+            return self.client.speech_to_text.convert(
                 file=BytesIO(voice_bytes),
                 model_id="scribe_v1",
                 language_code="en",
@@ -68,13 +66,11 @@ class VoiceEngine:
             transcription = await asyncio.to_thread(_transcribe_sync)
             return transcription.text
         except ApiError as exc:
-            return f"Error: {exc}"
+            raise VoiceTranscriptionError(f"ElevenLabs API error: {exc}") from exc
         except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
 
-    async def text_to_speech(
-        self, text: str, speed: float | None = None
-    ) -> BytesIO | None:
+    async def text_to_speech(self, text: str, speed: float = None) -> BytesIO | None:
         """
         Convert text to speech using ElevenLabs Turbo v2.5.
 
@@ -87,23 +83,22 @@ class VoiceEngine:
         """
         if not self.client:
             return None
-        client = self.client
 
         actual_speed = speed if speed is not None else VOICE_SETTINGS["speed"]
 
-        def _tts_sync() -> Any:
-            return client.text_to_speech.convert(
+        def _tts_sync():
+            return self.client.text_to_speech.convert(
                 text=text,
-                voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
+                voice_id=self.voice_id,
                 model_id="eleven_turbo_v2_5",
                 output_format="mp3_44100_128",
-                voice_settings=VoiceSettings(
-                    stability=VOICE_SETTINGS["stability"],
-                    similarity_boost=VOICE_SETTINGS["similarity_boost"],
-                    style=VOICE_SETTINGS["style"],
-                    speed=actual_speed,
-                    use_speaker_boost=True,
-                ),
+                voice_settings={
+                    "stability": VOICE_SETTINGS["stability"],
+                    "similarity_boost": VOICE_SETTINGS["similarity_boost"],
+                    "style": VOICE_SETTINGS["style"],
+                    "speed": actual_speed,
+                    "use_speaker_boost": True,
+                },
             )
 
         try:
@@ -115,7 +110,9 @@ class VoiceEngine:
                     audio_buffer.write(chunk)
             audio_buffer.seek(0)
             return audio_buffer
-        except Exception:
+        except ApiError:
+            return None
+        except (RuntimeError, ValueError, TypeError):
             return None
 
     def health_check(self) -> tuple[bool, str]:
@@ -131,7 +128,7 @@ class VoiceEngine:
         try:
             audio = self.client.text_to_speech.convert(
                 text="test",
-                voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
+                voice_id=self.voice_id,
                 model_id="eleven_turbo_v2_5",
             )
             size = sum(len(c) for c in audio if isinstance(c, bytes))
@@ -142,13 +139,16 @@ class VoiceEngine:
 
 # Default instance
 _voice_engine: VoiceEngine | None = None
+_voice_engine_lock = Lock()
 
 
 def get_voice_engine() -> VoiceEngine:
     """Get or create the default voice engine instance."""
     global _voice_engine
     if _voice_engine is None:
-        _voice_engine = VoiceEngine(api_key=ELEVENLABS_API_KEY)
+        with _voice_engine_lock:
+            if _voice_engine is None:
+                _voice_engine = VoiceEngine(api_key=ELEVENLABS_API_KEY)
     return _voice_engine
 
 

@@ -3,22 +3,15 @@
 import asyncio
 import time
 import uuid
-from typing import Any
 
-from telegram import (
-    Chat,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-    Update,
-    User,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from koro.claude import format_tool_call, get_claude_client
 from koro.config import ALLOWED_CHAT_ID
 from koro.core.types import Mode, QueryConfig, UserSessionState, UserSettings
 from koro.interfaces.telegram.handlers.utils import (
+    authorized_handler,
     debug,
     send_long_message,
     should_handle_message,
@@ -30,23 +23,13 @@ from koro.state import get_state_manager
 from koro.voice import VoiceError, get_voice_engine
 
 # Pending tool approvals for approve mode
-pending_approvals: dict[str, dict[str, Any]] = {}
+pending_approvals: dict = {}
 
 # Maximum number of pending approvals to prevent memory leaks
 MAX_PENDING_APPROVALS = 100
 
 
-def _extract_update_context(update: Update) -> tuple[Message, Chat, User] | None:
-    """Return required Telegram entities for message handlers."""
-    message = update.message
-    chat = update.effective_chat
-    user = update.effective_user
-    if message is None or chat is None or user is None:
-        return None
-    return message, chat, user
-
-
-def add_pending_approval(approval_id: str, data: dict[str, Any]) -> None:
+def add_pending_approval(approval_id: str, data: dict) -> None:
     """
     Add a pending approval with automatic cleanup of old entries.
 
@@ -89,47 +72,33 @@ def cleanup_stale_approvals(max_age_seconds: int = 300) -> None:
         del pending_approvals[approval_id]
 
 
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@authorized_handler
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming voice messages."""
-    update_ctx = _extract_update_context(update)
-    if update_ctx is None:
-        return
-    message, chat, user = update_ctx
-
-    if user.is_bot is True:
+    if update.effective_user.is_bot is True:
         return
 
-    debug(f"VOICE received from user {user.id}")
+    debug(f"VOICE received from user {update.effective_user.id}")
 
-    if not should_handle_message(message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and chat.id != ALLOWED_CHAT_ID:
-        return
-
-    user_id = str(user.id)
+    user_id = str(update.effective_user.id)
 
     # Rate limiting
     rate_limiter = get_rate_limiter()
     allowed, rate_msg = rate_limiter.check(user_id)
     if not allowed:
-        await message.reply_text(rate_msg)
+        await update.message.reply_text(rate_msg)
         return
 
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id)
     settings = await state_manager.get_settings(user_id)
 
-    processing_msg = await message.reply_text("Processing voice message...")
+    processing_msg = await update.message.reply_text("Processing voice message...")
     typing_task = start_chat_action(update, context)
 
     try:
         # Download voice
-        if message.voice is None:
-            await processing_msg.edit_text("Error: No voice payload found.")
-            return
-
-        voice = await message.voice.get_file()
+        voice = await update.message.voice.get_file()
         voice_bytes = await voice.download_as_bytearray()
 
         # Transcribe
@@ -147,7 +116,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         # Call Claude
         response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, user_id, message, context
+            text, state, settings, user_id, update, context
         )
 
         # Update session
@@ -164,7 +133,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 response, speed=settings.voice_speed
             )
             if audio:
-                await message.reply_voice(voice=audio)
+                await update.message.reply_voice(voice=audio)
 
     except Exception as e:
         debug(f"Error in handle_voice: {e}")
@@ -173,43 +142,34 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await stop_chat_action(typing_task)
 
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@authorized_handler
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages."""
-    update_ctx = _extract_update_context(update)
-    if update_ctx is None:
-        return
-    message, chat, user = update_ctx
-
-    if user.is_bot is True:
+    if update.effective_user.is_bot is True:
         return
 
-    text = message.text or ""
-    debug(f"TEXT received: '{text[:50]}'")
+    debug(f"TEXT received: '{update.message.text[:50]}'")
 
-    if not should_handle_message(message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and chat.id != ALLOWED_CHAT_ID:
-        return
-
-    user_id = str(user.id)
+    user_id = str(update.effective_user.id)
 
     # Rate limiting
     rate_limiter = get_rate_limiter()
     allowed, rate_msg = rate_limiter.check(user_id)
     if not allowed:
-        await message.reply_text(rate_msg)
+        await update.message.reply_text(rate_msg)
         return
 
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id)
     settings = await state_manager.get_settings(user_id)
-    processing_msg = await message.reply_text("Asking Koro...")
+    text = update.message.text
+
+    processing_msg = await update.message.reply_text("Asking Koro...")
     typing_task = start_chat_action(update, context)
 
     try:
         response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, user_id, message, context
+            text, state, settings, user_id, update, context
         )
 
         # Update session
@@ -227,7 +187,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 response, speed=settings.voice_speed
             )
             if audio:
-                await message.reply_voice(voice=audio)
+                await update.message.reply_voice(voice=audio)
 
     except Exception as e:
         debug(f"Error in handle_text: {e}")
@@ -241,9 +201,9 @@ async def _call_claude_with_settings(
     state: UserSessionState,
     settings: UserSettings,
     user_id: str,
-    message: Message,
+    update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-) -> tuple[str, str, dict[str, Any]]:
+) -> tuple[str, str, dict]:
     """
     Call Claude with user settings applied.
 
@@ -251,7 +211,7 @@ async def _call_claude_with_settings(
         text: User message
         state: User session state
         settings: User settings
-        message: Telegram message
+        update: Telegram update
         context: Telegram context
 
     Returns:
@@ -263,16 +223,16 @@ async def _call_claude_with_settings(
     continue_last = False
 
     # Watch mode callback
-    async def on_tool_call(tool_name: str, detail: str | None) -> None:
+    async def on_tool_call(tool_name: str, detail: str | None):
         if watch_enabled:
             tool_msg = f"{tool_name}: {detail}" if detail else f"Using: {tool_name}"
             try:
-                await message.reply_text(tool_msg)
+                await update.message.reply_text(tool_msg)
             except Exception as exc:
                 debug(f"Failed to send tool call update: {exc}")
 
     # Approve mode callback
-    async def can_use_tool(tool_name: str, tool_input: dict[str, Any], ctx: Any) -> Any:
+    async def can_use_tool(tool_name: str, tool_input: dict, ctx):
         from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
 
         if mode != Mode.APPROVE:
@@ -302,7 +262,7 @@ async def _call_claude_with_settings(
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         message_text = f"Tool Request:\n{format_tool_call(tool_name, tool_input)}"
-        await message.reply_text(
+        await update.message.reply_text(
             message_text, reply_markup=reply_markup, parse_mode="Markdown"
         )
 

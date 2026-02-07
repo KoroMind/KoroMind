@@ -514,7 +514,7 @@ class TestApprovalCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_approval_callback_approves(
-        self, make_callback_query, clear_pending_approvals
+        self, make_callback_query, clear_pending_approvals, allow_all_messages
     ):
         """Approval callback approves tool use."""
         approval_event = asyncio.Event()
@@ -538,7 +538,7 @@ class TestApprovalCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_approval_callback_rejects(
-        self, make_callback_query, clear_pending_approvals
+        self, make_callback_query, clear_pending_approvals, allow_all_messages
     ):
         """Approval callback rejects tool use."""
         approval_event = asyncio.Event()
@@ -562,7 +562,7 @@ class TestApprovalCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_approval_callback_expired(
-        self, make_callback_query, clear_pending_approvals
+        self, make_callback_query, clear_pending_approvals, allow_all_messages
     ):
         """Approval callback handles expired approvals."""
         query = make_callback_query("approve_expired123")
@@ -678,8 +678,46 @@ class TestCallbackHandlers:
     """Tests for callback query handlers."""
 
     @pytest.mark.asyncio
+    async def test_settings_callback_ignores_wrong_topic(
+        self, make_callback_query, monkeypatch
+    ):
+        """Settings callback ignores updates from wrong topic."""
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: False)
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
+
+        query = make_callback_query("setting_audio_toggle")
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+
+        await callbacks.handle_settings_callback(update, MagicMock())
+
+        query.answer.assert_called_once()
+        query.edit_message_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_approval_callback_ignores_wrong_chat(
+        self, make_callback_query, monkeypatch
+    ):
+        """Approval callback ignores unauthorized chat."""
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 12345)
+
+        query = make_callback_query("approve_test123")
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_user.id = 12345
+        update.effective_chat.id = 99999
+
+        await callbacks.handle_approval_callback(update, MagicMock())
+
+        query.answer.assert_called_once()
+        query.edit_message_text.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_settings_toggle_audio(
-        self, make_callback_query, state_manager, monkeypatch
+        self, make_callback_query, state_manager, monkeypatch, allow_all_messages
     ):
         """Settings callback toggles audio."""
         await state_manager.update_settings("12345", audio_enabled=True)
@@ -697,7 +735,7 @@ class TestCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_settings_toggle_mode(
-        self, make_callback_query, state_manager, monkeypatch
+        self, make_callback_query, state_manager, monkeypatch, allow_all_messages
     ):
         """Settings callback toggles mode."""
         await state_manager.update_settings("12345", mode="go_all")
@@ -715,7 +753,7 @@ class TestCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_settings_set_speed(
-        self, make_callback_query, state_manager, monkeypatch
+        self, make_callback_query, state_manager, monkeypatch, allow_all_messages
     ):
         """Settings callback sets voice speed."""
         await state_manager.update_settings("12345", voice_speed=1.0)
@@ -733,7 +771,7 @@ class TestCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_settings_rejects_invalid_speed(
-        self, make_callback_query, state_manager, monkeypatch
+        self, make_callback_query, state_manager, monkeypatch, allow_all_messages
     ):
         """Settings callback rejects invalid speed."""
         await state_manager.update_settings("12345", voice_speed=1.0)

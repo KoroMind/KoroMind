@@ -1,50 +1,21 @@
 """Callback query handlers for inline keyboards."""
 
-from telegram import (
-    CallbackQuery,
-    Chat,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Update,
-    User,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from koro.config import ALLOWED_CHAT_ID
 from koro.interfaces.telegram.handlers.commands import _session_label
 from koro.interfaces.telegram.handlers.messages import pending_approvals
-from koro.interfaces.telegram.handlers.utils import debug, should_handle_message
+from koro.interfaces.telegram.handlers.utils import authorized_handler, debug
 from koro.state import get_state_manager
 
 
-def _extract_callback_context(
-    update: Update,
-) -> tuple[CallbackQuery, User, Chat] | None:
-    """Return required entities for callback handlers."""
-    query = update.callback_query
-    user = update.effective_user
-    chat = update.effective_chat
-    if query is None or user is None or chat is None:
-        return None
-    return query, user, chat
-
-
-async def handle_settings_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+@authorized_handler
+async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle settings button callbacks."""
-    callback_ctx = _extract_callback_context(update)
-    if callback_ctx is None:
-        return
-    query, user, _chat = callback_ctx
-
-    if query.data is None:
-        await query.answer()
-        return
-
+    query = update.callback_query
     debug(f"SETTINGS CALLBACK: {query.data}")
 
-    user_id = str(user.id)
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     settings = await state_manager.get_settings(user_id)
     callback_data = query.data
@@ -123,24 +94,15 @@ async def handle_settings_callback(
     await query.answer()
 
 
-async def handle_approval_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+@authorized_handler
+async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle approval/rejection button callbacks."""
-    callback_ctx = _extract_callback_context(update)
-    if callback_ctx is None:
-        return
-    query, user, _chat = callback_ctx
-
-    if query.data is None:
-        await query.answer()
-        return
-
+    query = update.callback_query
     callback_data = query.data
 
     debug(f"APPROVAL CALLBACK: {callback_data}")
 
-    user_id = str(user.id)
+    user_id = str(update.effective_user.id)
 
     await query.answer()
 
@@ -173,34 +135,18 @@ async def handle_approval_callback(
             await query.edit_message_text("Approval expired")
 
 
-async def handle_switch_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+@authorized_handler
+async def handle_switch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle session switch button callbacks."""
-    callback_ctx = _extract_callback_context(update)
-    if callback_ctx is None:
-        return
-    query, user, chat = callback_ctx
-
+    query = update.callback_query
     callback_data = query.data
-    if callback_data is None:
-        await query.answer()
-        return
-
-    if not should_handle_message(getattr(query.message, "message_thread_id", None)):
-        await query.answer()
-        return
-
-    if ALLOWED_CHAT_ID != 0 and chat.id != ALLOWED_CHAT_ID:
-        await query.answer()
-        return
 
     if not callback_data.startswith("switch_"):
         await query.answer()
         return
 
     session_id = callback_data.replace("switch_", "", 1)
-    user_id = str(user.id)
+    user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     target = await state_manager.get_session_item(user_id, session_id)
 

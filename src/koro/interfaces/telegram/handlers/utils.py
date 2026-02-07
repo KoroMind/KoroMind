@@ -2,7 +2,9 @@
 
 import asyncio
 import functools
+import inspect
 from datetime import datetime
+from typing import Any
 
 from telegram.constants import ChatAction
 
@@ -51,9 +53,27 @@ def authorized_handler(handler):
 
     @functools.wraps(handler)
     async def wrapper(update, context, *args, **kwargs):
-        if not should_handle_message(update.message.message_thread_id):
+        callback_query = getattr(update, "callback_query", None)
+        answer_cb = getattr(callback_query, "answer", None)
+        has_async_callback = callable(answer_cb) and inspect.iscoroutinefunction(
+            answer_cb
+        )
+
+        message_obj = getattr(update, "message", None)
+        if has_async_callback:
+            message_obj = getattr(callback_query, "message", None)
+
+        thread_id: Any = getattr(message_obj, "message_thread_id", None)
+        chat = getattr(update, "effective_chat", None)
+        chat_id: Any = getattr(chat, "id", None)
+
+        if not should_handle_message(thread_id):
+            if has_async_callback:
+                await answer_cb()
             return
-        if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
+        if ALLOWED_CHAT_ID != 0 and chat_id != ALLOWED_CHAT_ID:
+            if has_async_callback:
+                await answer_cb()
             return
         return await handler(update, context, *args, **kwargs)
 

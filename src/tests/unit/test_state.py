@@ -196,6 +196,37 @@ class TestStateManagerAsync:
         assert state.sessions[0].name == "alpha"
 
     @pytest.mark.asyncio
+    async def test_update_session_applies_pending_name_to_existing_session(
+        self, state_manager
+    ):
+        """Pending name should apply when switching/updating an existing session."""
+        await state_manager.update_session("12345", "sess-1")
+        await state_manager.set_pending_session_name("12345", "renamed")
+
+        await state_manager.update_session("12345", "sess-1")
+        state = await state_manager.get_session_state("12345")
+
+        assert state.pending_session_name is None
+        assert state.sessions[0].name == "renamed"
+
+    @pytest.mark.asyncio
+    async def test_update_session_does_not_clear_newer_pending_name(
+        self, state_manager
+    ):
+        """
+        Explicit stale session_name should not clear a newer pending name.
+
+        This guards the race where /new runs while a message is in-flight.
+        """
+        await state_manager.set_pending_session_name("12345", "newer-name")
+
+        await state_manager.update_session("12345", "sess-1", session_name="stale-name")
+        state = await state_manager.get_session_state("12345")
+
+        assert state.sessions[0].name == "stale-name"
+        assert state.pending_session_name == "newer-name"
+
+    @pytest.mark.asyncio
     async def test_get_sessions(self, state_manager):
         """get_sessions returns all sessions for user."""
         await state_manager.create_session("12345")

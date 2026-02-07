@@ -443,6 +443,7 @@ class StateManager:
                     )
                     if consumed.rowcount == 1:
                         pending_name = candidate_name.strip() or None
+            applied_name = requested_name or pending_name
 
             # Check if session exists
             existing = conn.execute(
@@ -462,7 +463,7 @@ class StateManager:
                     SET is_current = 1, last_active = ?, name = COALESCE(?, name)
                     WHERE id = ? AND user_id = ?
                     """,
-                    (now, requested_name, session_id, user_id),
+                    (now, applied_name, session_id, user_id),
                 )
             else:
                 # Create new session
@@ -475,7 +476,7 @@ class StateManager:
                     INSERT INTO sessions (id, user_id, created_at, last_active, is_current, name)
                     VALUES (?, ?, ?, ?, 1, ?)
                     """,
-                    (session_id, user_id, now, now, requested_name or pending_name),
+                    (session_id, user_id, now, now, applied_name),
                 )
 
                 # FIFO eviction
@@ -494,8 +495,12 @@ class StateManager:
 
             if requested_name:
                 conn.execute(
-                    "UPDATE settings SET pending_session_name = NULL WHERE user_id = ?",
-                    (user_id,),
+                    """
+                    UPDATE settings
+                    SET pending_session_name = NULL
+                    WHERE user_id = ? AND pending_session_name = ?
+                    """,
+                    (user_id, requested_name),
                 )
 
     # Settings Management

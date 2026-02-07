@@ -73,6 +73,10 @@ exclude = ["^src/tests/"]
 implicit_optional = true
 ignore_missing_imports = true
 disable_error_code = ["union-attr"]
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
 
 [tool.coverage.run]
 source = ["koro"]

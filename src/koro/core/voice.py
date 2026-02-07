@@ -5,6 +5,7 @@ from io import BytesIO
 
 from elevenlabs.client import ElevenLabs
 from elevenlabs.core import ApiError
+from elevenlabs.types import VoiceSettings
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
@@ -93,13 +94,13 @@ class VoiceEngine:
                 voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
                 model_id="eleven_turbo_v2_5",
                 output_format="mp3_44100_128",
-                voice_settings={
-                    "stability": VOICE_SETTINGS["stability"],
-                    "similarity_boost": VOICE_SETTINGS["similarity_boost"],
-                    "style": VOICE_SETTINGS["style"],
-                    "speed": actual_speed,
-                    "use_speaker_boost": True,
-                },
+                voice_settings=VoiceSettings(
+                    stability=VOICE_SETTINGS["stability"],
+                    similarity_boost=VOICE_SETTINGS["similarity_boost"],
+                    style=VOICE_SETTINGS["style"],
+                    speed=actual_speed,
+                    use_speaker_boost=True,
+                ),
             )
 
         try:

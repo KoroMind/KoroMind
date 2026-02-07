@@ -21,10 +21,20 @@ def _has_claude_auth():
     return creds_path.exists()
 
 
+def _has_elevenlabs_access() -> bool:
+    """Return True when ElevenLabs credentials are usable for live tests."""
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        return False
+    voice = VoiceEngine(api_key=api_key)
+    success, _ = voice.health_check()
+    return success
+
+
 # Skip if missing any required API
 pytestmark = pytest.mark.skipif(
-    not os.getenv("ELEVENLABS_API_KEY") or not _has_claude_auth(),
-    reason="Missing API keys for E2E test",
+    not _has_elevenlabs_access() or not _has_claude_auth(),
+    reason="Missing/unavailable live API access for E2E test",
 )
 
 

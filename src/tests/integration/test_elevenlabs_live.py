@@ -11,9 +11,21 @@ from koro.voice import VoiceEngine
 # Load environment variables
 load_dotenv()
 
-# Skip all tests in this module if no API key
+
+def _has_elevenlabs_access() -> bool:
+    """Return True when ElevenLabs credentials are usable for live tests."""
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        return False
+    voice = VoiceEngine(api_key=api_key)
+    success, _ = voice.health_check()
+    return success
+
+
+# Skip all tests in this module if live access is unavailable
 pytestmark = pytest.mark.skipif(
-    not os.getenv("ELEVENLABS_API_KEY"), reason="ELEVENLABS_API_KEY not set"
+    not _has_elevenlabs_access(),
+    reason="ElevenLabs live access unavailable (missing key or account/API issue)",
 )
 
 

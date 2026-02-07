@@ -1,15 +1,19 @@
 """Telegram command handlers."""
 
 import os
+from pathlib import Path
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from koro.auth import check_claude_auth, load_credentials, save_credentials
 from koro.claude import get_claude_client
-from koro.config import ALLOWED_CHAT_ID, SANDBOX_DIR
+from koro.config import SANDBOX_DIR
 from koro.core.types import SessionStateItem, UserSessionState
-from koro.interfaces.telegram.handlers.utils import debug, should_handle_message
+from koro.interfaces.telegram.handlers.utils import (
+    authorized_handler,
+    debug,
+)
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
 
@@ -137,25 +141,15 @@ def _resolve_session(
     return None, []
 
 
+@authorized_handler
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command - show command list."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     await update.message.reply_text(_format_command_help())
 
 
+@authorized_handler
 async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /new command - start new session."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
 
@@ -174,14 +168,9 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+@authorized_handler
 async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /continue command - resume last session."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id, limit=1)
@@ -196,28 +185,18 @@ async def cmd_continue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+@authorized_handler
 async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /sessions command - list all sessions."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id, limit=10)
     await update.message.reply_text(_format_sessions(state))
 
 
+@authorized_handler
 async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /switch command - switch to specific session."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id)
@@ -249,14 +228,9 @@ async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Session not found: {query}")
 
 
+@authorized_handler
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /status command - show current session info."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     state = await state_manager.get_session_state(user_id)
@@ -277,16 +251,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg)
 
 
+@authorized_handler
 async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /health command - check all systems."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
-    from pathlib import Path
-
     status = []
     status.append("=== Health Check ===\n")
 
@@ -320,14 +287,9 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(status))
 
 
+@authorized_handler
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /settings command - show settings menu."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
     settings = await state_manager.get_settings(user_id)
@@ -375,14 +337,9 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message, reply_markup=reply_markup)
 
 
+@authorized_handler
 async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /model command - show or set model."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     user_id = str(update.effective_user.id)
     state_manager = get_state_manager()
 
@@ -408,14 +365,9 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Model set to: {model}")
 
 
+@authorized_handler
 async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /setup command - show API credentials status."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     creds = load_credentials()
     claude_configured, claude_method = check_claude_auth()
 
@@ -466,14 +418,9 @@ async def cmd_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(message_lines), parse_mode="Markdown")
 
 
+@authorized_handler
 async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /claude_token command - set Claude OAuth token."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     thread_id = update.message.message_thread_id
     try:
         await update.message.delete()
@@ -510,14 +457,9 @@ async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@authorized_handler
 async def cmd_elevenlabs_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /elevenlabs_key command - set ElevenLabs API key."""
-    if not should_handle_message(update.message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID:
-        return
-
     thread_id = update.message.message_thread_id
     try:
         await update.message.delete()

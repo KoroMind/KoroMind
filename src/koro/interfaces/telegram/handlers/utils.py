@@ -1,11 +1,14 @@
 """Utility functions for Telegram handlers."""
 
 import asyncio
+import functools
+import inspect
 from datetime import datetime
+from typing import Any
 
 from telegram.constants import ChatAction
 
-from koro.config import TOPIC_ID
+from koro.config import ALLOWED_CHAT_ID, TOPIC_ID
 
 
 def debug(msg: str) -> None:
@@ -37,6 +40,44 @@ def should_handle_message(message_thread_id: int | None) -> bool:
         return False
 
     return message_thread_id == allowed_topic
+
+
+def authorized_handler(handler):
+    """
+    Decorator that checks topic filtering and chat authorization.
+
+    Extracts the duplicated pattern:
+        if not should_handle_message(update.message.message_thread_id): return
+        if ALLOWED_CHAT_ID != 0 and update.effective_chat.id != ALLOWED_CHAT_ID: return
+    """
+
+    @functools.wraps(handler)
+    async def wrapper(update, context, *args, **kwargs):
+        callback_query = getattr(update, "callback_query", None)
+        answer_cb = getattr(callback_query, "answer", None)
+        has_async_callback = callable(answer_cb) and inspect.iscoroutinefunction(
+            answer_cb
+        )
+
+        message_obj = getattr(update, "message", None)
+        if has_async_callback:
+            message_obj = getattr(callback_query, "message", None)
+
+        thread_id: Any = getattr(message_obj, "message_thread_id", None)
+        chat = getattr(update, "effective_chat", None)
+        chat_id: Any = getattr(chat, "id", None)
+
+        if not should_handle_message(thread_id):
+            if has_async_callback:
+                await answer_cb()
+            return
+        if ALLOWED_CHAT_ID != 0 and chat_id != ALLOWED_CHAT_ID:
+            if has_async_callback:
+                await answer_cb()
+            return
+        return await handler(update, context, *args, **kwargs)
+
+    return wrapper
 
 
 async def _chat_action_loop(update, context, action: str, interval: float) -> None:

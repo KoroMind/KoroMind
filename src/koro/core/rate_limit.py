@@ -36,7 +36,8 @@ class RateLimiter:
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
         self.user_limits: dict[str, dict] = {}
         self._connection: sqlite3.Connection | None = None
-        self._lock = Lock()
+        self._connection_lock = Lock()
+        self._cache_lock = Lock()
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
@@ -53,7 +54,7 @@ class RateLimiter:
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Get a reusable database connection with thread safety."""
-        with self._lock:
+        with self._connection_lock:
             if self._connection is None:
                 self._connection = sqlite3.connect(
                     self.db_path, check_same_thread=False
@@ -68,7 +69,7 @@ class RateLimiter:
 
     def close(self) -> None:
         """Close the shared database connection."""
-        with self._lock:
+        with self._connection_lock:
             if self._connection is not None:
                 self._connection.close()
                 self._connection = None
@@ -123,64 +124,65 @@ class RateLimiter:
         now = time.time()
         user_id_str = str(user_id)
 
-        with self._lock:
-            if user_id_str not in self.user_limits:
-                # Release lock temporarily for DB I/O, then re-acquire
-                pass
+        with self._cache_lock:
+            limits = self.user_limits.get(user_id_str)
 
-        # Load from DB if not cached (outside the fast-path lock to avoid
-        # holding it during I/O, but the _get_connection lock serialises DB)
-        if user_id_str not in self.user_limits:
-            limits = self._load_limits(user_id_str)
-            if limits is None:
-                limits = {
+        if limits is None:
+            loaded = self._load_limits(user_id_str)
+            if loaded is None:
+                loaded = {
                     "last_message": None,
                     "minute_count": 0,
                     "minute_start": now,
                 }
-            self.user_limits[user_id_str] = limits
-        else:
+            with self._cache_lock:
+                limits = self.user_limits.setdefault(user_id_str, loaded)
+
+        with self._cache_lock:
             limits = self.user_limits[user_id_str]
 
-        # Check per-message cooldown
-        if limits["last_message"] is not None and self.cooldown_seconds > 0:
-            time_since_last = now - limits["last_message"]
-            if time_since_last < self.cooldown_seconds:
-                wait_time = self.cooldown_seconds - time_since_last
+            # Check per-message cooldown
+            if limits["last_message"] is not None and self.cooldown_seconds > 0:
+                time_since_last = now - limits["last_message"]
+                if time_since_last < self.cooldown_seconds:
+                    wait_time = self.cooldown_seconds - time_since_last
+                    return (
+                        False,
+                        f"Please wait {wait_time:.1f}s before sending another message.",
+                    )
+
+            # Check per-minute limit
+            if now - limits["minute_start"] > 60:
+                # Reset minute counter
+                limits["minute_start"] = now
+                limits["minute_count"] = 0
+
+            if limits["minute_count"] >= self.per_minute_limit:
                 return (
                     False,
-                    f"Please wait {wait_time:.1f}s before sending another message.",
+                    f"Rate limit reached ({self.per_minute_limit}/min). Please wait.",
                 )
 
-        # Check per-minute limit
-        if now - limits["minute_start"] > 60:
-            # Reset minute counter
-            limits["minute_start"] = now
-            limits["minute_count"] = 0
+            # Update limits
+            limits["last_message"] = now
+            limits["minute_count"] += 1
+            limits_to_save = limits.copy()
 
-        if limits["minute_count"] >= self.per_minute_limit:
-            return (
-                False,
-                f"Rate limit reached ({self.per_minute_limit}/min). Please wait.",
-            )
-
-        # Update limits
-        limits["last_message"] = now
-        limits["minute_count"] += 1
-
-        self._save_limits(user_id_str, limits)
+        self._save_limits(user_id_str, limits_to_save)
         return True, ""
 
     def reset(self, user_id: int | str) -> None:
         """Reset rate limits for a user."""
         user_id_str = str(user_id)
-        self.user_limits.pop(user_id_str, None)
+        with self._cache_lock:
+            self.user_limits.pop(user_id_str, None)
         with self._get_connection() as conn:
             conn.execute("DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,))
 
     def reset_all(self) -> None:
         """Reset all rate limits."""
-        self.user_limits.clear()
+        with self._cache_lock:
+            self.user_limits.clear()
         with self._get_connection() as conn:
             conn.execute("DELETE FROM rate_limits")
 

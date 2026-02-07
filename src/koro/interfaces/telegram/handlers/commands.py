@@ -310,7 +310,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Sandbox info
     status.append(f"\nSandbox: {SANDBOX_DIR}")
-    status.append(f"Sandbox exists: {Path(SANDBOX_DIR).exists()}")
+    status.append(f"Sandbox exists: {Path(SANDBOX_DIR or '').exists()}")
 
     # Chat info
     status.append(f"\nChat ID: {update.effective_chat.id}")

@@ -5,7 +5,13 @@ from collections.abc import AsyncIterator
 from threading import Lock
 from typing import Any
 
-from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
+from claude_agent_sdk.types import (
+    AssistantMessage,
+    ResultMessage,
+    StreamEvent,
+    SystemMessage,
+    UserMessage,
+)
 
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
@@ -23,7 +29,9 @@ from koro.core.types import (
 )
 from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
-StreamedEvent = AssistantMessage | ResultMessage | StreamEvent
+StreamedEvent = (
+    AssistantMessage | ResultMessage | StreamEvent | UserMessage | SystemMessage
+)
 
 
 async def _maybe_await(value: Any) -> Any:

@@ -71,7 +71,7 @@ async def update_settings(
     user_id = http_request.state.user_id
 
     # Build kwargs for update
-    kwargs = {}
+    kwargs: dict[str, Mode | bool | float] = {}
     if request.mode is not None:
         kwargs["mode"] = Mode(request.mode)
     if request.audio_enabled is not None:

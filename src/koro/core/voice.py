@@ -69,7 +69,9 @@ class VoiceEngine:
         except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
 
-    async def text_to_speech(self, text: str, speed: float = None) -> BytesIO | None:
+    async def text_to_speech(
+        self, text: str, speed: float | None = None
+    ) -> BytesIO | None:
         """
         Convert text to speech using ElevenLabs Turbo v2.5.
 
@@ -88,7 +90,7 @@ class VoiceEngine:
         def _tts_sync():
             return self.client.text_to_speech.convert(
                 text=text,
-                voice_id=self.voice_id,
+                voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
                 model_id="eleven_turbo_v2_5",
                 output_format="mp3_44100_128",
                 voice_settings={
@@ -125,7 +127,7 @@ class VoiceEngine:
         try:
             audio = self.client.text_to_speech.convert(
                 text="test",
-                voice_id=self.voice_id,
+                voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
                 model_id="eleven_turbo_v2_5",
             )
             size = sum(len(c) for c in audio if isinstance(c, bytes))

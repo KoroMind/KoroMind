@@ -5,7 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, NamedTuple
 
 from claude_agent_sdk.types import (
     AgentDefinition,
@@ -25,6 +25,7 @@ from koro.core.types import (
     CanUseTool,
     MessageType,
     Mode,
+    OnProgress,
     OnToolCall,
     QueryConfig,
     Session,
@@ -45,6 +46,16 @@ async def _maybe_await(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
     return value
+
+
+class _RequestContext(NamedTuple):
+    """Internal: resolved context for a Brain request."""
+
+    text: str
+    session_id: str | None
+    stored_settings: UserSettings
+    vault_config: VaultConfig | None
+    model_override: str | None
 
 
 class Brain:
@@ -125,6 +136,60 @@ class Brain:
         """
         return await self.claude_client.interrupt()
 
+    async def _resolve_request_context(
+        self,
+        *,
+        user_id: str,
+        content: str | bytes,
+        content_type: MessageType,
+        session_id: str | None,
+        kwargs: dict[str, Any],
+        progress_callback: OnProgress | None = None,
+    ) -> _RequestContext:
+        """Resolve common request context: transcription, session, settings, vault.
+
+        Note: Pops 'model' from kwargs if present (consumed for model_override).
+        """
+        # Transcribe voice if needed
+        if content_type == MessageType.VOICE:
+            if not isinstance(content, bytes):
+                raise ValueError("Voice content must be bytes")
+            if progress_callback:
+                progress_callback("Transcribing voice input...")
+            try:
+                text = await self.voice_engine.transcribe(content)
+            except VoiceError as exc:
+                raise RuntimeError(str(exc)) from exc
+        else:
+            text = content if isinstance(content, str) else content.decode("utf-8")
+
+        # Get current session if not provided
+        if session_id is None:
+            current_session = await self.state_manager.get_current_session(user_id)
+            session_id = current_session.id if current_session else None
+
+        # Fetch stored settings
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
+
+        # Resolve model override (pops from kwargs)
+        if "model" in kwargs:
+            model_override: str | None = kwargs.pop("model") or None
+        else:
+            model_override = stored_settings.model or None
+
+        # Load vault config if available
+        vault_config = self._vault.load() if self._vault else None
+
+        return _RequestContext(
+            text=text,
+            session_id=session_id,
+            stored_settings=stored_settings,
+            vault_config=vault_config,
+            model_override=model_override,
+        )
+
     async def process_message(
         self,
         user_id: str,
@@ -170,36 +235,21 @@ class Brain:
         )
         progress_callback = callbacks.on_progress if callbacks else None
 
-        # Transcribe voice if needed
-        if content_type == MessageType.VOICE:
-            if not isinstance(content, bytes):
-                raise ValueError("Voice content must be bytes")
-            if progress_callback:
-                progress_callback("Transcribing voice input...")
-            try:
-                text = await self.voice_engine.transcribe(content)
-            except VoiceError as exc:
-                raise RuntimeError(str(exc)) from exc
-        else:
-            text = content if isinstance(content, str) else content.decode("utf-8")
+        ctx = await self._resolve_request_context(
+            user_id=user_id,
+            content=content,
+            content_type=content_type,
+            session_id=session_id,
+            kwargs=kwargs,
+            progress_callback=progress_callback,
+        )
 
-        # Get current session if not provided
-        if session_id is None:
-            current_session = await self.state_manager.get_current_session(user_id)
-            session_id = current_session.id if current_session else None
-
-        # Always prefer explicit resume by session_id when available.
-        continue_last = False
-
-        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
-        if not isinstance(stored_settings, UserSettings):
-            stored_settings = UserSettings()
         user_settings = UserSettings(
             mode=mode,
             audio_enabled=include_audio,
             voice_speed=voice_speed,
             watch_enabled=watch_enabled,
-            model=stored_settings.model,
+            model=ctx.stored_settings.model,
         )
 
         # Tool call tracking wrapper
@@ -208,24 +258,16 @@ class Brain:
             if tool_use_callback and watch_enabled:
                 await tool_use_callback(tool_name, detail)
 
-        if "model" in kwargs:
-            model_override = kwargs.pop("model")
-        else:
-            model_override = stored_settings.model
-
-        # Load vault config if available
-        vault_config = self._vault.load() if self._vault else None
-
         config = self._build_query_config(
-            prompt=text,
-            session_id=session_id,
-            continue_last=continue_last,
+            prompt=ctx.text,
+            session_id=ctx.session_id,
+            continue_last=False,
             user_settings=user_settings,
             mode=mode,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
-            vault_config=vault_config,
-            model=model_override or None,
+            vault_config=ctx.vault_config,
+            model=ctx.model_override,
             **kwargs,
         )
 
@@ -381,70 +423,42 @@ class Brain:
             callbacks.on_tool_approval if callbacks else can_use_tool
         )
 
-        # Transcribe voice if needed (blocking step before stream starts)
-        if content_type == MessageType.VOICE:
-            if not isinstance(content, bytes):
-                raise ValueError("Voice content must be bytes")
-            try:
-                text = await self.voice_engine.transcribe(content)
-            except VoiceError as exc:
-                raise RuntimeError(str(exc)) from exc
-        else:
-            text = content if isinstance(content, str) else content.decode("utf-8")
+        ctx = await self._resolve_request_context(
+            user_id=user_id,
+            content=content,
+            content_type=content_type,
+            session_id=session_id,
+            kwargs=kwargs,
+        )
 
-        if session_id is None:
-            current_session = await self.state_manager.get_current_session(user_id)
-            session_id = current_session.id if current_session else None
-
-        # Always prefer explicit resume by session_id when available.
-        continue_last = False
-
-        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
-        if not isinstance(stored_settings, UserSettings):
-            stored_settings = UserSettings()
         user_settings = UserSettings(
             mode=mode,
             watch_enabled=watch_enabled,
-            model=stored_settings.model,
+            model=ctx.stored_settings.model,
         )
 
-        if "model" in kwargs:
-            model_override = kwargs.pop("model")
-        else:
-            model_override = stored_settings.model
-
-        # Load vault config if available
-        vault_config = self._vault.load() if self._vault else None
-
         config = self._build_query_config(
-            prompt=text,
-            session_id=session_id,
-            continue_last=continue_last,
+            prompt=ctx.text,
+            session_id=ctx.session_id,
+            continue_last=False,
             user_settings=user_settings,
             mode=mode,
             on_tool_call=tool_use_callback if watch_enabled else None,
             can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
-            vault_config=vault_config,
-            model=model_override or None,
+            vault_config=ctx.vault_config,
+            model=ctx.model_override,
             **kwargs,
         )
 
         # Yield events from Claude
+        resolved_session_id = ctx.session_id
         async for event in self.claude_client.query_stream(config):
             yield event
 
-            # Update session state if we get a new session ID from result
-            # Note: query_stream yields raw messages/events. We might need to inspect them here
-            # to capture session_id update.
-            # But query_stream logic in claude.py doesn't return metadata at end, it yields objects.
-            # Let's check ResultMessage handling in stream.
-            # The client should probably persist session ID updates internally or we handle it here.
-            # For now, let's assume session update happens on the caller side or we need to intercept ResultMessage.
-
             if isinstance(event, ResultMessage) and event.session_id:
-                if event.session_id != session_id:
+                if event.session_id != resolved_session_id:
                     await self.state_manager.update_session(user_id, event.session_id)
-                    session_id = event.session_id
+                    resolved_session_id = event.session_id
 
     async def process_text(
         self,

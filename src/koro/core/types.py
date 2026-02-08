@@ -62,7 +62,7 @@ class OnProgress(Protocol):
         pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class BrainCallbacks:
     """Callbacks for Brain operations (Decision 4 from architecture).
 

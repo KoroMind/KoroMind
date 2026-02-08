@@ -20,6 +20,9 @@ Full lessons with examples, explanations, and checklists:
 | [sql-safety](lessons/sql-safety.md) | Parameterized queries always |
 | [normalize-at-boundaries](lessons/normalize-at-boundaries.md) | Pick canonical type, convert at entry |
 | [refactoring-chain](lessons/refactoring-chain.md) | Update all consumers when changing types |
+| [model-dump-over-getattr](lessons/model-dump-over-getattr.md) | Use model_dump() not getattr loops |
+| [pydantic-strict-configs](lessons/pydantic-strict-configs.md) | extra="forbid" + default_factory |
+| [immutable-validators](lessons/immutable-validators.md) | Don't mutate input, type validator params |
 
 ## Quick Reference
 
@@ -88,6 +91,9 @@ One-liner smells that don't need full lessons:
 - [ ] **sql-safety**: All SQL parameterized? No f-strings with user data?
 - [ ] **normalize-at-boundaries**: IDs normalized at entry? One canonical type?
 - [ ] **refactoring-chain**: All consumers updated? Tests use production types? Re-fetch after mutations?
+- [ ] **model-dump-over-getattr**: Using model_dump() not getattr loops? include/exclude for field selection?
+- [ ] **pydantic-strict-configs**: Config models use extra="forbid"? Mutable defaults use default_factory?
+- [ ] **immutable-validators**: mode="before" validators copy data? info typed as ValidationInfo? I/O errors separated?
 
 ### Quick Reference
 - [ ] Event types narrowed before field access?

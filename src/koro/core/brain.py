@@ -289,10 +289,12 @@ class Brain:
 
         # Apply vault config (if provided)
         if vault_config:
-            for field in ("hooks", "mcp_servers", "sandbox", "plugins"):
-                value = getattr(vault_config, field)
-                if value:
-                    config_kwargs[field] = value
+            vault_data = vault_config.model_dump(
+                exclude_none=True,
+                exclude_defaults=True,
+                include={"hooks", "mcp_servers", "sandbox", "plugins"},
+            )
+            config_kwargs.update(vault_data)
             if vault_config.agents:
                 config_kwargs["agents"] = self._vault_agents_to_sdk(vault_config.agents)
             logger.debug(

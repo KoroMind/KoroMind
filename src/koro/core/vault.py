@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def _resolve_path(path_str: str, vault_root: Path) -> str:
 class HookConfig(BaseModel):
     """Configuration for a single hook."""
 
-    model_config = ConfigDict(frozen=True, extra="allow")
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     type: str = "command"
     command: str
@@ -49,10 +49,10 @@ class HookConfig(BaseModel):
 class HookMatcher(BaseModel):
     """Matcher configuration for hooks."""
 
-    model_config = ConfigDict(frozen=True, extra="allow")
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     matcher: str
-    hooks: list[HookConfig] = []
+    hooks: list[HookConfig] = Field(default_factory=list)
 
 
 class McpServerConfig(BaseModel):
@@ -61,7 +61,7 @@ class McpServerConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 
     command: str
-    args: list[str] = []
+    args: list[str] = Field(default_factory=list)
 
     def model_post_init(self, __context: Any) -> None:
         if __context and self.args:
@@ -104,13 +104,15 @@ class AgentConfig(BaseModel):
 class SandboxConfig(BaseModel):
     """Sandbox settings."""
 
-    model_config = ConfigDict(frozen=True, extra="allow", populate_by_name=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
 
     enabled: bool = False
     auto_allow_bash_if_sandboxed: bool = Field(
         default=True, alias="autoAllowBashIfSandboxed"
     )
-    white_listed_commands: list[str] = Field(default=[], alias="whiteListedCommands")
+    white_listed_commands: list[str] = Field(
+        default_factory=list, alias="whiteListedCommands"
+    )
 
 
 class VaultConfig(BaseModel):
@@ -131,15 +133,15 @@ class VaultConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # Extensibility - user-specific configurations
-    hooks: dict[str, list[HookMatcher]] = {}
-    mcp_servers: dict[str, McpServerConfig] = {}
-    agents: dict[str, AgentConfig] = {}
+    hooks: dict[str, list[HookMatcher]] = Field(default_factory=dict)
+    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
+    agents: dict[str, AgentConfig] = Field(default_factory=dict)
     sandbox: SandboxConfig | None = None
-    plugins: list[Any] = []
+    plugins: list[Any] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
-    def _resolve_mcp_json(cls, data: Any, info: Any) -> Any:
+    def _resolve_mcp_json(cls, data: Any, info: ValidationInfo) -> Any:
         if not isinstance(data, dict):
             return data
         mcp = data.get("mcp_servers")
@@ -158,8 +160,9 @@ class VaultConfig(BaseModel):
             raise VaultError(f"MCP config file not found: {mcp_path}")
 
         try:
-            with open(mcp_path) as f:
-                mcp_data = json.load(f)
+            mcp_data = json.loads(mcp_path.read_text(encoding="utf-8"))
+        except OSError as e:
+            raise VaultError(f"Failed to read MCP config file {mcp_path}: {e}") from e
         except json.JSONDecodeError as e:
             raise VaultError(f"Invalid JSON in {mcp_path}: {e}") from e
 
@@ -168,8 +171,9 @@ class VaultConfig(BaseModel):
                 f"MCP config file must contain a 'mcpServers' key: {mcp_path}"
             )
 
-        data["mcp_servers"] = mcp_data["mcpServers"]
-        return data
+        new_data = dict(data)
+        new_data["mcp_servers"] = mcp_data["mcpServers"]
+        return new_data
 
 
 class VaultError(Exception):

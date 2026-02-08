@@ -1,5 +1,6 @@
 """Claude SDK wrapper for agent interactions."""
 
+import inspect
 import json
 import logging
 import os
@@ -362,7 +363,11 @@ class ClaudeClient:
                                 ):
                                     tool_input = block.input or {}
                                     detail = get_tool_detail(block.name, tool_input)
-                                    await stream_config.on_tool_call(block.name, detail)
+                                    result = stream_config.on_tool_call(
+                                        block.name, detail
+                                    )
+                                    if inspect.isawaitable(result):
+                                        await result
                         yield message
                 finally:
                     self._active_client = None

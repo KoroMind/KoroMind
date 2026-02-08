@@ -55,6 +55,31 @@ class OnToolCall(Protocol):
         pass
 
 
+class OnProgress(Protocol):
+    """Callback signature for progress notifications."""
+
+    def __call__(self, message: str) -> None:
+        pass
+
+
+@dataclass(frozen=True)
+class BrainCallbacks:
+    """Callbacks for Brain operations (Decision 4 from architecture).
+
+    Structured callbacks for interface integration. None = feature disabled.
+    Legacy on_tool_call/can_use_tool params still work but prefer this.
+    """
+
+    on_tool_use: OnToolCall | None = None
+    """Called when a tool is used (watch mode). Async."""
+
+    on_tool_approval: CanUseTool | None = None
+    """Called to approve tool use (approve mode). SDK-compatible signature."""
+
+    on_progress: OnProgress | None = None
+    """Called with progress updates during processing. Sync."""
+
+
 class ClaudeTools(StrEnum):
     """Claude tool names for allowed tool lists."""
 
@@ -86,6 +111,7 @@ DEFAULT_CLAUDE_TOOLS = [
 # Re-export SDK types for convenience
 __all__ = [
     "AgentDefinition",
+    "BrainCallbacks",
     "BrainResponse",
     "CanUseTool",
     "ClaudeTools",
@@ -97,6 +123,7 @@ __all__ = [
     "McpServerConfig",
     "MessageType",
     "Mode",
+    "OnProgress",
     "OnToolCall",
     "OutputFormat",
     "PermissionResult",

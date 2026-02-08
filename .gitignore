@@ -37,3 +37,6 @@ htmlcov/
 
 # Secrets
 credentials.json
+
+# Sandbox (Claude working directory)
+sandbox/

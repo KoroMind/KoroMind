@@ -1,6 +1,9 @@
 # KoroMind Vault Configuration
 # Your second brain, configured.
 
+# MCP servers loaded from JSON file
+mcp_servers: "./mcp.json"
+
 # Subagents with tools
 agents:
   researcher:

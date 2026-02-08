@@ -1,5 +1,6 @@
 """Unit tests for the Vault component."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -398,4 +399,97 @@ agents:
 """)
         vault = Vault(tmp_path)
         with pytest.raises(Exception, match="prompt or prompt_file, not both"):
+            vault.load()
+
+
+class TestMcpJsonFile:
+    """Tests for loading MCP servers from a JSON file."""
+
+    def _write_mcp_json(self, path: Path, data: dict) -> None:
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+    def test_load_mcp_from_json_file(self, tmp_path: Path):
+        """Loads MCP servers from a referenced JSON file."""
+        mcp_file = tmp_path / "mcp.json"
+        self._write_mcp_json(
+            mcp_file,
+            {
+                "mcpServers": {
+                    "sqlite": {
+                        "command": "uvx",
+                        "args": ["mcp-server-sqlite"],
+                    },
+                },
+            },
+        )
+
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text('mcp_servers: "./mcp.json"')
+
+        vault = Vault(tmp_path)
+        config = vault.load()
+
+        assert "sqlite" in config.mcp_servers
+        assert config.mcp_servers["sqlite"].command == "uvx"
+        assert config.mcp_servers["sqlite"].args == ["mcp-server-sqlite"]
+
+    def test_load_mcp_json_resolves_paths(self, tmp_path: Path):
+        """Relative paths in MCP server args are resolved after JSON loading."""
+        mcp_file = tmp_path / "mcp.json"
+        self._write_mcp_json(
+            mcp_file,
+            {
+                "mcpServers": {
+                    "sqlite": {
+                        "command": "uvx",
+                        "args": ["mcp-server-sqlite", "--db-path", "./data.db"],
+                    },
+                },
+            },
+        )
+
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text('mcp_servers: "./mcp.json"')
+
+        vault = Vault(tmp_path)
+        config = vault.load()
+
+        assert config.mcp_servers["sqlite"].args == [
+            "mcp-server-sqlite",
+            "--db-path",
+            str(tmp_path / "data.db"),
+        ]
+
+    def test_load_mcp_json_missing_file(self, tmp_path: Path):
+        """Raises VaultError when referenced JSON file doesn't exist."""
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text('mcp_servers: "./nonexistent.json"')
+
+        vault = Vault(tmp_path)
+        with pytest.raises(VaultError, match="not found"):
+            vault.load()
+
+    def test_load_mcp_json_invalid_json(self, tmp_path: Path):
+        """Raises VaultError when JSON file contains invalid JSON."""
+        mcp_file = tmp_path / "mcp.json"
+        mcp_file.write_text("{invalid json")
+
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text('mcp_servers: "./mcp.json"')
+
+        vault = Vault(tmp_path)
+        with pytest.raises(VaultError, match="Invalid JSON"):
+            vault.load()
+
+    def test_load_mcp_json_missing_key(self, tmp_path: Path):
+        """Raises VaultError when JSON file lacks mcpServers key."""
+        mcp_file = tmp_path / "mcp.json"
+        self._write_mcp_json(mcp_file, {"servers": {}})
+
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text('mcp_servers: "./mcp.json"')
+
+        vault = Vault(tmp_path)
+        with pytest.raises(VaultError, match="mcpServers"):
             vault.load()

@@ -4,12 +4,13 @@ The Vault loads configuration from vault-config.yaml and provides it
 as a typed VaultConfig that passes to the Claude SDK via Brain.
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,10 @@ class VaultConfig(BaseModel):
 
     Note: Core SDK options (model, cwd, max_turns, etc.) are provided
     via environment variables, not vault config.
+
+    mcp_servers accepts either:
+    - A dict of server configs (inline)
+    - A string path to a JSON file containing a "mcpServers" key
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -131,6 +136,40 @@ class VaultConfig(BaseModel):
     agents: dict[str, AgentConfig] = {}
     sandbox: SandboxConfig | None = None
     plugins: list[Any] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_mcp_json(cls, data: Any, info: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        mcp = data.get("mcp_servers")
+        if not isinstance(mcp, str):
+            return data
+
+        vault_root = info.context.get("vault_root") if info.context else None
+        if vault_root is None:
+            raise VaultError("Cannot resolve mcp_servers path without vault_root")
+
+        mcp_path = Path(mcp).expanduser()
+        if not mcp_path.is_absolute():
+            mcp_path = Path(vault_root) / mcp_path
+
+        if not mcp_path.exists():
+            raise VaultError(f"MCP config file not found: {mcp_path}")
+
+        try:
+            with open(mcp_path) as f:
+                mcp_data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise VaultError(f"Invalid JSON in {mcp_path}: {e}") from e
+
+        if not isinstance(mcp_data, dict) or "mcpServers" not in mcp_data:
+            raise VaultError(
+                f"MCP config file must contain a 'mcpServers' key: {mcp_path}"
+            )
+
+        data["mcp_servers"] = mcp_data["mcpServers"]
+        return data
 
 
 class VaultError(Exception):

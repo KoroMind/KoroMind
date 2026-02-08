@@ -17,23 +17,25 @@
 # =============================================================================
 # Model Context Protocol servers to enable.
 # Each server provides additional tools to the agent.
-mcp_servers:
-  # SQLite database access
-  # sqlite:
-  #   command: "uvx"
-  #   args: ["mcp-server-sqlite", "--db-path", "./data.db"]
-
-  # Filesystem access (already provided by default)
-  # filesystem:
-  #   command: "npx"
-  #   args: ["-y", "@anthropic/mcp-filesystem", "."]
-
-  # GitHub integration
-  # github:
-  #   command: "npx"
-  #   args: ["-y", "@anthropic/mcp-github"]
-  #   env:
-  #     GITHUB_TOKEN: "${GITHUB_TOKEN}"
+#
+# Point to a JSON file (standard Claude Code mcp.json format):
+# mcp_servers: "./mcp.json"
+#
+# The JSON file should contain a "mcpServers" key:
+# {
+#   "mcpServers": {
+#     "sqlite": {
+#       "command": "uvx",
+#       "args": ["mcp-server-sqlite", "--db-path", "./data.db"]
+#     }
+#   }
+# }
+#
+# Or define servers inline:
+# mcp_servers:
+#   sqlite:
+#     command: "uvx"
+#     args: ["mcp-server-sqlite", "--db-path", "./data.db"]
 
 # =============================================================================
 # Subagents

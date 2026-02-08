@@ -40,8 +40,8 @@ class TestRateLimiter:
         """RateLimiter uses default values."""
         limiter = limiter_factory()
 
-        assert limiter.cooldown_seconds == 2
-        assert limiter.per_minute_limit == 10
+        assert limiter.cooldown_seconds == 0.5
+        assert limiter.per_minute_limit == 50
 
     def test_init_with_custom_values(self, limiter_factory):
         """RateLimiter accepts custom values."""

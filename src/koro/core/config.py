@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_env(key: str, default: str = None) -> str | None:
+def get_env(key: str, default: str | None = None) -> str | None:
     """Get environment variable with optional default."""
     return os.getenv(key, default)
 
@@ -43,6 +43,7 @@ ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY")
 # KoroMind Data Directory (XDG-style, defaults to ~/.koromind)
 KOROMIND_DATA_DIR = Path(
     get_env("KOROMIND_DATA_DIR", os.path.expanduser("~/.koromind"))
+    or os.path.expanduser("~/.koromind")
 )
 
 # Ensure data directory exists
@@ -78,18 +79,20 @@ VOICE_SETTINGS = {
 }
 
 # Rate limiting
-RATE_LIMIT_SECONDS = 2
-RATE_LIMIT_PER_MINUTE = 10
+RATE_LIMIT_SECONDS = 0.5
+RATE_LIMIT_PER_MINUTE = 50
 
 # API Server settings
 KOROMIND_API_KEY = get_env("KOROMIND_API_KEY")
 KOROMIND_HOST = get_env("KOROMIND_HOST", "127.0.0.1")
 KOROMIND_PORT = get_env_int("KOROMIND_PORT", 8420)
 KOROMIND_ALLOW_NO_AUTH = get_env_bool("KOROMIND_ALLOW_NO_AUTH", False)
+_cors_origins_raw = get_env("KOROMIND_CORS_ORIGINS")
+if _cors_origins_raw is None:
+    _cors_origins_raw = "http://localhost:3000"
+
 KOROMIND_CORS_ORIGINS = [
-    origin.strip()
-    for origin in get_env("KOROMIND_CORS_ORIGINS", "http://localhost:3000").split(",")
-    if origin.strip()
+    origin.strip() for origin in _cors_origins_raw.split(",") if origin.strip()
 ]
 
 # Legacy paths (for backward compatibility during migration)
@@ -104,7 +107,7 @@ def setup_logging() -> logging.Logger:
     """Configure and return logger."""
     logging.basicConfig(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
+        level=getattr(logging, (LOG_LEVEL or "INFO").upper(), logging.INFO),
     )
     return logging.getLogger(__name__)
 

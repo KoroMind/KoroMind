@@ -2,11 +2,14 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
+from telegram import BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
@@ -29,15 +32,17 @@ from koro.interfaces.telegram.handlers import (
     cmd_continue,
     cmd_elevenlabs_key,
     cmd_health,
+    cmd_help,
+    cmd_model,
     cmd_new,
     cmd_sessions,
     cmd_settings,
     cmd_setup,
-    cmd_start,
     cmd_status,
     cmd_switch,
     handle_approval_callback,
     handle_settings_callback,
+    handle_switch_callback,
     handle_text,
     handle_voice,
 )
@@ -49,11 +54,11 @@ from koro.voice import get_voice_engine
 logger = logging.getLogger(__name__)
 
 
-async def _periodic_approval_cleanup(_context) -> None:
+async def _periodic_approval_cleanup(_context: object) -> None:
     cleanup_stale_approvals()
 
 
-async def error_handler(update, context):
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle errors in the telegram bot.
 
@@ -62,16 +67,15 @@ async def error_handler(update, context):
         context: Telegram context containing error info
     """
     logger.error(f"Exception while handling an update: {context.error}")
-    if update and update.effective_chat:
+    chat = getattr(update, "effective_chat", None)
+    if chat:
         try:
-            await update.effective_chat.send_message(
-                "An error occurred while processing your request."
-            )
+            await chat.send_message("An error occurred while processing your request.")
         except Exception as exc:
             logger.warning("Failed to send Telegram error message: %s", exc)
 
 
-def run_telegram_bot():
+def run_telegram_bot() -> None:
     """Run the Telegram bot."""
     # Apply any saved credentials first
     claude_token, elevenlabs_key = apply_saved_credentials()
@@ -91,6 +95,11 @@ def run_telegram_bot():
     if message:
         print(f"WARNING: {message}")
 
+    bot_token = TELEGRAM_BOT_TOKEN
+    if not bot_token:
+        print("ERROR: Missing TELEGRAM_BOT_TOKEN.")
+        raise SystemExit(1)
+
     # Check Claude auth
     is_auth, auth_method = check_claude_auth()
     if not is_auth:
@@ -109,7 +118,25 @@ def run_telegram_bot():
     # Setup logging
     setup_logging()
 
-    async def _post_init(application):
+    async def _post_init(application: Any) -> None:
+        commands = [
+            BotCommand("help", "Show help and available commands"),
+            BotCommand("new", "Start a new session"),
+            BotCommand("continue", "Resume last session"),
+            BotCommand("sessions", "List sessions"),
+            BotCommand("switch", "Switch to a session"),
+            BotCommand("model", "Show or set model"),
+            BotCommand("status", "Show current session info"),
+            BotCommand("health", "Run health checks"),
+            BotCommand("settings", "Configure audio and mode"),
+            BotCommand("setup", "Show credential status"),
+            BotCommand("claude_token", "Set Claude token"),
+            BotCommand("elevenlabs_key", "Set ElevenLabs key"),
+        ]
+        try:
+            await application.bot.set_my_commands(commands)
+        except Exception as exc:
+            debug(f"Failed to set bot commands: {exc}")
         application.job_queue.run_repeating(
             _periodic_approval_cleanup,
             interval=60,
@@ -119,18 +146,19 @@ def run_telegram_bot():
     # Build application with concurrent updates for approve mode
     app = (
         ApplicationBuilder()
-        .token(TELEGRAM_BOT_TOKEN)
+        .token(bot_token)
         .concurrent_updates(True)
         .post_init(_post_init)
         .build()
     )
 
     # Register command handlers
-    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("new", cmd_new))
     app.add_handler(CommandHandler("continue", cmd_continue))
     app.add_handler(CommandHandler("sessions", cmd_sessions))
     app.add_handler(CommandHandler("switch", cmd_switch))
+    app.add_handler(CommandHandler("model", cmd_model))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("settings", cmd_settings))
@@ -140,6 +168,7 @@ def run_telegram_bot():
 
     # Register callback handlers
     app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^setting_"))
+    app.add_handler(CallbackQueryHandler(handle_switch_callback, pattern="^switch_"))
     app.add_handler(
         CallbackQueryHandler(handle_approval_callback, pattern="^(approve_|reject_)")
     )
@@ -152,14 +181,15 @@ def run_telegram_bot():
     app.add_error_handler(error_handler)
 
     # Ensure sandbox exists
-    Path(SANDBOX_DIR).mkdir(parents=True, exist_ok=True)
+    sandbox_dir = SANDBOX_DIR or str(Path.home() / "claude-voice-sandbox")
+    Path(sandbox_dir).mkdir(parents=True, exist_ok=True)
 
     # Startup info
     debug("Bot starting...")
     debug(f"Persona: {PERSONA_NAME}")
     debug(f"Voice ID: {ELEVENLABS_VOICE_ID}")
     debug("TTS: eleven_turbo_v2_5 with expressive settings")
-    debug(f"Sandbox: {SANDBOX_DIR}")
+    debug(f"Sandbox: {sandbox_dir}")
     debug(f"Read access: {CLAUDE_WORKING_DIR}")
     debug(f"Chat ID: {ALLOWED_CHAT_ID}")
     debug(f"Topic ID: {TOPIC_ID or 'ALL (no filter)'}")

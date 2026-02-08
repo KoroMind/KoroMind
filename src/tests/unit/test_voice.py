@@ -109,7 +109,7 @@ class TestVoiceEngine:
         await engine.text_to_speech("Hello", speed=0.8)
 
         call_args = mock_elevenlabs_client.text_to_speech.convert.call_args
-        assert call_args.kwargs["voice_settings"]["speed"] == 0.8
+        assert call_args.kwargs["voice_settings"].speed == 0.8
 
     def test_health_check_without_client(self):
         """health_check fails without client."""

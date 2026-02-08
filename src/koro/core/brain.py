@@ -1,5 +1,6 @@
 """The Brain - central orchestration layer for KoroMind."""
 
+import inspect
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -11,6 +12,8 @@ from claude_agent_sdk.types import (
     AssistantMessage,
     ResultMessage,
     StreamEvent,
+    SystemMessage,
+    UserMessage,
 )
 
 from koro.core.claude import ClaudeClient, get_claude_client
@@ -32,7 +35,15 @@ from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
 logger = logging.getLogger(__name__)
 
-StreamedEvent = AssistantMessage | ResultMessage | StreamEvent
+StreamedEvent = (
+    AssistantMessage | ResultMessage | StreamEvent | UserMessage | SystemMessage
+)
+
+
+async def _maybe_await(value: Any) -> Any:
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 class Brain:
@@ -125,7 +136,7 @@ class Brain:
         watch_enabled: bool = False,
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a message and return response.
@@ -165,21 +176,30 @@ class Brain:
             current_session = await self.state_manager.get_current_session(user_id)
             session_id = current_session.id if current_session else None
 
-        # Determine if we're continuing a session
-        continue_last = session_id is not None
+        # Always prefer explicit resume by session_id when available.
+        continue_last = False
 
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
         user_settings = UserSettings(
             mode=mode,
             audio_enabled=include_audio,
             voice_speed=voice_speed,
             watch_enabled=watch_enabled,
+            model=stored_settings.model,
         )
 
         # Tool call tracking wrapper
-        async def _on_tool_call(tool_name: str, detail: str | None):
+        async def _on_tool_call(tool_name: str, detail: str | None) -> None:
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if on_tool_call and watch_enabled:
                 await on_tool_call(tool_name, detail)
+
+        if "model" in kwargs:
+            model_override = kwargs.pop("model")
+        else:
+            model_override = stored_settings.model
 
         # Load vault config if available
         vault_config = self._vault.load() if self._vault else None
@@ -193,6 +213,7 @@ class Brain:
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
             vault_config=vault_config,
+            model=model_override or None,
             **kwargs,
         )
 
@@ -254,7 +275,7 @@ class Brain:
         on_tool_call: OnToolCall | None,
         can_use_tool: CanUseTool | None,
         vault_config: VaultConfig | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> QueryConfig:
         config_kwargs: dict[str, Any] = {
             "prompt": prompt,
@@ -323,7 +344,7 @@ class Brain:
         watch_enabled: bool = False,
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[StreamedEvent]:
         """
         Process a message and yield streaming events.
@@ -350,9 +371,22 @@ class Brain:
             current_session = await self.state_manager.get_current_session(user_id)
             session_id = current_session.id if current_session else None
 
-        continue_last = session_id is not None
+        # Always prefer explicit resume by session_id when available.
+        continue_last = False
 
-        user_settings = UserSettings(mode=mode, watch_enabled=watch_enabled)
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
+        user_settings = UserSettings(
+            mode=mode,
+            watch_enabled=watch_enabled,
+            model=stored_settings.model,
+        )
+
+        if "model" in kwargs:
+            model_override = kwargs.pop("model")
+        else:
+            model_override = stored_settings.model
 
         # Load vault config if available
         vault_config = self._vault.load() if self._vault else None
@@ -366,6 +400,7 @@ class Brain:
             on_tool_call=on_tool_call if watch_enabled else None,
             can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
             vault_config=vault_config,
+            model=model_override or None,
             **kwargs,
         )
 
@@ -394,7 +429,7 @@ class Brain:
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
         voice_speed: float = 1.1,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a text message (convenience method).
@@ -418,7 +453,7 @@ class Brain:
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
         voice_speed: float = 1.1,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a voice message (convenience method).
@@ -458,7 +493,7 @@ class Brain:
         """Get settings for a user."""
         return await self.state_manager.get_settings(user_id)
 
-    async def update_settings(self, user_id: str, **kwargs) -> UserSettings:
+    async def update_settings(self, user_id: str, **kwargs: object) -> UserSettings:
         """Update settings for a user."""
         return await self.state_manager.update_settings(user_id, **kwargs)
 

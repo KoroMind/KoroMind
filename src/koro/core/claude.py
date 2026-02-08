@@ -19,10 +19,12 @@ from claude_agent_sdk.types import (
     AssistantMessage,
     ResultMessage,
     StreamEvent,
+    SystemMessage,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
 )
 
 from koro.core.config import CLAUDE_WORKING_DIR, SANDBOX_DIR
@@ -31,10 +33,12 @@ from koro.core.types import DEFAULT_CLAUDE_TOOLS, Mode, QueryConfig
 
 logger = logging.getLogger(__name__)
 
-StreamedEvent = AssistantMessage | ResultMessage | StreamEvent
+StreamedEvent = (
+    AssistantMessage | ResultMessage | StreamEvent | UserMessage | SystemMessage
+)
 
 
-def load_megg_context(working_dir: str = None) -> str:
+def load_megg_context(working_dir: str | None = None) -> str:
     """
     Load megg context for enhanced prompts.
 
@@ -56,7 +60,7 @@ def load_megg_context(working_dir: str = None) -> str:
         return ""
 
 
-def format_tool_call(tool_name: str, tool_input: dict) -> str:
+def format_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
     """
     Format a tool call for display.
 
@@ -73,7 +77,7 @@ def format_tool_call(tool_name: str, tool_input: dict) -> str:
     return f"Tool: {tool_name}\n```\n{input_str}\n```"
 
 
-def get_tool_detail(tool_name: str, tool_input: dict) -> str | None:
+def get_tool_detail(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """
     Extract key detail from tool input for display.
 
@@ -86,17 +90,24 @@ def get_tool_detail(tool_name: str, tool_input: dict) -> str | None:
     """
     if tool_name == "Bash" and "command" in tool_input:
         cmd = tool_input["command"]
+        if not isinstance(cmd, str):
+            return None
         return cmd[:80] + "..." if len(cmd) > 80 else cmd
     elif tool_name == "Read" and "file_path" in tool_input:
-        return tool_input["file_path"]
+        file_path = tool_input["file_path"]
+        return file_path if isinstance(file_path, str) else None
     elif tool_name == "Edit" and "file_path" in tool_input:
-        return tool_input["file_path"]
+        file_path = tool_input["file_path"]
+        return file_path if isinstance(file_path, str) else None
     elif tool_name == "Write" and "file_path" in tool_input:
-        return tool_input["file_path"]
+        file_path = tool_input["file_path"]
+        return file_path if isinstance(file_path, str) else None
     elif tool_name == "Grep" and "pattern" in tool_input:
-        return f"/{tool_input['pattern']}/"
+        pattern = tool_input["pattern"]
+        return f"/{pattern}/" if isinstance(pattern, str) else None
     elif tool_name == "Glob" and "pattern" in tool_input:
-        return tool_input["pattern"]
+        pattern = tool_input["pattern"]
+        return pattern if isinstance(pattern, str) else None
     return None
 
 
@@ -105,8 +116,8 @@ class ClaudeClient:
 
     def __init__(
         self,
-        sandbox_dir: str = None,
-        working_dir: str = None,
+        sandbox_dir: str | None = None,
+        working_dir: str | None = None,
     ):
         """
         Initialize Claude client.
@@ -115,8 +126,8 @@ class ClaudeClient:
             sandbox_dir: Directory for Claude to write/execute
             working_dir: Directory Claude can read from
         """
-        self.sandbox_dir = sandbox_dir or SANDBOX_DIR
-        self.working_dir = working_dir or CLAUDE_WORKING_DIR
+        self.sandbox_dir = sandbox_dir or SANDBOX_DIR or str(Path.home())
+        self.working_dir = working_dir or CLAUDE_WORKING_DIR or str(Path.home())
         self.prompt_manager = get_prompt_manager()
         self._active_client: ClaudeSDKClient | None = None
         logger.debug(
@@ -154,7 +165,7 @@ class ClaudeClient:
             agents=config.agents,
             plugins=config.plugins,
             sandbox=config.sandbox,
-            output_format=config.output_format,
+            output_format=dict(config.output_format) if config.output_format else None,
             max_turns=config.max_turns,
             max_budget_usd=config.max_budget_usd,
             model=config.model,
@@ -196,7 +207,7 @@ class ClaudeClient:
     async def query(
         self,
         config: QueryConfig,
-    ) -> tuple[str, str, dict]:
+    ) -> tuple[str, str, dict[str, Any]]:
         """
         Query Claude and return response.
         """
@@ -211,8 +222,8 @@ class ClaudeClient:
         full_prompt, options = self._prepare_query(config)
 
         result_text = ""
-        new_session_id = config.session_id
-        metadata = {}
+        new_session_id = config.session_id or ""
+        metadata: dict[str, Any] = {}
         tool_count = 0
         tool_results: list[dict[str, Any]] = []
         tool_use_map: dict[str, dict[str, Any]] = {}

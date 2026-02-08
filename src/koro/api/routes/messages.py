@@ -1,7 +1,7 @@
 """Message processing endpoints."""
 
 import base64
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -43,10 +43,12 @@ class MessageResponse(BaseModel):
     audio: str | None = Field(
         default=None, description="Base64-encoded audio (if include_audio was true)"
     )
-    tool_calls: list[dict] = Field(
+    tool_calls: list[dict[str, Any]] = Field(
         default_factory=list, description="List of tool calls made"
     )
-    metadata: dict = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
 
 
 @router.post("/messages", response_model=MessageResponse)
@@ -63,6 +65,7 @@ async def process_message(
     user_id = http_request.state.user_id
 
     # Decode voice content if needed
+    content: str | bytes
     if request.content_type == "voice":
         try:
             content = base64.b64decode(request.content)

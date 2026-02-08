@@ -2,11 +2,21 @@
 
 import sqlite3
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
+from typing import TypedDict
 
 from koro.core.config import DATABASE_PATH, RATE_LIMIT_PER_MINUTE, RATE_LIMIT_SECONDS
+
+
+class UserLimitState(TypedDict):
+    """Per-user rate limit state persisted in-memory and SQLite."""
+
+    last_message: float | None
+    minute_start: float
+    minute_count: int
 
 
 class RateLimiter:
@@ -14,8 +24,8 @@ class RateLimiter:
 
     def __init__(
         self,
-        cooldown_seconds: float = None,
-        per_minute_limit: int = None,
+        cooldown_seconds: float | None = None,
+        per_minute_limit: int | None = None,
         db_path: Path | str | None = None,
     ):
         """
@@ -33,7 +43,7 @@ class RateLimiter:
             RATE_LIMIT_PER_MINUTE if per_minute_limit is None else per_minute_limit
         )
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
-        self.user_limits: dict[str, dict] = {}
+        self.user_limits: dict[str, UserLimitState] = {}
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
@@ -48,8 +58,8 @@ class RateLimiter:
                 """)
 
     @contextmanager
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+        conn: sqlite3.Connection = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
@@ -57,7 +67,7 @@ class RateLimiter:
         finally:
             conn.close()
 
-    def _load_limits(self, user_id: str) -> dict | None:
+    def _load_limits(self, user_id: str) -> UserLimitState | None:
         with self._get_connection() as conn:
             row = conn.execute(
                 """
@@ -75,7 +85,7 @@ class RateLimiter:
             "minute_count": row["minute_count"],
         }
 
-    def _save_limits(self, user_id: str, limits: dict) -> None:
+    def _save_limits(self, user_id: str, limits: "UserLimitState") -> None:
         with self._get_connection() as conn:
             conn.execute(
                 """

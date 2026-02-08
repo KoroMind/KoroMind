@@ -57,6 +57,14 @@ pre-commit run ruff-check --all-files
 gh pr-review review view 9 -R KoroMind/KoroMind
 ```
 
+### PR Review Comment Replies (gh api)
+Use the PR-specific endpoint and `in_reply_to` for replies:
+```bash
+gh api -X POST repos/KoroMind/KoroMind/pulls/<PR_NUMBER>/comments \
+  -f in_reply_to=<REVIEW_COMMENT_ID> \
+  -f body="Reply text"
+```
+
 ## Architecture
 
 ### Package Structure

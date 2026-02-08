@@ -27,6 +27,27 @@ TELEGRAM_BOT_TOKEN = get_env("TELEGRAM_BOT_TOKEN")
 ALLOWED_CHAT_ID = get_env_int("TELEGRAM_DEFAULT_CHAT_ID", 0)
 TOPIC_ID = get_env("TELEGRAM_TOPIC_ID")
 
+__all__ = [
+    "ALLOWED_CHAT_ID",
+    "BASE_DIR",
+    "CLAUDE_WORKING_DIR",
+    "CREDENTIALS_FILE",
+    "ELEVENLABS_VOICE_ID",
+    "PERSONA_NAME",
+    "SANDBOX_DIR",
+    "SETTINGS_FILE",
+    "STATE_FILE",
+    "SYSTEM_PROMPT_FILE",
+    "TELEGRAM_BOT_TOKEN",
+    "TOPIC_ID",
+    "VOICE_SETTINGS",
+    "get_env",
+    "get_env_bool",
+    "get_env_int",
+    "setup_logging",
+    "validate_environment",
+]
+
 
 def validate_environment() -> tuple[bool, str]:
     """
@@ -53,7 +74,7 @@ def validate_environment() -> tuple[bool, str]:
     if not chat_id:
         return (
             False,
-            "Missing required environment variable:\n  - TELEGRAM_DEFAULT_CHAT_ID: Your Telegram chat ID (run /start to get it)",
+            "Missing required environment variable:\n  - TELEGRAM_DEFAULT_CHAT_ID: Your Telegram chat ID",
         )
 
     try:

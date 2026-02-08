@@ -12,7 +12,10 @@ validated: 2026-01-31
 Single-instance deployment architecture for KoroMind with four components: Worker (containing Connectors, Brain, Vault, SDK, Voice), Mount, Sandbox, Backup.
 
 ## Why
-Clear separation of concerns: runtime (Worker), persistent data (Mount), ephemeral workspace (Sandbox), disaster recovery (Backup).
+**Safe by design:**
+- **Stateless Worker**: No user data in runtime - compromise doesn't leak secrets
+- **Personal Vault**: User owns their data in Mount - portable, ejectable, no lock-in
+- **Isolated Sandbox**: Ephemeral workspace - wipe without losing anything important
 
 ## How
 - Diagram: `docs/single-instance-architecture.mmd`
@@ -44,17 +47,20 @@ Runtime container processing user requests. NOT persistent.
 Stateless compute that can be replaced/scaled without data loss.
 
 ## How
-Components:
-- **Connectors**: Protocol adapters (Telegram, HTTP/Mobile, Discord)
-- **CLI**: Direct command-line interface to Brain
-- **Brain (Gatekeeper)**: Orchestration - receives input, loads config, calls SDK, returns response
-- **Vault**: In-worker state manager bridging Brain to Mount
-- **Audio Processing**: ElevenLabs/OpenAI STT/TTS
-- **Claude SDK**: Tool execution, MCP management, permissions, Mount access
+Worker contains:
+- **Connectors** (1+): Protocol adapters - Telegram, HTTP API, Discord, etc. Multiple can run simultaneously.
+- **CLI**: Direct Brain access for testing/development
+- **Brain**: Thin orchestrator - receives input, loads config from Vault, calls SDK
+- **Vault**: In-memory state manager bridging Brain ↔ Mount
+- **Voice**: ElevenLabs/OpenAI STT/TTS
+- **Claude SDK**: The heavy lifter - tools, MCP, hooks, permissions, sessions
 
-Flow: Client → Connector → Brain → Vault → Mount
-      Brain → SDK → Sandbox/Mount
-      Brain → Voice → ElevenLabs/OpenAI
+Flow:
+```
+Client → Connector → Brain → Vault → Mount
+                   → SDK   → Sandbox
+                   → Voice → ElevenLabs
+```
 
 ## Test
 - Telegram message processed end-to-end

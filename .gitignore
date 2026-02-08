@@ -34,8 +34,6 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
-credentials.json
 
-# Claude
-.claude/
+# Secrets
 credentials.json

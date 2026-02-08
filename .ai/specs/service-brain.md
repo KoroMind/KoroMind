@@ -3,8 +3,8 @@ id: SVC-004
 type: service
 status: active
 severity: critical
-issue: null
-validated: 2026-01-29
+issue: 35
+validated: 2026-02-01
 ---
 
 # Brain Service
@@ -76,7 +76,23 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - `StreamEvent`: Detailed events (tool use, content block deltas)
 - `ResultMessage`: Final completion data
 
+### Vault Integration
+Brain loads user config from vault directory at `src/koro/core/brain.py:180-195`:
+
+```python
+Brain(vault_path="~/.koromind")  # Load user's vault
+```
+
+**Config flow:**
+1. `Vault.load()` returns frozen `VaultConfig` from `vault-config.yaml`
+2. Brain calls `vault_config.model_dump()` to get dict
+3. Dict merged with explicit kwargs (kwargs win)
+4. Merged config passed to `ClaudeClient._build_options()`
+
+**Supported options:** model, max_turns, cwd, add_dirs, system_prompt_file, hooks, mcp_servers, agents, sandbox
+
 ### Dependencies
+- `Vault` - configuration loading (optional)
 - `StateManager` - session/settings persistence
 - `VoiceEngine` - STT/TTS (optional)
 - `RateLimiter` - per-user throttling
@@ -94,6 +110,11 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - Structured output returned when requested
 
 ## Changelog
+
+### 2026-02-01
+- Added vault integration for stateless configuration
+- Config merging: vault config + explicit kwargs
+- Added debug logging throughout
 
 ### 2026-01-31
 - Added full Claude SDK support (Hooks, MCP, Agents, Plugins)

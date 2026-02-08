@@ -136,7 +136,7 @@ class RateLimiter:
                     "minute_start": now,
                 }
             with self._cache_lock:
-                limits = self.user_limits.setdefault(user_id_str, loaded)
+                self.user_limits.setdefault(user_id_str, loaded)
 
         with self._cache_lock:
             limits = self.user_limits[user_id_str]

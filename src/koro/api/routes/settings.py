@@ -116,6 +116,7 @@ async def reset_settings(
         audio_enabled=True,
         voice_speed=1.1,
         watch_enabled=False,
+        model="",
     )
 
     return SettingsResponse(

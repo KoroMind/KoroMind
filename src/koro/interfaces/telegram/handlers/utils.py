@@ -70,11 +70,11 @@ def authorized_handler(handler):
         if not should_handle_message(thread_id):
             if has_async_callback:
                 await answer_cb()
-            return
+            return None
         if ALLOWED_CHAT_ID != 0 and chat_id != ALLOWED_CHAT_ID:
             if has_async_callback:
                 await answer_cb()
-            return
+            return None
         return await handler(update, context, *args, **kwargs)
 
     return wrapper

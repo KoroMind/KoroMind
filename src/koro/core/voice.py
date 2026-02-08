@@ -4,6 +4,7 @@ import asyncio
 from io import BytesIO
 from threading import Lock
 
+from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
 from elevenlabs.core import ApiError
 
@@ -92,13 +93,13 @@ class VoiceEngine:
                 voice_id=self.voice_id,
                 model_id="eleven_turbo_v2_5",
                 output_format="mp3_44100_128",
-                voice_settings={
-                    "stability": VOICE_SETTINGS["stability"],
-                    "similarity_boost": VOICE_SETTINGS["similarity_boost"],
-                    "style": VOICE_SETTINGS["style"],
-                    "speed": actual_speed,
-                    "use_speaker_boost": True,
-                },
+                voice_settings=VoiceSettings(
+                    stability=VOICE_SETTINGS["stability"],
+                    similarity_boost=VOICE_SETTINGS["similarity_boost"],
+                    style=VOICE_SETTINGS["style"],
+                    speed=actual_speed,
+                    use_speaker_boost=True,
+                ),
             )
 
         try:
@@ -110,9 +111,7 @@ class VoiceEngine:
                     audio_buffer.write(chunk)
             audio_buffer.seek(0)
             return audio_buffer
-        except ApiError:
-            return None
-        except (RuntimeError, ValueError, TypeError):
+        except Exception:
             return None
 
     def health_check(self) -> tuple[bool, str]:

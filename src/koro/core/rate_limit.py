@@ -131,6 +131,7 @@ class RateLimiter:
         """
         now = time.time()
         user_id_str = str(user_id)
+        loaded: UserLimits | None = None
 
         with self._cache_lock:
             limits = self.user_limits.get(user_id_str)
@@ -143,11 +144,17 @@ class RateLimiter:
                     "minute_count": 0,
                     "minute_start": now,
                 }
-            with self._cache_lock:
-                self.user_limits.setdefault(user_id_str, loaded)
 
         with self._cache_lock:
-            limits = self.user_limits[user_id_str]
+            limits = self.user_limits.get(user_id_str)
+            if limits is None:
+                if loaded is None:
+                    loaded = {
+                        "last_message": None,
+                        "minute_count": 0,
+                        "minute_start": now,
+                    }
+                limits = self.user_limits.setdefault(user_id_str, loaded)
 
             # Check per-message cooldown
             if limits["last_message"] is not None and self.cooldown_seconds > 0:

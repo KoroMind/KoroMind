@@ -5,9 +5,17 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
-from typing import Generator
+from typing import Generator, TypedDict
 
 from koro.core.config import DATABASE_PATH, RATE_LIMIT_PER_MINUTE, RATE_LIMIT_SECONDS
+
+
+class UserLimits(TypedDict):
+    """In-memory and persisted rate-limit counters for a user."""
+
+    last_message: float | None
+    minute_start: float
+    minute_count: int
 
 
 class RateLimiter:
@@ -34,7 +42,7 @@ class RateLimiter:
             RATE_LIMIT_PER_MINUTE if per_minute_limit is None else per_minute_limit
         )
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
-        self.user_limits: dict[str, dict] = {}
+        self.user_limits: dict[str, UserLimits] = {}
         self._connection: sqlite3.Connection | None = None
         self._connection_lock = Lock()
         self._cache_lock = Lock()
@@ -74,7 +82,7 @@ class RateLimiter:
                 self._connection.close()
                 self._connection = None
 
-    def _load_limits(self, user_id: str) -> dict | None:
+    def _load_limits(self, user_id: str) -> UserLimits | None:
         with self._get_connection() as conn:
             row = conn.execute(
                 """
@@ -92,7 +100,7 @@ class RateLimiter:
             "minute_count": row["minute_count"],
         }
 
-    def _save_limits(self, user_id: str, limits: dict) -> None:
+    def _save_limits(self, user_id: str, limits: UserLimits) -> None:
         with self._get_connection() as conn:
             conn.execute(
                 """

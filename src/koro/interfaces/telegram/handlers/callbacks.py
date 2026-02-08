@@ -10,12 +10,17 @@ from koro.state import get_state_manager
 
 
 @authorized_handler
-async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_settings_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle settings button callbacks."""
     query = update.callback_query
+    user = update.effective_user
+    if query is None or user is None or query.data is None:
+        return
     debug(f"SETTINGS CALLBACK: {query.data}")
 
-    user_id = str(update.effective_user.id)
+    user_id = str(user.id)
     state_manager = get_state_manager()
     settings = await state_manager.get_settings(user_id)
     callback_data = query.data
@@ -95,14 +100,19 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
 
 
 @authorized_handler
-async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_approval_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle approval/rejection button callbacks."""
     query = update.callback_query
+    user = update.effective_user
+    if query is None or user is None or query.data is None:
+        return
     callback_data = query.data
 
     debug(f"APPROVAL CALLBACK: {callback_data}")
 
-    user_id = str(update.effective_user.id)
+    user_id = str(user.id)
 
     await query.answer()
 
@@ -136,9 +146,14 @@ async def handle_approval_callback(update: Update, context: ContextTypes.DEFAULT
 
 
 @authorized_handler
-async def handle_switch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_switch_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle session switch button callbacks."""
     query = update.callback_query
+    user = update.effective_user
+    if query is None or user is None or query.data is None:
+        return
     callback_data = query.data
 
     if not callback_data.startswith("switch_"):
@@ -146,7 +161,7 @@ async def handle_switch_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     session_id = callback_data.replace("switch_", "", 1)
-    user_id = str(update.effective_user.id)
+    user_id = str(user.id)
     state_manager = get_state_manager()
     target = await state_manager.get_session_item(user_id, session_id)
 

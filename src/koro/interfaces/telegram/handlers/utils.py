@@ -4,11 +4,16 @@ import asyncio
 import functools
 import inspect
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar
 
+from telegram import Message, Update
 from telegram.constants import ChatAction
+from telegram.ext import ContextTypes
 
 from koro.config import ALLOWED_CHAT_ID, TOPIC_ID
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 def debug(msg: str) -> None:
@@ -42,7 +47,13 @@ def should_handle_message(message_thread_id: int | None) -> bool:
     return message_thread_id == allowed_topic
 
 
-def authorized_handler(handler):
+def authorized_handler(
+    handler: Callable[
+        Concatenate[Update, ContextTypes.DEFAULT_TYPE, P], Coroutine[Any, Any, R]
+    ],
+) -> Callable[
+    Concatenate[Update, ContextTypes.DEFAULT_TYPE, P], Coroutine[Any, Any, R | None]
+]:
     """
     Decorator that checks topic filtering and chat authorization.
 
@@ -52,9 +63,17 @@ def authorized_handler(handler):
     """
 
     @functools.wraps(handler)
-    async def wrapper(update, context, *args, **kwargs):
+    async def wrapper(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> R | None:
         callback_query = getattr(update, "callback_query", None)
-        answer_cb = getattr(callback_query, "answer", None)
+        answer_cb: Callable[..., Coroutine[Any, Any, object]] | None = None
+        raw_answer_cb = getattr(callback_query, "answer", None)
+        if callable(raw_answer_cb) and inspect.iscoroutinefunction(raw_answer_cb):
+            answer_cb = raw_answer_cb
         has_async_callback = callable(answer_cb) and inspect.iscoroutinefunction(
             answer_cb
         )
@@ -68,11 +87,11 @@ def authorized_handler(handler):
         chat_id: Any = getattr(chat, "id", None)
 
         if not should_handle_message(thread_id):
-            if has_async_callback:
+            if has_async_callback and answer_cb is not None:
                 await answer_cb()
             return None
         if ALLOWED_CHAT_ID != 0 and chat_id != ALLOWED_CHAT_ID:
-            if has_async_callback:
+            if has_async_callback and answer_cb is not None:
                 await answer_cb()
             return None
         return await handler(update, context, *args, **kwargs)
@@ -80,22 +99,29 @@ def authorized_handler(handler):
     return wrapper
 
 
-async def _chat_action_loop(update, context, action: str, interval: float) -> None:
+async def _chat_action_loop(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, interval: float
+) -> None:
     """Continuously send a chat action until cancelled."""
-    chat_id = update.effective_chat.id
+    chat = update.effective_chat
+    if chat is None:
+        return
+    chat_id = chat.id
     while True:
         await context.bot.send_chat_action(chat_id=chat_id, action=action)
         await asyncio.sleep(interval)
 
 
-def start_chat_action(update, context, interval: float = 4.0) -> asyncio.Task:
+def start_chat_action(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, interval: float = 4.0
+) -> asyncio.Task[None]:
     """Start sending 'typing' chat actions periodically."""
     return asyncio.create_task(
         _chat_action_loop(update, context, ChatAction.TYPING, interval)
     )
 
 
-async def stop_chat_action(task: asyncio.Task | None) -> None:
+async def stop_chat_action(task: asyncio.Task[None] | None) -> None:
     """Stop a running chat action task."""
     if task is None:
         return
@@ -107,7 +133,9 @@ async def stop_chat_action(task: asyncio.Task | None) -> None:
         pass
 
 
-async def send_long_message(update, first_msg, text: str, chunk_size: int = 4000):
+async def send_long_message(
+    update: Update, first_msg: Message, text: str, chunk_size: int = 4000
+) -> None:
     """
     Split long text into multiple Telegram messages.
 
@@ -136,5 +164,8 @@ async def send_long_message(update, first_msg, text: str, chunk_size: int = 4000
         remaining = remaining[break_point:].lstrip()
 
     await first_msg.edit_text(chunks[0] + f"\n\n[1/{len(chunks)}]")
+    message = update.message
+    if message is None:
+        return
     for i, chunk in enumerate(chunks[1:], 2):
-        await update.message.reply_text(chunk + f"\n\n[{i}/{len(chunks)}]")
+        await message.reply_text(chunk + f"\n\n[{i}/{len(chunks)}]")

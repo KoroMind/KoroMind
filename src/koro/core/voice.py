@@ -3,6 +3,7 @@
 import asyncio
 from io import BytesIO
 from threading import Lock
+from typing import Any, Iterable
 
 from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
@@ -53,11 +54,12 @@ class VoiceEngine:
         Returns:
             Transcribed text or error message
         """
-        if not self.client:
+        client = self.client
+        if not client:
             raise VoiceNotConfiguredError("ElevenLabs not configured")
 
-        def _transcribe_sync():
-            return self.client.speech_to_text.convert(
+        def _transcribe_sync() -> object:
+            return client.speech_to_text.convert(
                 file=BytesIO(voice_bytes),
                 model_id="scribe_v1",
                 language_code="en",
@@ -65,13 +67,18 @@ class VoiceEngine:
 
         try:
             transcription = await asyncio.to_thread(_transcribe_sync)
-            return transcription.text
+            text = getattr(transcription, "text", None)
+            if isinstance(text, str):
+                return text
+            raise VoiceTranscriptionError("Unexpected transcription response shape")
         except ApiError as exc:
             raise VoiceTranscriptionError(f"ElevenLabs API error: {exc}") from exc
         except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
 
-    async def text_to_speech(self, text: str, speed: float = None) -> BytesIO | None:
+    async def text_to_speech(
+        self, text: str, speed: float | None = None
+    ) -> BytesIO | None:
         """
         Convert text to speech using ElevenLabs Turbo v2.5.
 
@@ -82,15 +89,17 @@ class VoiceEngine:
         Returns:
             Audio buffer or None on error
         """
-        if not self.client:
+        client = self.client
+        voice_id = getattr(self, "voice_id", None)
+        if not client or voice_id is None:
             return None
 
         actual_speed = speed if speed is not None else VOICE_SETTINGS["speed"]
 
-        def _tts_sync():
-            return self.client.text_to_speech.convert(
+        def _tts_sync() -> Any:
+            return client.text_to_speech.convert(
                 text=text,
-                voice_id=self.voice_id,
+                voice_id=voice_id,
                 model_id="eleven_turbo_v2_5",
                 output_format="mp3_44100_128",
                 voice_settings=VoiceSettings(
@@ -104,6 +113,8 @@ class VoiceEngine:
 
         try:
             audio = await asyncio.to_thread(_tts_sync)
+            if not isinstance(audio, Iterable):
+                return None
 
             audio_buffer = BytesIO()
             for chunk in audio:
@@ -121,7 +132,7 @@ class VoiceEngine:
         Returns:
             (success, message)
         """
-        if not self.client:
+        if not self.client or self.voice_id is None:
             return False, "ElevenLabs not configured"
 
         try:

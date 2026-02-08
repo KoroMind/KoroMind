@@ -11,7 +11,7 @@ KoroMind is a multi-interface personal AI assistant ("second brain") that connec
 ### Setup
 ```bash
 pip install uv
-uv venv -p python3.11
+uv venv -p python3.12
 source .venv/bin/activate
 uv sync --extra dev
 cp .env.example .env  # Then fill in credentials
@@ -55,6 +55,14 @@ pre-commit run ruff-check --all-files
 ### PR Review (gh)
 ```bash
 gh pr-review review view 9 -R KoroMind/KoroMind
+```
+
+### PR Review Comment Replies (gh api)
+Use the PR-specific endpoint and `in_reply_to` for replies:
+```bash
+gh api -X POST repos/KoroMind/KoroMind/pulls/<PR_NUMBER>/comments \
+  -f in_reply_to=<REVIEW_COMMENT_ID> \
+  -f body="Reply text"
 ```
 
 ## Architecture
@@ -128,7 +136,7 @@ Message → Brain.process_message() → STT (if voice) → Claude SDK → [Tools
 Legacy JSON files (`sessions_state.json`, `user_settings.json`) are auto-migrated on first run.
 
 ## Code Style
-- Python 3.11+, PEP 8
+- Python 3.12+, PEP 8
 - Type hints for function signatures
 - Black for formatting (line-length 88)
 - isort with black profile
@@ -138,6 +146,7 @@ Legacy JSON files (`sessions_state.json`, `user_settings.json`) are auto-migrate
 - Tests use pytest-asyncio with `asyncio_mode = "auto"`
 - Integration tests marked with `@pytest.mark.live` require real API keys
 - Fixtures in `src/tests/conftest.py` provide mocked Telegram updates, contexts, and ElevenLabs clients
+- See `src/tests/AGENTS.md` for detailed test writing guidelines
 
 ## Documentation and Specifications
 
@@ -200,31 +209,9 @@ This single command creates a branch, checks it out, and links it to the issue�
 - Keep specs synchronized with actual implementation
 - Reference the issue number in commits
 
-## Python Best Practices
+## Scoped Guidelines
 
-### Asyncio / Non-Blocking I/O
+Detailed coding and testing rules are in scoped AGENTS.md files:
 
-- Use `aiofiles` for file operations in async contexts
-- Use async HTTP clients (`httpx.AsyncClient`) instead of `requests`
-- Use `asyncio.sleep()` instead of `time.sleep()` in async functions
-- Load static resources (prompts, config files) at app startup, not per-request
-
-### Exception Handling
-
-- Catch specific exceptions (`ValueError`, `KeyError`, `httpx.HTTPError`), never bare `except Exception`
-- Keep try blocks small and focused around the specific operation that may fail
-- Let exceptions propagate to framework handlers when you can't meaningfully handle them
-- Don't wrap entire function bodies in try/except—isolate the risky operation
-
-
-### Code Organization
-
-- Keep all imports at module top level, not inside functions
-- Return new objects instead of mutating parameters as side effects, use immutable structures (frozen=True) if possible
-- If mutation is unavoidable, make it explicit in the function name (e.g., `append_to_list()`)
-
-### Defensive Programming
-
-- Validate inputs at system boundaries (user input, external APIs)
-- Trust internal code and framework guarantees—don't over-validate
-- Make function behavior explicit through clear naming
+- `src/AGENTS.md` — Python best practices, coding guardrails, refactoring learnings
+- `src/tests/AGENTS.md` — Test writing guidelines, pytest conventions, mocking rules

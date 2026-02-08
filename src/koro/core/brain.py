@@ -1,11 +1,20 @@
 """The Brain - central orchestration layer for KoroMind."""
 
+import inspect
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, Callable
+from threading import Lock
+from typing import Any
 
-logger = logging.getLogger(__name__)
+from claude_agent_sdk.types import (
+    AgentDefinition,
+    AssistantMessage,
+    ResultMessage,
+    StreamEvent,
+    SystemMessage,
+    UserMessage,
+)
 
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
@@ -13,14 +22,29 @@ from koro.core.state import StateManager, get_state_manager
 from koro.core.types import (
     BrainCallbacks,
     BrainResponse,
+    CanUseTool,
     MessageType,
     Mode,
+    OnToolCall,
+    QueryConfig,
     Session,
     ToolCall,
     UserSettings,
 )
-from koro.core.vault import Vault
-from koro.core.voice import VoiceEngine, get_voice_engine
+from koro.core.vault import AgentConfig, Vault, VaultConfig
+from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
+
+logger = logging.getLogger(__name__)
+
+StreamedEvent = (
+    AssistantMessage | ResultMessage | StreamEvent | UserMessage | SystemMessage
+)
+
+
+async def _maybe_await(value: Any) -> Any:
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 class Brain:
@@ -52,13 +76,12 @@ class Brain:
         self._rate_limiter = rate_limiter
 
         if self._vault:
-            logger.info(f"Brain initialized with vault: {vault_path}")
-            if self._vault.exists:
-                logger.debug(f"Vault config found at: {self._vault.config_file}")
-            else:
-                logger.warning(f"Vault path set but no config found: {vault_path}")
+            logger.debug(f"Brain initialized with vault: {vault_path}")
         else:
-            logger.debug("Brain initialized without vault")
+            logger.warning(
+                "Brain initialized without vault. "
+                "Consider using --vault or setting KOROMIND_VAULT for configuration."
+            )
 
     @property
     def vault(self) -> Vault | None:
@@ -112,10 +135,10 @@ class Brain:
         include_audio: bool = True,
         voice_speed: float = 1.1,
         watch_enabled: bool = False,
-        on_tool_call: Callable[[str, str | None], None] | None = None,
-        can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        on_tool_call: OnToolCall | None = None,
+        can_use_tool: CanUseTool | None = None,
         callbacks: BrainCallbacks | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a message and return response.
@@ -129,9 +152,9 @@ class Brain:
             include_audio: Whether to include TTS audio in response
             voice_speed: Voice speed for TTS (0.7-1.2)
             watch_enabled: Whether to call on_tool_call for each tool
-            on_tool_call: Callback when tool is called (for watch mode) [DEPRECATED: use callbacks]
-            can_use_tool: SDK-compatible callback for tool approval (for approve mode) [DEPRECATED: use callbacks]
-            callbacks: Structured callbacks for progress, tool use, and approval
+            on_tool_call: Callback when tool is called (for watch mode)
+            can_use_tool: SDK-compatible callback for tool approval (for approve mode)
+            callbacks: Structured callbacks (preferred over individual params)
             **kwargs: Additional arguments passed to ClaudeClient.query
                 (hooks, mcp_servers, agents, plugins, sandbox, output_format, etc.)
 
@@ -140,7 +163,7 @@ class Brain:
         """
         tool_calls: list[ToolCall] = []
 
-        # Prefer callbacks over individual params
+        # Prefer structured callbacks over individual params
         tool_use_callback = callbacks.on_tool_use if callbacks else on_tool_call
         tool_approval_callback = (
             callbacks.on_tool_approval if callbacks else can_use_tool
@@ -150,20 +173,13 @@ class Brain:
         # Transcribe voice if needed
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
-                return BrainResponse(
-                    text="Error: Voice content must be bytes",
-                    session_id=session_id or "",
-                )
+                raise ValueError("Voice content must be bytes")
             if progress_callback:
                 progress_callback("Transcribing voice input...")
-            logger.debug("Starting voice transcription")
-            text = await self.voice_engine.transcribe(content)
-            logger.debug(f"Transcription complete: {len(text)} chars")
-            if text.startswith("[Transcription error") or text.startswith("[Error"):
-                return BrainResponse(
-                    text=text,
-                    session_id=session_id or "",
-                )
+            try:
+                text = await self.voice_engine.transcribe(content)
+            except VoiceError as exc:
+                raise RuntimeError(str(exc)) from exc
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -172,61 +188,55 @@ class Brain:
             current_session = await self.state_manager.get_current_session(user_id)
             session_id = current_session.id if current_session else None
 
-        # Determine if we're continuing a session
-        continue_last = session_id is not None
+        # Always prefer explicit resume by session_id when available.
+        continue_last = False
 
-        # Build user settings dict for Claude
-        user_settings = {
-            "audio_enabled": include_audio,
-            "voice_speed": voice_speed,
-            "mode": mode.value,
-            "watch_enabled": watch_enabled,
-        }
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
+        user_settings = UserSettings(
+            mode=mode,
+            audio_enabled=include_audio,
+            voice_speed=voice_speed,
+            watch_enabled=watch_enabled,
+            model=stored_settings.model,
+        )
 
         # Tool call tracking wrapper
-        def _on_tool_call(tool_name: str, detail: str | None):
+        async def _on_tool_call(tool_name: str, detail: str | None) -> None:
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if tool_use_callback and watch_enabled:
-                tool_use_callback(tool_name, detail)
+                await tool_use_callback(tool_name, detail)
 
-        # Load vault config if available, merge with explicit kwargs
-        # Explicit kwargs take precedence over vault config
-        if progress_callback:
-            progress_callback("Loading configuration...")
-        vault_config = self._vault.load() if self._vault else {}
-        merged_kwargs = {**vault_config, **kwargs}
+        if "model" in kwargs:
+            model_override = kwargs.pop("model")
+        else:
+            model_override = stored_settings.model
 
-        if vault_config:
-            logger.debug(
-                f"Vault config loaded: model={vault_config.get('model')}, "
-                f"max_turns={vault_config.get('max_turns')}, "
-                f"cwd={vault_config.get('cwd')}"
-            )
-        if kwargs:
-            logger.debug(f"Explicit kwargs override: {list(kwargs.keys())}")
+        # Load vault config if available
+        vault_config = self._vault.load() if self._vault else None
 
-        # Call Claude
-        if progress_callback:
-            progress_callback("Processing with Claude SDK...")
-        logger.debug(
-            f"Calling Claude SDK with session_id={session_id}, mode={mode.value}"
-        )
-        response_text, new_session_id, metadata = await self.claude_client.query(
+        config = self._build_query_config(
             prompt=text,
             session_id=session_id,
             continue_last=continue_last,
             user_settings=user_settings,
-            mode=mode.value,
+            mode=mode,
             on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
-            **merged_kwargs,
-        )
-        logger.debug(
-            f"Claude SDK response complete: {len(response_text)} chars, new_session_id={new_session_id}"
+            vault_config=vault_config,
+            model=model_override or None,
+            **kwargs,
         )
 
-        # Update session state
-        await self.state_manager.update_session(user_id, new_session_id)
+        # Call Claude
+        if progress_callback:
+            progress_callback("Processing with Claude SDK...")
+        response_text, new_session_id, metadata = await self.claude_client.query(config)
+
+        # Update session state only on successful Claude responses
+        if not metadata.get("error"):
+            await self.state_manager.update_session(user_id, new_session_id)
 
         # Generate TTS if requested
         audio_bytes: bytes | None = None
@@ -234,15 +244,11 @@ class Brain:
             if progress_callback:
                 progress_callback("Generating voice response...")
             # Note: We only TTS the main text response, not structured output or thinking
-            logger.debug("Starting TTS generation")
             audio_buffer = await self.voice_engine.text_to_speech(
                 response_text, speed=voice_speed
             )
             if audio_buffer:
                 audio_bytes = audio_buffer.read()
-            logger.debug(
-                f"TTS complete: {len(audio_bytes) if audio_bytes else 0} bytes"
-            )
 
         return BrainResponse(
             text=response_text,
@@ -252,6 +258,100 @@ class Brain:
             metadata=metadata,
         )
 
+    @staticmethod
+    def _vault_agents_to_sdk(
+        agents: dict[str, AgentConfig],
+    ) -> dict[str, AgentDefinition]:
+        """Convert vault AgentConfig to SDK AgentDefinition."""
+        result = {}
+        for name, agent in agents.items():
+            prompt = agent.prompt or ""
+            if agent.prompt_file:
+                path = Path(agent.prompt_file)
+                if path.exists():
+                    prompt = path.read_text()
+                else:
+                    logger.warning(f"Agent prompt file not found: {agent.prompt_file}")
+            result[name] = AgentDefinition(
+                description=agent.description,
+                prompt=prompt,
+                tools=agent.tools,
+                model=agent.model,
+            )
+        return result
+
+    def _build_query_config(
+        self,
+        *,
+        prompt: str,
+        session_id: str | None,
+        continue_last: bool,
+        user_settings: UserSettings,
+        mode: Mode,
+        on_tool_call: OnToolCall | None,
+        can_use_tool: CanUseTool | None,
+        vault_config: VaultConfig | None = None,
+        **kwargs: Any,
+    ) -> QueryConfig:
+        config_kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "session_id": session_id,
+            "continue_last": continue_last,
+            "user_settings": user_settings,
+            "mode": mode,
+            "on_tool_call": on_tool_call,
+            "can_use_tool": can_use_tool,
+        }
+
+        # Apply vault config (if provided)
+        if vault_config:
+            vault_data = vault_config.model_dump(
+                exclude_none=True,
+                exclude_defaults=True,
+                include={"hooks", "mcp_servers", "sandbox", "plugins"},
+            )
+            config_kwargs.update(vault_data)
+            if vault_config.agents:
+                config_kwargs["agents"] = self._vault_agents_to_sdk(vault_config.agents)
+            logger.debug(
+                f"Applied vault config: hooks={len(vault_config.hooks)}, "
+                f"mcp_servers={len(vault_config.mcp_servers)}, "
+                f"agents={len(vault_config.agents)}"
+            )
+
+        # Allowed kwargs (can override vault config)
+        allowed_keys = {
+            # Core SDK options (from env vars or explicit kwargs)
+            "model",
+            "fallback_model",
+            "max_turns",
+            "max_budget_usd",
+            "cwd",
+            "add_dirs",
+            "system_prompt_file",
+            "include_partial_messages",
+            "enable_file_checkpointing",
+            "output_format",
+            "include_megg",
+            # Vault config options (explicit kwargs override vault)
+            "hooks",
+            "mcp_servers",
+            "agents",
+            "plugins",
+            "sandbox",
+        }
+
+        # Explicit kwargs override vault config
+        for key in list(kwargs.keys()):
+            if key in allowed_keys:
+                config_kwargs[key] = kwargs.pop(key)
+
+        if kwargs:
+            unknown = ", ".join(sorted(kwargs.keys()))
+            raise ValueError(f"Unsupported query options: {unknown}")
+
+        return QueryConfig(**config_kwargs)
+
     async def process_message_stream(
         self,
         user_id: str,
@@ -260,38 +360,35 @@ class Brain:
         session_id: str | None = None,
         mode: Mode = Mode.GO_ALL,
         watch_enabled: bool = False,
-        on_tool_call: Callable[[str, str | None], None] | None = None,
-        can_use_tool: Callable[[str, dict, Any], Any] | None = None,
+        on_tool_call: OnToolCall | None = None,
+        can_use_tool: CanUseTool | None = None,
         callbacks: BrainCallbacks | None = None,
-        **kwargs,
-    ) -> AsyncIterator[Any]:
+        **kwargs: Any,
+    ) -> AsyncIterator[StreamedEvent]:
         """
         Process a message and yield streaming events.
 
+        Unlike process_message() which waits for completion and returns
+        a BrainResponse, this method yields events as they arrive from
+        the Claude SDK. Use this for real-time streaming UIs (CLI, web).
+
         Args:
-            Same as process_message, but returns an iterator.
-            callbacks: Structured callbacks for progress, tool use, and approval
+            Same as process_message, but returns an async iterator of events.
         """
-        # Prefer callbacks over individual params
+        # Prefer structured callbacks over individual params
         tool_use_callback = callbacks.on_tool_use if callbacks else on_tool_call
         tool_approval_callback = (
             callbacks.on_tool_approval if callbacks else can_use_tool
         )
-        progress_callback = callbacks.on_progress if callbacks else None
 
         # Transcribe voice if needed (blocking step before stream starts)
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
-                yield {"error": "Voice content must be bytes"}
-                return
-            if progress_callback:
-                progress_callback("Transcribing voice input...")
-            logger.debug("Starting voice transcription for stream")
-            text = await self.voice_engine.transcribe(content)
-            logger.debug(f"Transcription complete: {len(text)} chars")
-            if text.startswith("[Transcription error") or text.startswith("[Error"):
-                yield {"error": text}
-                return
+                raise ValueError("Voice content must be bytes")
+            try:
+                text = await self.voice_engine.transcribe(content)
+            except VoiceError as exc:
+                raise RuntimeError(str(exc)) from exc
         else:
             text = content if isinstance(content, str) else content.decode("utf-8")
 
@@ -299,44 +396,41 @@ class Brain:
             current_session = await self.state_manager.get_current_session(user_id)
             session_id = current_session.id if current_session else None
 
-        continue_last = session_id is not None
+        # Always prefer explicit resume by session_id when available.
+        continue_last = False
 
-        user_settings = {
-            "mode": mode.value,
-            "watch_enabled": watch_enabled,
-        }
-
-        def _on_tool_call(tool_name: str, detail: str | None):
-            if tool_use_callback and watch_enabled:
-                tool_use_callback(tool_name, detail)
-
-        # Load vault config if available, merge with explicit kwargs
-        if progress_callback:
-            progress_callback("Loading configuration...")
-        vault_config = self._vault.load() if self._vault else {}
-        merged_kwargs = {**vault_config, **kwargs}
-
-        if vault_config:
-            logger.debug(f"Vault config loaded for stream: {list(vault_config.keys())}")
-        if kwargs:
-            logger.debug(f"Explicit kwargs override for stream: {list(kwargs.keys())}")
-
-        # Yield events from Claude
-        if progress_callback:
-            progress_callback("Streaming from Claude SDK...")
-        logger.debug(
-            f"Starting Claude SDK stream with session_id={session_id}, mode={mode.value}"
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
+        user_settings = UserSettings(
+            mode=mode,
+            watch_enabled=watch_enabled,
+            model=stored_settings.model,
         )
-        async for event in self.claude_client.query_stream(
+
+        if "model" in kwargs:
+            model_override = kwargs.pop("model")
+        else:
+            model_override = stored_settings.model
+
+        # Load vault config if available
+        vault_config = self._vault.load() if self._vault else None
+
+        config = self._build_query_config(
             prompt=text,
             session_id=session_id,
             continue_last=continue_last,
             user_settings=user_settings,
-            mode=mode.value,
-            on_tool_call=_on_tool_call if watch_enabled else None,
+            mode=mode,
+            on_tool_call=tool_use_callback if watch_enabled else None,
             can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
-            **merged_kwargs,
-        ):
+            vault_config=vault_config,
+            model=model_override or None,
+            **kwargs,
+        )
+
+        # Yield events from Claude
+        async for event in self.claude_client.query_stream(config):
             yield event
 
             # Update session state if we get a new session ID from result
@@ -347,12 +441,10 @@ class Brain:
             # The client should probably persist session ID updates internally or we handle it here.
             # For now, let's assume session update happens on the caller side or we need to intercept ResultMessage.
 
-            if hasattr(event, "session_id") and event.session_id:
-                # ResultMessage or StreamEvent might have session_id
-                # Only update if it's different/new
+            if isinstance(event, ResultMessage) and event.session_id:
                 if event.session_id != session_id:
                     await self.state_manager.update_session(user_id, event.session_id)
-                    session_id = event.session_id  # Update local var
+                    session_id = event.session_id
 
     async def process_text(
         self,
@@ -362,7 +454,7 @@ class Brain:
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
         voice_speed: float = 1.1,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a text message (convenience method).
@@ -386,7 +478,7 @@ class Brain:
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
         voice_speed: float = 1.1,
-        **kwargs,
+        **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a voice message (convenience method).
@@ -426,7 +518,7 @@ class Brain:
         """Get settings for a user."""
         return await self.state_manager.get_settings(user_id)
 
-    async def update_settings(self, user_id: str, **kwargs) -> UserSettings:
+    async def update_settings(self, user_id: str, **kwargs: object) -> UserSettings:
         """Update settings for a user."""
         return await self.state_manager.update_settings(user_id, **kwargs)
 
@@ -461,13 +553,16 @@ class Brain:
 
 # Default instance
 _brain: Brain | None = None
+_brain_lock = Lock()
 
 
 def get_brain() -> Brain:
     """Get or create the default brain instance."""
     global _brain
     if _brain is None:
-        _brain = Brain()
+        with _brain_lock:
+            if _brain is None:
+                _brain = Brain()
     return _brain
 
 

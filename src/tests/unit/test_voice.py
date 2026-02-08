@@ -43,13 +43,13 @@ class TestVoiceEngine:
         """Methods fail gracefully without a configured client."""
         engine = VoiceEngine.__new__(VoiceEngine)
         engine.client = None
-
-        result = await getattr(engine, method)(*args)
-
-        if expected is None:
-            assert result is None
+        if method == "transcribe":
+            with pytest.raises(Exception) as exc_info:
+                await getattr(engine, method)(*args)
+            assert expected in str(exc_info.value).lower()
         else:
-            assert expected in result.lower()
+            result = await getattr(engine, method)(*args)
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_transcribe_success(self, mock_elevenlabs_client):
@@ -81,10 +81,13 @@ class TestVoiceEngine:
             engine.client.speech_to_text.convert.side_effect = Exception("API error")
         else:
             engine.client.text_to_speech.convert.side_effect = Exception("API error")
-
-        result = await getattr(engine, method)(*args)
-
-        assert result is None or "error" in str(result).lower()
+        if method == "transcribe":
+            with pytest.raises(Exception) as exc_info:
+                await getattr(engine, method)(*args)
+            assert "api error" in str(exc_info.value).lower()
+        else:
+            result = await getattr(engine, method)(*args)
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_text_to_speech_success(self, mock_elevenlabs_client):
@@ -106,7 +109,7 @@ class TestVoiceEngine:
         await engine.text_to_speech("Hello", speed=0.8)
 
         call_args = mock_elevenlabs_client.text_to_speech.convert.call_args
-        assert call_args.kwargs["voice_settings"]["speed"] == 0.8
+        assert call_args.kwargs["voice_settings"].speed == 0.8
 
     def test_health_check_without_client(self):
         """health_check fails without client."""

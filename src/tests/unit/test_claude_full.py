@@ -9,10 +9,12 @@ from claude_agent_sdk.types import (
     StreamEvent,
     TextBlock,
     ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
 )
 
 from koro.core.claude import ClaudeClient
-from koro.core.types import SandboxSettings
+from koro.core.types import QueryConfig, SandboxSettings
 
 
 @pytest.fixture
@@ -30,10 +32,8 @@ async def test_build_options_full(claude_client):
     mcp_mock = {"server": {"type": "stdio", "command": "ls"}}
     output_format = {"type": "json_schema", "schema": {}}
 
-    options = claude_client._build_options(
-        user_settings=None,
-        mode="go_all",
-        can_use_tool=None,
+    config = QueryConfig(
+        prompt="test",
         sandbox=sandbox_settings,
         include_partial_messages=True,
         max_turns=10,
@@ -45,6 +45,7 @@ async def test_build_options_full(claude_client):
         output_format=output_format,
         enable_file_checkpointing=True,
     )
+    options = claude_client._build_options(config)
 
     assert options.sandbox == sandbox_settings
     assert options.include_partial_messages is True
@@ -84,7 +85,9 @@ async def test_full_result_metadata(claude_client):
     mock_sdk_client.receive_response = mock_receive
 
     with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
-        result, session_id, metadata = await claude_client.query("test")
+        result, session_id, metadata = await claude_client.query(
+            QueryConfig(prompt="test")
+        )
 
         assert result == "Done"
         assert metadata["cost"] == 0.05
@@ -117,7 +120,7 @@ async def test_stream_event_handling(claude_client):
     with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
         events = []
         async for event in claude_client.query_stream(
-            "test", include_partial_messages=True
+            QueryConfig(prompt="test", include_partial_messages=True)
         ):
             events.append(event)
 
@@ -160,10 +163,52 @@ async def test_thinking_block_parsing(claude_client):
     mock_sdk_client.receive_response = mock_receive
 
     with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
-        result, session_id, metadata = await claude_client.query("test")
+        result, session_id, metadata = await claude_client.query(
+            QueryConfig(prompt="test")
+        )
 
         assert result == "Hello"
         assert metadata["thinking"] == "Hmm..."
+
+
+@pytest.mark.asyncio
+async def test_tool_result_tracking(claude_client):
+    """Tool result blocks are captured in metadata."""
+    mock_sdk_client = MagicMock()
+    mock_sdk_client.query = AsyncMock()
+    mock_sdk_client.__aenter__ = AsyncMock(return_value=mock_sdk_client)
+    mock_sdk_client.__aexit__ = AsyncMock()
+
+    async def mock_receive():
+        yield AssistantMessage(
+            content=[
+                ToolUseBlock(id="tool_1", name="Read", input={"path": "README.md"}),
+                ToolResultBlock(tool_use_id="tool_1", is_error=False),
+            ],
+            model="claude-3",
+        )
+        yield ResultMessage(
+            subtype="success",
+            duration_ms=10,
+            duration_api_ms=5,
+            is_error=False,
+            num_turns=1,
+            session_id="sess_1",
+            result="Done",
+        )
+
+    mock_sdk_client.receive_response = mock_receive
+
+    with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
+        result, session_id, metadata = await claude_client.query(
+            QueryConfig(prompt="test")
+        )
+
+        assert result == "Done"
+        assert session_id == "sess_1"
+        assert metadata["tool_results"] == [
+            {"tool_use_id": "tool_1", "name": "Read", "is_error": False}
+        ]
 
 
 @pytest.mark.asyncio
@@ -206,7 +251,7 @@ async def test_query_stream(claude_client):
 
     with patch("koro.core.claude.ClaudeSDKClient", return_value=mock_sdk_client):
         events = []
-        async for event in claude_client.query_stream("test"):
+        async for event in claude_client.query_stream(QueryConfig(prompt="test")):
             events.append(event)
 
         assert len(events) == 1

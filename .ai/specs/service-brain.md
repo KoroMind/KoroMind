@@ -42,21 +42,12 @@ Input → Brain.process_message() → [STT if voice] → Claude → [Tools] → 
 - **APPROVE**: Call `can_use_tool` callback for each tool (interface shows UI)
 
 ### Callbacks Pattern (Decision 4)
-Structured callbacks for interface integration:
-
-```python
-@dataclass
-class BrainCallbacks:
-    on_tool_use: Callable[[str, str | None], None] | None = None      # Watch mode
-    on_tool_approval: CanUseTool | None = None                         # Approve mode
-    on_progress: Callable[[str], None] | None = None                   # Progress updates
-```
-
-- `on_tool_use`: Called when tools execute (watch mode visibility)
-- `on_tool_approval`: Called to approve tool use (SDK-compatible)
-- `on_progress`: Called with status updates during processing
+Structured callbacks via `BrainCallbacks` dataclass:
+- `on_tool_use: OnToolCall` - Called when tools execute (watch mode)
+- `on_tool_approval: CanUseTool` - Called to approve tool use (approve mode)
+- `on_progress: OnProgress` - Called with status updates during processing
 - None callback = feature disabled gracefully
-- Legacy `on_tool_call` and `can_use_tool` params still work (deprecated)
+- Legacy `on_tool_call` and `can_use_tool` params still work
 
 ### Claude Integration
 - **Full SDK Parity**: Supports all `ClaudeAgentOptions` including hooks, MCP servers, subagents, plugins, and sandbox settings
@@ -90,10 +81,19 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - `ResultMessage`: Final completion data
 
 ### Vault Integration
-- `Brain(vault_path=...)` loads config from vault directory
-- Vault config merged with explicit kwargs (kwargs take precedence)
-- Supports: model, max_turns, cwd, add_dirs, system_prompt_file, hooks, mcp_servers, agents, sandbox
-- See `service-vault.md` for details
+Brain loads user config from vault directory at `src/koro/core/brain.py:180-195`:
+
+```python
+Brain(vault_path="~/.koromind")  # Load user's vault
+```
+
+**Config flow:**
+1. `Vault.load()` returns frozen `VaultConfig` from `vault-config.yaml`
+2. Brain calls `vault_config.model_dump()` to get dict
+3. Dict merged with explicit kwargs (kwargs win)
+4. Merged config passed to `ClaudeClient._build_options()`
+
+**Supported options:** model, max_turns, cwd, add_dirs, system_prompt_file, hooks, mcp_servers, agents, sandbox
 
 ### Dependencies
 - `Vault` - configuration loading (optional)
@@ -115,16 +115,11 @@ The Brain now exposes the full power of the Claude Agent SDK:
 
 ## Changelog
 
-### 2026-02-01 (Issue #38)
+### 2026-02-08 (Issue #38)
 - Added `BrainCallbacks` dataclass for structured event handling
 - Callbacks: on_tool_use, on_tool_approval, on_progress
 - None callback = graceful feature disabling
-- Backward compatible with legacy params (deprecated)
-- Enhanced DEBUG logging throughout
-- Added 60 total Brain tests:
-  - Unit: 25 tests (callbacks, vault, streaming, errors)
-  - Live: 27 tests (processing, vault, tools, sessions, streaming)
-  - Eval: 8 tests (code gen, explanations, quality)
+- Backward compatible with legacy params
 
 ### 2026-02-01
 - Added vault integration for stateless configuration

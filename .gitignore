@@ -34,12 +34,8 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
-credentials.json
-uv.lock
 
-# Claude
-.claude/
-.mcp.json
+# Secrets
 credentials.json
 
 # Sandbox (Claude working directory)

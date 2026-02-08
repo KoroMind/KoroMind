@@ -1,9 +1,10 @@
 """Unit tests for Brain vault integration."""
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from koro.core.brain import Brain
-from koro.core.types import MessageType
+from koro.core.types import MessageType, UserSettings
 
 
 @pytest.fixture
@@ -12,6 +13,7 @@ def mock_state_manager():
     mgr = MagicMock()
     mgr.get_current_session = AsyncMock(return_value=None)
     mgr.update_session = AsyncMock()
+    mgr.get_settings = AsyncMock(return_value=UserSettings())
     return mgr
 
 
@@ -40,7 +42,7 @@ class TestBrainVaultIntegration:
         vault_dir = tmp_path / "vault"
         vault_dir.mkdir()
         config_file = vault_dir / "vault-config.yaml"
-        config_file.write_text("model: opus\n")
+        config_file.write_text("plugins: []\n")
 
         brain = Brain(
             vault_path=str(vault_dir),
@@ -59,7 +61,12 @@ class TestBrainVaultIntegration:
         vault_dir = tmp_path / "vault"
         vault_dir.mkdir()
         config_file = vault_dir / "vault-config.yaml"
-        config_file.write_text("model: test-model\nmax_turns: 99\n")
+        config_file.write_text("""
+agents:
+  researcher:
+    prompt: "You research things."
+    tools: ["WebSearch"]
+""")
 
         brain = Brain(
             vault_path=str(vault_dir),
@@ -69,11 +76,11 @@ class TestBrainVaultIntegration:
 
         await brain.process_text(user_id="user1", text="hello", include_audio=False)
 
-        # Verify claude_client.query was called with vault config
+        # Verify claude_client.query was called with a QueryConfig
         mock_claude_client.query.assert_called_once()
-        call_kwargs = mock_claude_client.query.call_args.kwargs
-        assert call_kwargs.get("model") == "test-model"
-        assert call_kwargs.get("max_turns") == 99
+        config = mock_claude_client.query.call_args[0][0]
+        # Vault agents should be converted to SDK AgentDefinitions
+        assert "researcher" in config.agents
 
     @pytest.mark.asyncio
     async def test_vault_config_merged_with_kwargs(
@@ -83,7 +90,11 @@ class TestBrainVaultIntegration:
         vault_dir = tmp_path / "vault"
         vault_dir.mkdir()
         config_file = vault_dir / "vault-config.yaml"
-        config_file.write_text("model: vault-model\nmax_turns: 10\n")
+        config_file.write_text("""
+agents:
+  researcher:
+    prompt: "You research things."
+""")
 
         brain = Brain(
             vault_path=str(vault_dir),
@@ -91,18 +102,18 @@ class TestBrainVaultIntegration:
             claude_client=mock_claude_client,
         )
 
-        # Pass additional kwargs not in vault
         await brain.process_message(
             user_id="user1",
             content="hello",
             content_type=MessageType.TEXT,
             include_audio=False,
-            some_extra_option="extra",
+            max_turns=50,
         )
 
-        call_kwargs = mock_claude_client.query.call_args.kwargs
-        # Both vault and explicit should be present
-        assert call_kwargs.get("model") == "vault-model"
+        config = mock_claude_client.query.call_args[0][0]
+        # Vault agents and explicit kwargs both present
+        assert "researcher" in config.agents
+        assert config.max_turns == 50
 
     @pytest.mark.asyncio
     async def test_kwargs_override_vault_config(
@@ -112,7 +123,7 @@ class TestBrainVaultIntegration:
         vault_dir = tmp_path / "vault"
         vault_dir.mkdir()
         config_file = vault_dir / "vault-config.yaml"
-        config_file.write_text("model: vault-model\n")
+        config_file.write_text("plugins: []\n")
 
         brain = Brain(
             vault_path=str(vault_dir),
@@ -125,11 +136,11 @@ class TestBrainVaultIntegration:
             content="hello",
             content_type=MessageType.TEXT,
             include_audio=False,
-            model="explicit-model",  # Should override vault
+            model="explicit-model",
         )
 
-        call_kwargs = mock_claude_client.query.call_args.kwargs
-        assert call_kwargs.get("model") == "explicit-model"
+        config = mock_claude_client.query.call_args[0][0]
+        assert config.model == "explicit-model"
 
     def test_invalid_vault_path_logs_error_continues(
         self, tmp_path, mock_state_manager, mock_claude_client, caplog
@@ -144,7 +155,7 @@ class TestBrainVaultIntegration:
             claude_client=mock_claude_client,
         )
 
-        # Brain still works, vault is None or non-existent
+        # Brain still works, vault is non-existent
         assert brain is not None
 
     @pytest.mark.asyncio

@@ -2,22 +2,20 @@
 # Multi-stage build for efficient image size
 
 # ============================================================================
-# Stage 1: Base with Node.js and Python
+# Stage 1: Base with Python 3.12 and Node.js
 # ============================================================================
-FROM node:20-slim AS base
+FROM python:3.12-slim-bookworm AS base
 
-# Install Python and system dependencies
-# Note: Debian bookworm has Python 3.11, which is compatible
+# Install Node.js and system dependencies
+# Note: We need Python 3.12+ for Pydantic + TypedDict compatibility
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-venv \
-    python3-pip \
     curl \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (uid 1000 required by Claude CLI)
-# Delete existing node user first (it has UID 1000)
-RUN userdel -r node && \
+RUN if id -u node >/dev/null 2>&1; then userdel -r node; fi && \
     useradd -m -u 1000 -s /bin/bash claude && \
     mkdir -p /home/claude/.claude && \
     chown -R claude:claude /home/claude
@@ -30,6 +28,9 @@ FROM base AS app
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 
+# Install dev dependencies when requested
+ARG INSTALL_DEV=false
+
 # Switch to non-root user
 USER claude
 WORKDIR /home/claude/app
@@ -37,13 +38,17 @@ WORKDIR /home/claude/app
 # Copy dependency manifests first for better caching
 COPY --chown=claude:claude pyproject.toml uv.lock ./
 
-# Create virtual environment and install dependencies via uv
-RUN python3 -m venv .venv && \
-    .venv/bin/pip install --no-cache-dir --upgrade pip uv && \
-    .venv/bin/uv sync --frozen --no-dev
-
-# Copy application code
+# Copy application code (needed for editable install during uv sync)
 COPY --chown=claude:claude src/ ./src/
+
+# Create virtual environment and install dependencies via uv
+RUN python -m venv .venv && \
+    .venv/bin/pip install --no-cache-dir --upgrade pip uv && \
+    if [ "$INSTALL_DEV" = "true" ]; then \
+        .venv/bin/uv sync --frozen --extra dev; \
+    else \
+        .venv/bin/uv sync --frozen --no-dev; \
+    fi
 
 # Copy Claude settings (agents, skills, config from toru-claude-settings submodule)
 COPY --chown=claude:claude .claude-settings/ /home/claude/.claude/

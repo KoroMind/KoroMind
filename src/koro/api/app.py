@@ -1,6 +1,7 @@
 """FastAPI application for KoroMind REST API."""
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler."""
     logger.info("KoroMind API starting up...")
     yield
@@ -60,13 +61,14 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-def run_server():
+def run_server() -> None:
     """Run the API server."""
     import uvicorn
 
+    host = KOROMIND_HOST or "127.0.0.1"
     uvicorn.run(
         "koro.api.app:app",
-        host=KOROMIND_HOST,
+        host=host,
         port=KOROMIND_PORT,
         reload=False,
     )

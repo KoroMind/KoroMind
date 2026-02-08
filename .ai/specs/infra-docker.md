@@ -20,7 +20,7 @@ validated: 2026-01-29
 - Easy hosting on any Docker-capable server
 
 ## How
-- `Dockerfile` - Python 3.11 image, uv for deps
+- `Dockerfile` - Python 3.12 image, uv for deps
 - `docker-compose.yml` - Service definition
 
 ### Volumes

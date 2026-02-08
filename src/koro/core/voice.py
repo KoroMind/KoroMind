@@ -2,10 +2,25 @@
 
 import asyncio
 from io import BytesIO
+from typing import Any
 
 from elevenlabs.client import ElevenLabs
+from elevenlabs.core import ApiError
+from elevenlabs.types import SpeechToTextChunkResponseModel, VoiceSettings
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
+
+
+class VoiceError(RuntimeError):
+    """Base error for voice processing failures."""
+
+
+class VoiceNotConfiguredError(VoiceError):
+    """Raised when ElevenLabs is not configured."""
+
+
+class VoiceTranscriptionError(VoiceError):
+    """Raised when transcription fails."""
 
 
 class VoiceEngine:
@@ -39,10 +54,11 @@ class VoiceEngine:
             Transcribed text or error message
         """
         if not self.client:
-            return "[Error: ElevenLabs not configured]"
+            raise VoiceNotConfiguredError("ElevenLabs not configured")
+        client = self.client
 
-        def _transcribe_sync():
-            return self.client.speech_to_text.convert(
+        def _transcribe_sync() -> SpeechToTextChunkResponseModel:
+            return client.speech_to_text.convert(
                 file=BytesIO(voice_bytes),
                 model_id="scribe_v1",
                 language_code="en",
@@ -51,10 +67,14 @@ class VoiceEngine:
         try:
             transcription = await asyncio.to_thread(_transcribe_sync)
             return transcription.text
-        except Exception as e:
-            return f"[Transcription error: {e}]"
+        except ApiError as exc:
+            return f"Error: {exc}"
+        except (RuntimeError, ValueError, TypeError) as exc:
+            raise VoiceTranscriptionError(str(exc)) from exc
 
-    async def text_to_speech(self, text: str, speed: float = None) -> BytesIO | None:
+    async def text_to_speech(
+        self, text: str, speed: float | None = None
+    ) -> BytesIO | None:
         """
         Convert text to speech using ElevenLabs Turbo v2.5.
 
@@ -67,22 +87,23 @@ class VoiceEngine:
         """
         if not self.client:
             return None
+        client = self.client
 
         actual_speed = speed if speed is not None else VOICE_SETTINGS["speed"]
 
-        def _tts_sync():
-            return self.client.text_to_speech.convert(
+        def _tts_sync() -> Any:
+            return client.text_to_speech.convert(
                 text=text,
-                voice_id=self.voice_id,
+                voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
                 model_id="eleven_turbo_v2_5",
                 output_format="mp3_44100_128",
-                voice_settings={
-                    "stability": VOICE_SETTINGS["stability"],
-                    "similarity_boost": VOICE_SETTINGS["similarity_boost"],
-                    "style": VOICE_SETTINGS["style"],
-                    "speed": actual_speed,
-                    "use_speaker_boost": True,
-                },
+                voice_settings=VoiceSettings(
+                    stability=VOICE_SETTINGS["stability"],
+                    similarity_boost=VOICE_SETTINGS["similarity_boost"],
+                    style=VOICE_SETTINGS["style"],
+                    speed=actual_speed,
+                    use_speaker_boost=True,
+                ),
             )
 
         try:
@@ -110,7 +131,7 @@ class VoiceEngine:
         try:
             audio = self.client.text_to_speech.convert(
                 text="test",
-                voice_id=self.voice_id,
+                voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
                 model_id="eleven_turbo_v2_5",
             )
             size = sum(len(c) for c in audio if isinstance(c, bytes))

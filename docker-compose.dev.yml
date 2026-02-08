@@ -1,0 +1,42 @@
+services:
+  koro:
+    profiles:
+      - telegram
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+    env_file:
+      - .env
+    command: >
+      /bin/sh -c ".venv/bin/watchfiles '.venv/bin/koromind telegram' /home/claude/app/src"
+    volumes:
+      - ./src:/home/claude/app/src
+      - koro-state:/home/claude/state
+      - koro-sandbox:/home/claude/sandbox
+      - ./src/prompts:/home/claude/app/src/prompts:ro
+      - koro-claude-config:/home/claude/.claude
+  koro-api:
+    profiles:
+      - api
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+    env_file:
+      - .env
+    command: >
+      /bin/sh -c ".venv/bin/uvicorn koro.api.app:app --host 0.0.0.0 --port 8420 --reload --reload-dir /home/claude/app/src"
+    ports:
+      - "8420:8420"
+    volumes:
+      - ./src:/home/claude/app/src
+      - koro-state:/home/claude/state
+      - koro-sandbox:/home/claude/sandbox
+      - ./src/prompts:/home/claude/app/src/prompts:ro
+      - koro-claude-config:/home/claude/.claude
+
+volumes:
+  koro-state:
+  koro-sandbox:
+  koro-claude-config:

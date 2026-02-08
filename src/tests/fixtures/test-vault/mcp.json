@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "./data.db"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-filesystem", "."]
+    }
+  }
+}

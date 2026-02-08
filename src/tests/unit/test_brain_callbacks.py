@@ -1,7 +1,7 @@
 """Unit tests for Brain callbacks functionality."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 from koro.core.brain import Brain
 from koro.core.types import (
@@ -11,6 +11,7 @@ from koro.core.types import (
     PermissionResultAllow,
     PermissionResultDeny,
     ToolPermissionContext,
+    UserSettings,
 )
 
 
@@ -20,6 +21,7 @@ def mock_state_manager():
     mgr = MagicMock()
     mgr.get_current_session = AsyncMock(return_value=None)
     mgr.update_session = AsyncMock()
+    mgr.get_settings = AsyncMock(return_value=UserSettings())
     return mgr
 
 
@@ -69,7 +71,6 @@ async def test_callbacks_on_progress_fires(brain, mock_claude_client):
 
     # Should have progress updates
     assert len(progress_calls) > 0
-    assert any("configuration" in msg.lower() for msg in progress_calls)
     assert any("claude" in msg.lower() for msg in progress_calls)
 
 
@@ -125,16 +126,15 @@ async def test_callbacks_on_tool_use_fires(brain, mock_claude_client):
     """Verify on_tool_use callback is called during watch mode."""
     tool_calls = []
 
-    def track_tool(tool_name: str, detail: str | None):
+    async def track_tool(tool_name: str, detail: str | None) -> None:
         tool_calls.append((tool_name, detail))
 
     callbacks = BrainCallbacks(on_tool_use=track_tool)
 
-    # Setup Claude to call tool via on_tool_call callback
-    async def mock_query(*args, **kwargs):
-        on_tool_call = kwargs.get("on_tool_call")
-        if on_tool_call:
-            on_tool_call("test_tool", "test detail")
+    # Setup Claude to call tool via on_tool_call in QueryConfig
+    async def mock_query(config):
+        if config.on_tool_call:
+            await config.on_tool_call("test_tool", "test detail")
         return ("Response", "session-1", {})
 
     mock_claude_client.query = mock_query
@@ -168,12 +168,11 @@ async def test_callbacks_on_tool_approval_fires(brain, mock_claude_client):
 
     callbacks = BrainCallbacks(on_tool_approval=track_approval)
 
-    # Setup Claude to request approval
-    async def mock_query(*args, **kwargs):
-        can_use_tool = kwargs.get("can_use_tool")
-        if can_use_tool:
+    # Setup Claude to request approval via QueryConfig
+    async def mock_query(config):
+        if config.can_use_tool:
             ctx = ToolPermissionContext()
-            result = await can_use_tool("bash", {"command": "ls"}, ctx)
+            result = await config.can_use_tool("bash", {"command": "ls"}, ctx)
             assert isinstance(result, PermissionResultAllow)
         return ("Response", "session-1", {})
 
@@ -222,14 +221,13 @@ async def test_callbacks_backward_compat_on_tool_call(brain, mock_claude_client)
     """Verify old on_tool_call parameter still works."""
     tool_calls = []
 
-    def track_tool(tool_name: str, detail: str | None):
+    async def track_tool(tool_name: str, detail: str | None) -> None:
         tool_calls.append((tool_name, detail))
 
     # Setup Claude to call tool
-    async def mock_query(*args, **kwargs):
-        on_tool_call = kwargs.get("on_tool_call")
-        if on_tool_call:
-            on_tool_call("legacy_tool", "legacy detail")
+    async def mock_query(config):
+        if config.on_tool_call:
+            await config.on_tool_call("legacy_tool", "legacy detail")
         return ("Response", "session-1", {})
 
     mock_claude_client.query = mock_query
@@ -259,11 +257,10 @@ async def test_callbacks_backward_compat_can_use_tool(brain, mock_claude_client)
         return PermissionResultDeny(message="Test deny")
 
     # Setup Claude to request approval
-    async def mock_query(*args, **kwargs):
-        can_use_tool = kwargs.get("can_use_tool")
-        if can_use_tool:
+    async def mock_query(config):
+        if config.can_use_tool:
             ctx = ToolPermissionContext()
-            result = await can_use_tool("bash", {"command": "ls"}, ctx)
+            result = await config.can_use_tool("bash", {"command": "ls"}, ctx)
             assert isinstance(result, PermissionResultDeny)
         return ("Response", "session-1", {})
 
@@ -290,17 +287,16 @@ async def test_callbacks_override_legacy_params(brain, mock_claude_client):
     new_calls = []
     old_calls = []
 
-    def new_callback(tool_name: str, detail: str | None):
+    async def new_callback(tool_name: str, detail: str | None) -> None:
         new_calls.append(tool_name)
 
-    def old_callback(tool_name: str, detail: str | None):
+    async def old_callback(tool_name: str, detail: str | None) -> None:
         old_calls.append(tool_name)
 
     # Setup Claude to call tool
-    async def mock_query(*args, **kwargs):
-        on_tool_call = kwargs.get("on_tool_call")
-        if on_tool_call:
-            on_tool_call("test_tool", None)
+    async def mock_query(config):
+        if config.on_tool_call:
+            await config.on_tool_call("test_tool", None)
         return ("Response", "session-1", {})
 
     mock_claude_client.query = mock_query

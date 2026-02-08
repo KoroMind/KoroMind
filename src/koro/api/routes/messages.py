@@ -1,7 +1,7 @@
 """Message processing endpoints."""
 
 import base64
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -43,10 +43,12 @@ class MessageResponse(BaseModel):
     audio: str | None = Field(
         default=None, description="Base64-encoded audio (if include_audio was true)"
     )
-    tool_calls: list[dict] = Field(
+    tool_calls: list[dict[str, Any]] = Field(
         default_factory=list, description="List of tool calls made"
     )
-    metadata: dict = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
 
 
 @router.post("/messages", response_model=MessageResponse)
@@ -63,6 +65,7 @@ async def process_message(
     user_id = http_request.state.user_id
 
     # Decode voice content if needed
+    content: str | bytes
     if request.content_type == "voice":
         try:
             content = base64.b64decode(request.content)
@@ -77,15 +80,20 @@ async def process_message(
         message_type = MessageType.TEXT
 
     # Process the message
-    response = await brain.process_message(
-        user_id=user_id,
-        content=content,
-        content_type=message_type,
-        session_id=request.session_id,
-        mode=Mode(request.mode),
-        include_audio=request.include_audio,
-        voice_speed=request.voice_speed,
-    )
+    try:
+        response = await brain.process_message(
+            user_id=user_id,
+            content=content,
+            content_type=message_type,
+            session_id=request.session_id,
+            mode=Mode(request.mode),
+            include_audio=request.include_audio,
+            voice_speed=request.voice_speed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # Encode audio as base64 if present
     audio_b64 = None
@@ -124,12 +132,17 @@ async def process_text_message(
     brain = get_brain()
     user_id = http_request.state.user_id
 
-    response = await brain.process_text(
-        user_id=user_id,
-        text=request.text,
-        session_id=request.session_id,
-        include_audio=request.include_audio,
-    )
+    try:
+        response = await brain.process_text(
+            user_id=user_id,
+            text=request.text,
+            session_id=request.session_id,
+            include_audio=request.include_audio,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     audio_b64 = None
     if response.audio:

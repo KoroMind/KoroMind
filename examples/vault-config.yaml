@@ -1,8 +1,8 @@
 # KoroMind Vault Configuration
 # =============================
 #
-# This file configures the Claude SDK when using KoroMind with a vault.
-# All fields map directly to ClaudeAgentOptions parameters.
+# This file configures user-specific settings for KoroMind.
+# Core settings (model, cwd, etc.) are provided via environment variables.
 #
 # Place this file at: {KOROMIND_DATA_DIR}/vault-config.yaml
 # Default location: ~/.koromind/vault-config.yaml
@@ -13,97 +13,57 @@
 # - ~ is expanded to home directory
 
 # =============================================================================
-# Working Directory
-# =============================================================================
-# The current working directory for the Claude agent.
-# This is where the agent starts and where relative paths are resolved from.
-cwd: "."
-
-# =============================================================================
-# Additional Directories
-# =============================================================================
-# Extra directories the agent can access beyond cwd.
-# These are added to the agent's allowed directories.
-add_dirs:
-  - "./projects"      # User projects within vault
-  - "./documents"     # User documents within vault
-  # - "/home/user/code"  # Example: absolute path outside vault
-
-# =============================================================================
-# Model Configuration
-# =============================================================================
-# Primary model to use
-model: "claude-sonnet-4-20250514"
-
-# Fallback model if primary is unavailable
-fallback_model: "claude-sonnet-4-20250514"
-
-# Maximum conversation turns before stopping
-max_turns: 50
-
-# Maximum budget in USD per conversation
-max_budget_usd: 5.0
-
-# =============================================================================
-# System Prompt
-# =============================================================================
-# Path to a custom system prompt file (relative to vault root)
-# If not specified, uses the default KoroMind prompt
-# system_prompt_file: "./prompts/custom.md"
-
-# =============================================================================
 # MCP Servers
 # =============================================================================
 # Model Context Protocol servers to enable.
 # Each server provides additional tools to the agent.
 #
-# Format:
-#   server_name:
-#     command: "executable"
-#     args: ["arg1", "arg2"]
-#     env: {"VAR": "value"}  # Optional environment variables
+# Point to a JSON file (standard Claude Code mcp.json format):
+# mcp_servers: "./mcp.json"
 #
-mcp_servers:
-  # SQLite database access
-  # sqlite:
-  #   command: "uvx"
-  #   args: ["mcp-server-sqlite", "--db-path", "./data.db"]
-  
-  # Filesystem access (already provided by default)
-  # filesystem:
-  #   command: "npx"
-  #   args: ["-y", "@anthropic/mcp-filesystem", "."]
-  
-  # GitHub integration
-  # github:
-  #   command: "npx"
-  #   args: ["-y", "@anthropic/mcp-github"]
-  #   env:
-  #     GITHUB_TOKEN: "${GITHUB_TOKEN}"
+# The JSON file should contain a "mcpServers" key:
+# {
+#   "mcpServers": {
+#     "sqlite": {
+#       "command": "uvx",
+#       "args": ["mcp-server-sqlite", "--db-path", "./data.db"]
+#     }
+#   }
+# }
+#
+# Or define servers inline:
+# mcp_servers:
+#   sqlite:
+#     command: "uvx"
+#     args: ["mcp-server-sqlite", "--db-path", "./data.db"]
 
 # =============================================================================
 # Subagents
 # =============================================================================
 # Custom agents that can be invoked during conversations.
-#
-# Format:
-#   agent_name:
-#     model: "model-name"
-#     system_prompt: "Agent instructions"
-#     allowed_tools: ["Tool1", "Tool2"]
-#
+# Model accepts: "sonnet", "opus", "haiku", "inherit" (from parent).
+# Use prompt for inline text, or prompt_file for a markdown file path.
 agents:
   # Example: Research assistant
   # researcher:
-  #   model: "claude-sonnet-4-20250514"
-  #   system_prompt: "You are a research assistant. Focus on gathering accurate information."
-  #   allowed_tools: ["WebSearch", "WebFetch", "Read"]
-  
+  #   model: "haiku"
+  #   description: "Research assistant for complex questions"
+  #   prompt: "You are a research assistant. Focus on gathering accurate information."
+  #   tools: ["WebSearch", "WebFetch", "Read"]
+
+  # Example: Research assistant with prompt from file
+  # researcher:
+  #   model: "sonnet"
+  #   description: "Deep research agent"
+  #   prompt_file: "./agents/researcher.md"
+  #   tools: ["WebSearch", "WebFetch", "Read"]
+
   # Example: Code reviewer
   # reviewer:
-  #   model: "claude-sonnet-4-20250514"
-  #   system_prompt: "You are a code reviewer. Look for bugs, security issues, and improvements."
-  #   allowed_tools: ["Read", "Grep", "Glob"]
+  #   model: "sonnet"
+  #   description: "Code reviewer for bugs and security"
+  #   prompt: "You are a code reviewer. Look for bugs, security issues, and improvements."
+  #   tools: ["Read", "Grep", "Glob"]
 
 # =============================================================================
 # Hooks
@@ -111,14 +71,6 @@ agents:
 # Commands that run before or after tool executions.
 #
 # Events: PreToolUse, PostToolUse, SessionStart, SessionEnd
-#
-# Format:
-#   EventName:
-#     - matcher: "ToolPattern"  # Tool name or regex
-#       hooks:
-#         - type: command
-#           command: "./path/to/script.sh"
-#
 hooks:
   # Example: Validate bash commands before execution
   # PreToolUse:
@@ -126,7 +78,7 @@ hooks:
   #     hooks:
   #       - type: command
   #         command: "./hooks/validate-bash.sh"
-  
+
   # Example: Format code after editing
   # PostToolUse:
   #   - matcher: "Write|Edit"
@@ -138,39 +90,20 @@ hooks:
 # Sandbox Settings
 # =============================================================================
 # Controls bash command isolation for security.
-#
 sandbox:
   # Enable sandboxing (macOS/Linux only)
   enabled: false
-  
+
   # Auto-approve bash when sandboxed
-  autoAllowBashIfSandboxed: true
-  
-  # Commands that bypass the sandbox
-  excludedCommands:
+  auto_allow_bash_if_sandboxed: true
+
+  # Commands that are allowed to bypass sandbox restrictions
+  white_listed_commands:
     - "git"
     - "docker"
-  
-  # Network settings within sandbox
-  # network:
-  #   allowUnixSockets: []
-  #   allowLocalBinding: false
 
 # =============================================================================
 # Plugins
 # =============================================================================
 # SDK plugins to load.
 # plugins: []
-
-# =============================================================================
-# Output Format
-# =============================================================================
-# Structured output format for responses.
-# output_format:
-#   type: "json_schema"
-#   schema:
-#     type: "object"
-#     properties:
-#       summary:
-#         type: "string"
-#     required: ["summary"]

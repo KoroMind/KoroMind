@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/Claude-Agent%20SDK-7c3aed?style=flat-square" alt="Claude Agent SDK">
   <img src="https://img.shields.io/badge/FastAPI-REST-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/Telegram-Bot-26a5e4?style=flat-square&logo=telegram&logoColor=white" alt="Telegram Bot">
@@ -100,7 +100,7 @@ src/koro/
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - [Claude Code](https://claude.ai/code) installed
 - Telegram bot token from [@BotFather](https://t.me/botfather) (for Telegram interface)
 - ElevenLabs API key from [elevenlabs.io](https://elevenlabs.io) (for voice)
@@ -114,7 +114,7 @@ cd koromind
 
 # Install with uv (recommended)
 pip install uv
-uv venv -p python3.11
+uv venv -p python3.12
 source .venv/bin/activate
 uv sync
 
@@ -148,7 +148,26 @@ koro-cli
 ### Docker
 
 ```bash
-docker-compose up --build -d
+docker compose run --rm uv-lock
+
+# Telegram bot
+docker compose --profile telegram up --build -d
+
+# REST API
+docker compose --profile api up --build -d
+```
+
+### Docker (dev hot reload)
+
+Telegram uses `watchfiles` to restart on Python file changes in `src/`.
+API uses `uvicorn --reload`.
+
+```bash
+# Telegram bot
+docker compose -f docker-compose.dev.yml --profile telegram up --build
+
+# REST API
+docker compose -f docker-compose.dev.yml --profile api up --build
 ```
 
 ---
@@ -162,7 +181,6 @@ Send voice or text messages to your bot. Full agentic capabilities with voice re
 **Commands:**
 | Command | Description |
 |---------|-------------|
-| `/start` | Show help |
 | `/new [name]` | Start new session |
 | `/continue` | Resume last session |
 | `/sessions` | List all sessions |

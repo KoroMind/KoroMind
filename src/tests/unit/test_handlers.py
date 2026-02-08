@@ -11,6 +11,7 @@ import koro.interfaces.telegram.handlers.commands as commands
 import koro.interfaces.telegram.handlers.messages as messages
 import koro.interfaces.telegram.handlers.utils as utils
 from koro.state import StateManager
+from koro.voice import VoiceTranscriptionError
 
 
 @pytest.fixture
@@ -105,42 +106,6 @@ class TestCommandHandlers:
     """Tests for command handler authentication and responses."""
 
     @pytest.mark.asyncio
-    async def test_cmd_start_ignores_wrong_chat(self, make_update, allow_all_commands):
-        """cmd_start ignores unauthorized chats."""
-        commands.ALLOWED_CHAT_ID = 12345
-        update = make_update(chat_id=99999)
-
-        await commands.cmd_start(update, MagicMock())
-
-        update.message.reply_text.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_cmd_start_responds_to_correct_chat(
-        self, make_update, allow_all_commands
-    ):
-        """cmd_start responds to authorized chat."""
-        commands.ALLOWED_CHAT_ID = 12345
-        update = make_update(chat_id=12345)
-
-        await commands.cmd_start(update, MagicMock())
-
-        update.message.reply_text.assert_called_once()
-        call_text = update.message.reply_text.call_args.args[0]
-        assert "KoroMind" in call_text
-
-    @pytest.mark.asyncio
-    async def test_cmd_start_allows_all_when_chat_id_zero(
-        self, make_update, allow_all_commands
-    ):
-        """cmd_start allows all chats when ALLOWED_CHAT_ID is 0."""
-        commands.ALLOWED_CHAT_ID = 0
-        update = make_update(chat_id=99999)
-
-        await commands.cmd_start(update, MagicMock())
-
-        update.message.reply_text.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_cmd_new_creates_session(
         self, make_update, allow_all_commands, state_manager, monkeypatch
     ):
@@ -154,8 +119,8 @@ class TestCommandHandlers:
 
         await commands.cmd_new(update, context)
 
-        state = state_manager.get_user_state(12345)
-        assert state["current_session"] is None
+        state = await state_manager.get_session_state("12345")
+        assert state.current_session_id is None
         update.message.reply_text.assert_called_once()
 
     @pytest.mark.asyncio
@@ -173,6 +138,8 @@ class TestCommandHandlers:
 
         call_text = update.message.reply_text.call_args.args[0]
         assert "my session" in call_text
+        typed_state = await state_manager.get_session_state("12345")
+        assert typed_state.pending_session_name == "my session"
 
     @pytest.mark.asyncio
     async def test_cmd_continue_with_session(
@@ -231,12 +198,32 @@ class TestCommandHandlers:
         await commands.cmd_sessions(update, MagicMock())
 
         call_text = update.message.reply_text.call_args.args[0]
-        assert "sess1-abc" in call_text
-        assert "sess2-fed" in call_text
+        assert "sess1-ab" in call_text
+        assert "sess2-fe" in call_text
+        assert "current" in call_text
+        assert "Use /switch <name|id-prefix>" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_switch_no_args(self, make_update, allow_all_commands):
-        """cmd_switch shows usage without args."""
+    async def test_cmd_sessions_shows_pending_name(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_sessions includes pending new-session label."""
+        await state_manager.set_pending_session_name("12345", "project-z")
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        await commands.cmd_sessions(update, MagicMock())
+
+        call_text = update.message.reply_text.call_args.args[0]
+        assert "Pending new session: project-z" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_switch_no_args(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_switch shows empty state when no sessions exist."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
         update = make_update(chat_id=12345)
         context = MagicMock()
         context.args = []
@@ -244,7 +231,26 @@ class TestCommandHandlers:
         await commands.cmd_switch(update, context)
 
         call_text = update.message.reply_text.call_args.args[0]
-        assert "Usage" in call_text
+        assert "No sessions yet" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_switch_no_args_shows_picker(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_switch without args shows inline selector when sessions exist."""
+        await state_manager.update_session("12345", "abc123456789")
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(chat_id=12345)
+        context = MagicMock()
+        context.args = []
+
+        await commands.cmd_switch(update, context)
+
+        call_text = update.message.reply_text.call_args.args[0]
+        call_kwargs = update.message.reply_text.call_args.kwargs
+        assert "Select a session to switch" in call_text
+        assert call_kwargs.get("reply_markup") is not None
 
     @pytest.mark.asyncio
     async def test_cmd_switch_finds_session(
@@ -261,8 +267,46 @@ class TestCommandHandlers:
 
         await commands.cmd_switch(update, context)
 
-        state = state_manager.get_user_state(12345)
-        assert state["current_session"] == "abc123456789"
+        state = await state_manager.get_session_state("12345")
+        assert state.current_session_id == "abc123456789"
+
+    @pytest.mark.asyncio
+    async def test_cmd_switch_finds_session_by_name(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_switch switches by session name."""
+        await state_manager.update_session("12345", "id-1", session_name="alpha")
+        await state_manager.update_session("12345", "id-2", session_name="beta")
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["alpha"]
+
+        await commands.cmd_switch(update, context)
+
+        typed_state = await state_manager.get_session_state("12345")
+        assert typed_state.current_session_id == "id-1"
+
+    @pytest.mark.asyncio
+    async def test_cmd_switch_by_name_reports_ambiguous(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_switch reports ambiguity for non-unique name prefix."""
+        await state_manager.update_session("12345", "id-1", session_name="project-a")
+        await state_manager.update_session("12345", "id-2", session_name="project-b")
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["project"]
+
+        await commands.cmd_switch(update, context)
+
+        call_text = update.message.reply_text.call_args.args[0]
+        assert "Multiple matches" in call_text
+        call_kwargs = update.message.reply_text.call_args.kwargs
+        assert call_kwargs.get("reply_markup") is not None
 
     @pytest.mark.asyncio
     async def test_cmd_switch_not_found(
@@ -362,8 +406,38 @@ class TestCommandHandlers:
 
         call_text = update.message.reply_text.call_args.args[0]
         assert "Settings" in call_text
-        assert "Mode" in call_text
-        assert "Audio" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_model_shows_current(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_model shows current model."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = []
+
+        await commands.cmd_model(update, context)
+
+        call_text = update.message.reply_text.call_args.args[0]
+        assert "Current model" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_model_sets_value(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_model sets the model."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["claude-test"]
+
+        await commands.cmd_model(update, context)
+
+        settings = await state_manager.get_settings("12345")
+        assert settings.model == "claude-test"
 
     @pytest.mark.asyncio
     async def test_cmd_claude_token_no_args(self, make_update, allow_all_commands):
@@ -445,7 +519,7 @@ class TestApprovalCallbackHandlers:
         """Approval callback approves tool use."""
         approval_event = asyncio.Event()
         messages.pending_approvals["test123"] = {
-            "user_id": 12345,
+            "user_id": "12345",
             "event": approval_event,
             "approved": None,
             "tool_name": "Read",
@@ -469,7 +543,7 @@ class TestApprovalCallbackHandlers:
         """Approval callback rejects tool use."""
         approval_event = asyncio.Event()
         messages.pending_approvals["test456"] = {
-            "user_id": 12345,
+            "user_id": "12345",
             "event": approval_event,
             "approved": None,
             "tool_name": "Bash",
@@ -608,7 +682,7 @@ class TestCallbackHandlers:
         self, make_callback_query, state_manager, monkeypatch
     ):
         """Settings callback toggles audio."""
-        state_manager.update_setting(12345, "audio_enabled", True)
+        await state_manager.update_settings("12345", audio_enabled=True)
         monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
 
         query = make_callback_query("setting_audio_toggle")
@@ -618,15 +692,15 @@ class TestCallbackHandlers:
 
         await callbacks.handle_settings_callback(update, MagicMock())
 
-        settings = state_manager.get_user_settings(12345)
-        assert settings["audio_enabled"] is False
+        settings = await state_manager.get_settings("12345")
+        assert settings.audio_enabled is False
 
     @pytest.mark.asyncio
     async def test_settings_toggle_mode(
         self, make_callback_query, state_manager, monkeypatch
     ):
         """Settings callback toggles mode."""
-        state_manager.update_setting(12345, "mode", "go_all")
+        await state_manager.update_settings("12345", mode="go_all")
         monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
 
         query = make_callback_query("setting_mode_toggle")
@@ -636,15 +710,15 @@ class TestCallbackHandlers:
 
         await callbacks.handle_settings_callback(update, MagicMock())
 
-        settings = state_manager.get_user_settings(12345)
-        assert settings["mode"] == "approve"
+        settings = await state_manager.get_settings("12345")
+        assert settings.mode.value == "approve"
 
     @pytest.mark.asyncio
     async def test_settings_set_speed(
         self, make_callback_query, state_manager, monkeypatch
     ):
         """Settings callback sets voice speed."""
-        state_manager.update_setting(12345, "voice_speed", 1.0)
+        await state_manager.update_settings("12345", voice_speed=1.0)
         monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
 
         query = make_callback_query("setting_speed_0.9")
@@ -654,15 +728,15 @@ class TestCallbackHandlers:
 
         await callbacks.handle_settings_callback(update, MagicMock())
 
-        settings = state_manager.get_user_settings(12345)
-        assert settings["voice_speed"] == 0.9
+        settings = await state_manager.get_settings("12345")
+        assert settings.voice_speed == 0.9
 
     @pytest.mark.asyncio
     async def test_settings_rejects_invalid_speed(
         self, make_callback_query, state_manager, monkeypatch
     ):
         """Settings callback rejects invalid speed."""
-        state_manager.update_setting(12345, "voice_speed", 1.0)
+        await state_manager.update_settings("12345", voice_speed=1.0)
         monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
 
         query = make_callback_query("setting_speed_5.0")
@@ -672,8 +746,8 @@ class TestCallbackHandlers:
 
         await callbacks.handle_settings_callback(update, MagicMock())
 
-        settings = state_manager.get_user_settings(12345)
-        assert settings["voice_speed"] == 1.0
+        settings = await state_manager.get_settings("12345")
+        assert settings.voice_speed == 1.0
         query.answer.assert_called_with("Invalid speed range")
 
 
@@ -727,7 +801,7 @@ class TestMessageHandlersFullFlow:
         monkeypatch,
     ):
         """handle_text skips audio when disabled."""
-        state_manager.update_setting(12345, "audio_enabled", False)
+        await state_manager.update_settings("12345", audio_enabled=False)
 
         limiter = MagicMock()
         limiter.check.return_value = (True, "")
@@ -802,7 +876,7 @@ class TestMessageHandlersFullFlow:
         limiter.check.return_value = (True, "")
         mock_voice = MagicMock()
         mock_voice.transcribe = AsyncMock(
-            return_value="[Transcription error: API failed]"
+            side_effect=VoiceTranscriptionError("API failed")
         )
 
         monkeypatch.setattr(messages, "get_state_manager", lambda: state_manager)
@@ -861,7 +935,7 @@ class TestPendingApprovalsCleanup:
         approval_id = "test123"
         messages.pending_approvals[approval_id] = {
             "created_at": time.time() - 600,
-            "user_id": 12345,
+            "user_id": "12345",
             "tool_name": "Bash",
         }
 
@@ -875,7 +949,7 @@ class TestPendingApprovalsCleanup:
 
         for i in range(messages.MAX_PENDING_APPROVALS + 10):
             messages.add_pending_approval(
-                f"id_{i}", {"user_id": i, "created_at": time.time()}
+                f"id_{i}", {"user_id": str(i), "created_at": time.time()}
             )
 
         assert len(messages.pending_approvals) <= messages.MAX_PENDING_APPROVALS

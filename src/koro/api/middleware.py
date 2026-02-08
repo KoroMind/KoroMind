@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import secrets
+from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -22,7 +23,17 @@ def _derive_user_id(api_key: str | None) -> str:
     return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
 
 
-async def api_key_middleware(request: Request, call_next) -> Response:
+def _request_user_id(request: Request) -> str | None:
+    try:
+        user_id = request.state.user_id
+    except AttributeError:
+        return None
+    return str(user_id) if user_id else None
+
+
+async def api_key_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """
     Middleware to validate API key authentication.
 
@@ -33,7 +44,8 @@ async def api_key_middleware(request: Request, call_next) -> Response:
 
     # Allow public paths without authentication
     if path in PUBLIC_PATHS or path.startswith("/docs") or path.startswith("/redoc"):
-        return await call_next(request)
+        response = await call_next(request)
+        return response
 
     # If no API key is configured, fail closed unless explicitly allowed
     if not KOROMIND_API_KEY:
@@ -47,7 +59,8 @@ async def api_key_middleware(request: Request, call_next) -> Response:
         logger.warning(
             "KOROMIND_API_KEY not set - API is running without authentication"
         )
-        return await call_next(request)
+        response = await call_next(request)
+        return response
 
     # Check API key header
     api_key = request.headers.get("X-API-Key")
@@ -65,10 +78,13 @@ async def api_key_middleware(request: Request, call_next) -> Response:
         )
 
     request.state.user_id = _derive_user_id(api_key)
-    return await call_next(request)
+    response = await call_next(request)
+    return response
 
 
-async def rate_limit_middleware(request: Request, call_next) -> Response:
+async def rate_limit_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """
     Middleware to apply rate limiting per user.
 
@@ -76,9 +92,10 @@ async def rate_limit_middleware(request: Request, call_next) -> Response:
     """
     path = request.url.path
     if path in PUBLIC_PATHS or path.startswith("/docs") or path.startswith("/redoc"):
-        return await call_next(request)
+        response = await call_next(request)
+        return response
 
-    user_id = getattr(request.state, "user_id", None) or _derive_user_id(
+    user_id = _request_user_id(request) or _derive_user_id(
         request.headers.get("X-API-Key")
     )
 
@@ -91,4 +108,5 @@ async def rate_limit_middleware(request: Request, call_next) -> Response:
             content={"detail": message},
         )
 
-    return await call_next(request)
+    response = await call_next(request)
+    return response

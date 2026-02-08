@@ -1,6 +1,8 @@
 """The Brain - central orchestration layer for KoroMind."""
 
+import asyncio
 import inspect
+import json
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -10,6 +12,8 @@ from typing import Any, NamedTuple
 from claude_agent_sdk.types import (
     AgentDefinition,
     AssistantMessage,
+    HookCallback,
+    HookMatcher,
     ResultMessage,
     StreamEvent,
     SystemMessage,
@@ -32,7 +36,7 @@ from koro.core.types import (
     ToolCall,
     UserSettings,
 )
-from koro.core.vault import AgentConfig, Vault, VaultConfig
+from koro.core.vault import AgentConfig, Vault, VaultConfig, VaultHookRule
 from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
 logger = logging.getLogger(__name__)
@@ -46,6 +50,51 @@ async def _maybe_await(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
     return value
+
+
+def _make_command_hook(command: str) -> HookCallback:
+    """Create an SDK HookCallback that executes a shell command.
+
+    The hook passes HookInput as JSON on stdin and parses
+    HookJSONOutput from stdout.
+    """
+
+    async def _run(hook_input: Any, tool_use_id: str | None, ctx: Any) -> Any:
+        input_data = json.dumps({"hook_input": hook_input, "tool_use_id": tool_use_id})
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate(input_data.encode())
+        if proc.returncode != 0:
+            logger.warning(
+                f"Hook command failed (exit {proc.returncode}): {stderr.decode()}"
+            )
+            return {"continue_": True}
+        if stdout.strip():
+            try:
+                return json.loads(stdout)
+            except json.JSONDecodeError:
+                logger.warning(f"Hook returned invalid JSON: {stdout.decode()[:200]}")
+        return {"continue_": True}
+
+    return _run
+
+
+def _vault_hooks_to_sdk(
+    vault_hooks: dict[str, list[VaultHookRule]],
+) -> dict[str, list[HookMatcher]]:
+    """Convert vault command-based hooks to SDK callable hooks."""
+    sdk_hooks: dict[str, list[HookMatcher]] = {}
+    for event_name, rules in vault_hooks.items():
+        sdk_matchers = []
+        for rule in rules:
+            callbacks = [_make_command_hook(h.command) for h in rule.hooks]
+            sdk_matchers.append(HookMatcher(matcher=rule.matcher, hooks=callbacks))
+        sdk_hooks[event_name] = sdk_matchers
+    return sdk_hooks
 
 
 class _RequestContext(NamedTuple):
@@ -350,9 +399,11 @@ class Brain:
             vault_data = vault_config.model_dump(
                 exclude_none=True,
                 exclude_defaults=True,
-                include={"hooks", "mcp_servers", "sandbox", "plugins"},
+                include={"mcp_servers", "sandbox", "plugins"},
             )
             config_kwargs.update(vault_data)
+            if vault_config.hooks:
+                config_kwargs["hooks"] = _vault_hooks_to_sdk(vault_config.hooks)
             if vault_config.agents:
                 config_kwargs["agents"] = self._vault_agents_to_sdk(vault_config.agents)
             logger.debug(
@@ -437,13 +488,18 @@ class Brain:
             model=ctx.stored_settings.model,
         )
 
+        # Wrap callback in async to match SDK expectations (like process_message does)
+        async def _on_tool_call(tool_name: str, detail: str | None) -> None:
+            if tool_use_callback:
+                await _maybe_await(tool_use_callback(tool_name, detail))
+
         config = self._build_query_config(
             prompt=ctx.text,
             session_id=ctx.session_id,
             continue_last=False,
             user_settings=user_settings,
             mode=mode,
-            on_tool_call=tool_use_callback if watch_enabled else None,
+            on_tool_call=_on_tool_call if watch_enabled else None,
             can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
             vault_config=ctx.vault_config,
             model=ctx.model_override,

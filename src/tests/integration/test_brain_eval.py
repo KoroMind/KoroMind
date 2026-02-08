@@ -175,12 +175,14 @@ class TestBrainCodeGeneration:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
     @pytest.mark.asyncio
     async def test_generates_function_with_edge_cases(self, brain):
         """Brain handles edge cases in code generation."""
-        task = "Write a Python function that calculates factorial. Handle edge cases like 0 and negative numbers."
+        task = "Write a Python function that calculates factorial. Handle edge cases like 0 and negative numbers. Show the code directly in your response, do not write it to a file."
 
         response = await brain.process_text(
             user_id="test_user",
@@ -200,7 +202,9 @@ class TestBrainCodeGeneration:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
 
 class TestBrainExplanation:
@@ -229,7 +233,9 @@ class TestBrainExplanation:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
 
 class TestBrainFileOperations:
@@ -268,7 +274,9 @@ class TestBrainFileOperations:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
 
 class TestBrainMultiStep:
@@ -305,4 +313,6 @@ class TestBrainMultiStep:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"

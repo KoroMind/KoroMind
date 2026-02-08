@@ -29,8 +29,8 @@ def _resolve_path(path_str: str, vault_root: Path) -> str:
 # --- Typed Configuration Models ---
 
 
-class HookConfig(BaseModel):
-    """Configuration for a single hook."""
+class VaultHookCommand(BaseModel):
+    """Configuration for a single hook command in vault config."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -46,13 +46,13 @@ class HookConfig(BaseModel):
                 )
 
 
-class HookMatcher(BaseModel):
-    """Matcher configuration for hooks."""
+class VaultHookRule(BaseModel):
+    """Matcher configuration for vault hooks."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     matcher: str
-    hooks: list[HookConfig] = Field(default_factory=list)
+    hooks: list[VaultHookCommand] = Field(default_factory=list)
 
 
 class McpServerConfig(BaseModel):
@@ -133,7 +133,7 @@ class VaultConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # Extensibility - user-specific configurations
-    hooks: dict[str, list[HookMatcher]] = Field(default_factory=dict)
+    hooks: dict[str, list[VaultHookRule]] = Field(default_factory=dict)
     mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     sandbox: SandboxConfig | None = None

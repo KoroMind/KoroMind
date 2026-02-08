@@ -1,4 +1,5 @@
 """Live integration tests for Brain streaming."""
+
 import os
 from pathlib import Path
 

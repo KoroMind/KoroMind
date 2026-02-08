@@ -1,4 +1,5 @@
 """Live integration tests for Brain session management."""
+
 import asyncio
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ from dotenv import load_dotenv
 from koro.core.brain import Brain
 from koro.core.claude import ClaudeClient
 from koro.core.state import StateManager
+from koro.core.types import Session
 
 load_dotenv()
 
@@ -98,34 +100,35 @@ class TestBrainSessionLive:
     @pytest.mark.asyncio
     async def test_session_switch_changes_context(self, brain):
         """Switching sessions changes conversation context."""
-        # Session 1
+        # Session 1 - use a unique user to avoid cross-contamination
         resp1 = await brain.process_text(
-            user_id="test_user",
-            text="In this session, the secret is XYZ",
+            user_id="switch_user_1",
+            text="The secret code for this conversation is FLAMINGO. Just confirm you remember it.",
             include_audio=False,
         )
         session1_id = resp1.session_id
 
-        # Session 2 (new session) - different context
+        # Session 2 (new session, different user) - different context
         await brain.process_text(
-            user_id="test_user",
-            text="In this session, the secret is ABC",
+            user_id="switch_user_2",
+            text="The secret code for this conversation is ELEPHANT. Just confirm you remember it.",
             include_audio=False,
         )
 
-        # Query session 1 - should know XYZ
+        # Query session 1 - should know FLAMINGO, not ELEPHANT
         recall1 = await brain.process_text(
-            user_id="test_user",
-            text="What is the secret?",
+            user_id="switch_user_1",
+            text="What was the secret code I told you earlier? Reply with ONLY the single code word, nothing else.",
             session_id=session1_id,
             include_audio=False,
         )
 
-        assert "XYZ" in recall1.text.upper() or "xyz" in recall1.text.lower()
+        assert "FLAMINGO" in recall1.text.upper()
 
     @pytest.mark.asyncio
     async def test_concurrent_requests_different_users(self, brain):
         """Concurrent requests from different users work."""
+
         async def user_task(user_id: str, message: str):
             return await brain.process_text(
                 user_id=user_id,
@@ -145,3 +148,14 @@ class TestBrainSessionLive:
         for result in results:
             assert result.text
             assert result.session_id
+
+    @pytest.mark.asyncio
+    async def test_create_session_returns_new_session(self, brain):
+        """create_session returns a Session with valid fields."""
+        session = await brain.create_session("create_session_test_user")
+
+        assert isinstance(session, Session)
+        assert session.id
+        assert session.user_id == "create_session_test_user"
+        assert session.created_at is not None
+        assert session.last_active is not None

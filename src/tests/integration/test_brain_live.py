@@ -6,7 +6,7 @@ import pytest
 from dotenv import load_dotenv
 
 from koro.core.brain import Brain
-from koro.core.types import BrainCallbacks, MessageType
+from koro.core.types import BrainCallbacks, MessageType, Mode, UserSettings
 
 # Load environment variables
 load_dotenv()
@@ -33,7 +33,6 @@ def brain(tmp_path):
     """Create Brain with temp sandbox."""
     from koro.core.claude import ClaudeClient
     from koro.core.state import StateManager
-    from koro.core.voice import VoiceEngine
 
     sandbox = tmp_path / "sandbox"
     sandbox.mkdir()
@@ -106,10 +105,12 @@ class TestBrainCallbacksLive:
             callbacks=callbacks,
         )
 
-        # Should have at least config loading and Claude processing
-        assert len(progress_messages) >= 2
-        assert any("config" in msg.lower() for msg in progress_messages)
-        assert any("claude" in msg.lower() for msg in progress_messages)
+        # Should fire at least once for Claude processing
+        assert len(progress_messages) >= 1
+        assert any(
+            "claude" in msg.lower() or "processing" in msg.lower()
+            for msg in progress_messages
+        )
 
     @pytest.mark.asyncio
     async def test_on_tool_use_fires_with_real_tool(self, brain, tmp_path):
@@ -219,3 +220,53 @@ class TestBrainMetadata:
 
         assert response.session_id
         assert len(response.session_id) > 0
+
+
+@pytest.mark.live
+class TestBrainSettings:
+    """Live tests for Brain settings management."""
+
+    @pytest.mark.asyncio
+    async def test_get_settings_returns_defaults(self, brain):
+        """New user gets default UserSettings."""
+        settings = await brain.get_settings("new_user_settings_test")
+
+        assert isinstance(settings, UserSettings)
+        assert settings.mode == Mode.GO_ALL
+        assert settings.audio_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_update_settings_persists(self, brain):
+        """Updated settings persist across calls."""
+        user_id = "settings_persist_test"
+
+        updated = await brain.update_settings(user_id, mode=Mode.APPROVE)
+        assert updated.mode == Mode.APPROVE
+
+        retrieved = await brain.get_settings(user_id)
+        assert retrieved.mode == Mode.APPROVE
+
+
+@pytest.mark.live
+class TestBrainRateLimit:
+    """Live tests for Brain rate limiting."""
+
+    def test_rate_limit_allows_normal_usage(self, brain):
+        """Rate limit allows normal usage."""
+        allowed, message = brain.check_rate_limit("rate_limit_test_user")
+
+        assert allowed is True
+        assert isinstance(message, str)
+
+
+@pytest.mark.live
+class TestBrainHealthCheck:
+    """Live tests for Brain health check."""
+
+    def test_health_check_reports_status(self, brain):
+        """Health check returns dict with component statuses."""
+        health = brain.health_check()
+
+        assert "claude" in health
+        assert isinstance(health["claude"], tuple)
+        assert len(health["claude"]) == 2

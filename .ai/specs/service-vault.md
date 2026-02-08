@@ -4,7 +4,7 @@ type: service
 status: active
 severity: high
 issue: 35
-validated: 2026-02-03
+validated: 2026-02-08
 ---
 
 # Vault Service
@@ -25,32 +25,28 @@ validated: 2026-02-03
 
 ### Config Flow
 ```
-vault-config.yaml → Vault.load() → VaultConfig → Brain.process_message() → model_dump() → ClaudeAgentOptions
+vault-config.yaml → Vault.load() → VaultConfig → Brain._build_query_config() → QueryConfig
 ```
 
-### Typed Models (frozen Pydantic)
-- `VaultConfig` - main config with all SDK options
-- `HookConfig` - single hook (type, command)
+### Typed Models (frozen Pydantic, path resolution via `model_post_init`)
+- `VaultConfig` - top-level config (`extra="forbid"`)
+- `HookConfig` - single hook (resolves `./` in command)
 - `HookMatcher` - matcher with hooks list
-- `McpServerConfig` - MCP server (command, args)
-- `AgentConfig` - subagent definition
-- `SandboxConfig` - sandbox settings
+- `McpServerConfig` - MCP server (resolves `./` in args)
+- `AgentConfig` - subagent (model, prompt/prompt_file, tools)
+- `SandboxConfig` - sandbox settings (camelCase aliases)
 
-### Supported Options
-| Option | Type | Path Resolution |
-|--------|------|-----------------|
-| `model` | string | No |
-| `max_turns` | int | No |
-| `cwd` | string | Yes - relative to vault root |
-| `add_dirs` | list[string] | Yes - each path resolved |
-| `system_prompt_file` | string | Yes - loaded as system prompt |
-| `hooks` | dict | Yes - command paths resolved |
-| `mcp_servers` | dict | Yes - args with `./` resolved |
-| `agents` | dict | Pass-through |
-| `sandbox` | dict | Pass-through |
+### Fields
+| Field | Type | Notes |
+|-------|------|-------|
+| `hooks` | dict[str, list[HookMatcher]] | Command paths resolved |
+| `mcp_servers` | dict or string path | String loads JSON file (`mcpServers` key) |
+| `agents` | dict[str, AgentConfig] | model: sonnet/opus/haiku/inherit |
+| `sandbox` | SandboxConfig | camelCase or snake_case |
+| `plugins` | list | Pass-through |
 
-### Path Resolution Rules
-- `./path` → `{vault_root}/path`
+### Path Resolution (in models, not Vault.load())
+- `./path` → `{vault_root}/path` (via `model_post_init` + `object.__setattr__`)
 - `~/path` → expanded home directory
 - `/absolute/path` → unchanged
 
@@ -62,12 +58,18 @@ vault-config.yaml → Vault.load() → VaultConfig → Brain.process_message() �
 - Invalid YAML raises VaultError
 - Relative paths resolve to vault root
 - Absolute paths preserved
-- Home directory expansion works
 - Cached after first load, reload() clears cache
-- All referenced files exist (integration test)
-- VaultConfig is frozen (immutable)
+- MCP JSON file: loads, resolves paths, errors on missing/invalid/no key
+- Agent model literals validated, prompt vs prompt_file exclusive
+- Extra fields rejected (`extra="forbid"`)
 
 ## Changelog
+
+### 2026-02-08
+- mcp_servers accepts JSON file path (model_validator mode="before")
+- Path resolution moved into models via model_post_init
+- AgentConfig: model field (sonnet/opus/haiku/inherit), prompt_file support
+- extra="forbid" on VaultConfig and AgentConfig
 
 ### 2026-02-03
 - Added VaultConfig frozen Pydantic model

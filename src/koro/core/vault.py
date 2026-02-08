@@ -9,9 +9,20 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_path(path_str: str, vault_root: Path) -> str:
+    """Resolve a relative path against vault root.
+
+    Handles ~ expansion and absolute path preservation.
+    """
+    p = Path(path_str).expanduser()
+    if p.is_absolute():
+        return str(p)
+    return str(vault_root / p)
 
 
 # --- Typed Configuration Models ---
@@ -24,6 +35,14 @@ class HookConfig(BaseModel):
 
     type: str = "command"
     command: str
+
+    def model_post_init(self, __context: Any) -> None:
+        if __context and self.command.startswith("./"):
+            vault_root = __context.get("vault_root")
+            if vault_root:
+                object.__setattr__(
+                    self, "command", _resolve_path(self.command, vault_root)
+                )
 
 
 class HookMatcher(BaseModel):
@@ -43,6 +62,16 @@ class McpServerConfig(BaseModel):
     command: str
     args: list[str] = []
 
+    def model_post_init(self, __context: Any) -> None:
+        if __context and self.args:
+            vault_root = __context.get("vault_root")
+            if vault_root:
+                resolved = [
+                    _resolve_path(a, vault_root) if a.startswith("./") else a
+                    for a in self.args
+                ]
+                object.__setattr__(self, "args", resolved)
+
 
 class AgentConfig(BaseModel):
     """Configuration for a subagent.
@@ -60,11 +89,15 @@ class AgentConfig(BaseModel):
     prompt_file: str | None = None
     tools: list[str] | None = None
 
-    @model_validator(mode="after")
-    def check_prompt_exclusive(self) -> "AgentConfig":
+    def model_post_init(self, __context: Any) -> None:
         if self.prompt and self.prompt_file:
             raise ValueError("Use prompt or prompt_file, not both")
-        return self
+        if __context and self.prompt_file:
+            vault_root = __context.get("vault_root")
+            if vault_root:
+                object.__setattr__(
+                    self, "prompt_file", _resolve_path(self.prompt_file, vault_root)
+                )
 
 
 class SandboxConfig(BaseModel):
@@ -76,9 +109,7 @@ class SandboxConfig(BaseModel):
     auto_allow_bash_if_sandboxed: bool = Field(
         default=True, alias="autoAllowBashIfSandboxed"
     )
-    white_listed_commands: list[str] = Field(
-        default=[], alias="whiteListedCommands"
-    )
+    white_listed_commands: list[str] = Field(default=[], alias="whiteListedCommands")
 
 
 class VaultConfig(BaseModel):
@@ -175,8 +206,9 @@ class Vault:
                 f"vault-config.yaml must be a mapping, got {type(raw).__name__}"
             )
 
-        resolved = self._resolve_paths(raw)
-        self._config = VaultConfig.model_validate(resolved)
+        self._config = VaultConfig.model_validate(
+            raw, context={"vault_root": self.root}
+        )
         logger.info(
             f"Vault config loaded: "
             f"mcp_servers={len(self._config.mcp_servers)}, "
@@ -193,140 +225,6 @@ class Vault:
         """
         self._config = None
         return self.load()
-
-    def _resolve_paths(self, config: dict[str, Any]) -> dict[str, Any]:
-        """Resolve relative paths to absolute paths within vault.
-
-        Handles:
-        - Paths in mcp_servers args that start with ./
-        - Paths in hooks commands that start with ./
-
-        Args:
-            config: Raw configuration dict
-
-        Returns:
-            Config with resolved paths
-        """
-        result = config.copy()
-
-        # Resolve paths in MCP server args
-        if "mcp_servers" in result:
-            if not isinstance(result["mcp_servers"], dict):
-                raise VaultError(
-                    f"mcp_servers must be a dict, got {type(result['mcp_servers']).__name__}"
-                )
-            result["mcp_servers"] = self._resolve_mcp_paths(result["mcp_servers"])
-
-        # Resolve paths in hooks
-        if "hooks" in result:
-            if not isinstance(result["hooks"], dict):
-                raise VaultError(
-                    f"hooks must be a dict, got {type(result['hooks']).__name__}"
-                )
-            result["hooks"] = self._resolve_hook_paths(result["hooks"])
-
-        # Resolve paths in agents
-        if "agents" in result:
-            if not isinstance(result["agents"], dict):
-                raise VaultError(
-                    f"agents must be a dict, got {type(result['agents']).__name__}"
-                )
-            result["agents"] = self._resolve_agent_paths(result["agents"])
-
-        return result
-
-    def _resolve(self, path: str) -> Path:
-        """Resolve a path: relative paths are relative to vault root.
-
-        Args:
-            path: Path string (relative or absolute)
-
-        Returns:
-            Resolved absolute Path
-        """
-        p = Path(path).expanduser()
-        if p.is_absolute():
-            return p
-        return self.root / p
-
-    def _resolve_mcp_paths(self, mcp_servers: dict[str, Any]) -> dict[str, Any]:
-        """Resolve paths in MCP server configurations.
-
-        Looks for paths starting with ./ in args lists.
-        """
-        resolved = {}
-        for name, server in mcp_servers.items():
-            if not isinstance(server, dict):
-                resolved[name] = server
-                continue
-
-            server_copy = server.copy()
-            if "args" in server_copy and isinstance(server_copy["args"], list):
-                server_copy["args"] = [
-                    (
-                        str(self._resolve(arg))
-                        if isinstance(arg, str) and arg.startswith("./")
-                        else arg
-                    )
-                    for arg in server_copy["args"]
-                ]
-            resolved[name] = server_copy
-        return resolved
-
-    def _resolve_hook_paths(self, hooks: dict[str, Any]) -> dict[str, Any]:
-        """Resolve paths in hook configurations.
-
-        Looks for command fields with relative paths.
-        """
-        resolved = {}
-        for event, matchers in hooks.items():
-            if not isinstance(matchers, list):
-                resolved[event] = matchers
-                continue
-
-            resolved_matchers = []
-            for matcher in matchers:
-                if not isinstance(matcher, dict):
-                    resolved_matchers.append(matcher)
-                    continue
-
-                matcher_copy = matcher.copy()
-                if "hooks" in matcher_copy and isinstance(matcher_copy["hooks"], list):
-                    resolved_hooks = []
-                    for hook in matcher_copy["hooks"]:
-                        if isinstance(hook, dict) and "command" in hook:
-                            hook_copy = hook.copy()
-                            cmd = hook_copy["command"]
-                            if isinstance(cmd, str) and cmd.startswith("./"):
-                                hook_copy["command"] = str(self._resolve(cmd))
-                            resolved_hooks.append(hook_copy)
-                        else:
-                            resolved_hooks.append(hook)
-                    matcher_copy["hooks"] = resolved_hooks
-                resolved_matchers.append(matcher_copy)
-            resolved[event] = resolved_matchers
-        return resolved
-
-    def _resolve_agent_paths(self, agents: dict[str, Any]) -> dict[str, Any]:
-        """Resolve paths in agent configurations.
-
-        Resolves prompt_file paths relative to vault root.
-        """
-        resolved = {}
-        for name, agent in agents.items():
-            if not isinstance(agent, dict):
-                resolved[name] = agent
-                continue
-
-            agent_copy = agent.copy()
-            if "prompt_file" in agent_copy and isinstance(
-                agent_copy["prompt_file"], str
-            ):
-                agent_copy["prompt_file"] = str(
-                    self._resolve(agent_copy["prompt_file"])
-                )
-            resolved[name] = agent_copy
-        return resolved
 
     @property
     def exists(self) -> bool:

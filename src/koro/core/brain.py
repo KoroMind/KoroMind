@@ -266,20 +266,14 @@ class Brain:
             "can_use_tool": can_use_tool,
         }
 
-        # Apply vault config (if provided) - typed access, no dict conversion
+        # Apply vault config (if provided)
         if vault_config:
-            if vault_config.hooks:
-                config_kwargs["hooks"] = vault_config.hooks
-            if vault_config.mcp_servers:
-                config_kwargs["mcp_servers"] = vault_config.mcp_servers
+            for field in ("hooks", "mcp_servers", "sandbox", "plugins"):
+                value = getattr(vault_config, field)
+                if value:
+                    config_kwargs[field] = value
             if vault_config.agents:
-                config_kwargs["agents"] = self._vault_agents_to_sdk(
-                    vault_config.agents
-                )
-            if vault_config.sandbox:
-                config_kwargs["sandbox"] = vault_config.sandbox
-            if vault_config.plugins:
-                config_kwargs["plugins"] = vault_config.plugins
+                config_kwargs["agents"] = self._vault_agents_to_sdk(vault_config.agents)
             logger.debug(
                 f"Applied vault config: hooks={len(vault_config.hooks)}, "
                 f"mcp_servers={len(vault_config.mcp_servers)}, "

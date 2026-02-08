@@ -6,7 +6,12 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
+from claude_agent_sdk.types import (
+    AgentDefinition,
+    AssistantMessage,
+    ResultMessage,
+    StreamEvent,
+)
 
 from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
@@ -22,7 +27,7 @@ from koro.core.types import (
     ToolCall,
     UserSettings,
 )
-from koro.core.vault import Vault, VaultConfig
+from koro.core.vault import AgentConfig, Vault, VaultConfig
 from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
 logger = logging.getLogger(__name__)
@@ -216,6 +221,28 @@ class Brain:
             metadata=metadata,
         )
 
+    @staticmethod
+    def _vault_agents_to_sdk(
+        agents: dict[str, AgentConfig],
+    ) -> dict[str, AgentDefinition]:
+        """Convert vault AgentConfig to SDK AgentDefinition."""
+        result = {}
+        for name, agent in agents.items():
+            prompt = agent.prompt or ""
+            if agent.prompt_file:
+                path = Path(agent.prompt_file)
+                if path.exists():
+                    prompt = path.read_text()
+                else:
+                    logger.warning(f"Agent prompt file not found: {agent.prompt_file}")
+            result[name] = AgentDefinition(
+                description=agent.description,
+                prompt=prompt,
+                tools=agent.tools,
+                model=agent.model,
+            )
+        return result
+
     def _build_query_config(
         self,
         *,
@@ -246,7 +273,9 @@ class Brain:
             if vault_config.mcp_servers:
                 config_kwargs["mcp_servers"] = vault_config.mcp_servers
             if vault_config.agents:
-                config_kwargs["agents"] = vault_config.agents
+                config_kwargs["agents"] = self._vault_agents_to_sdk(
+                    vault_config.agents
+                )
             if vault_config.sandbox:
                 config_kwargs["sandbox"] = vault_config.sandbox
             if vault_config.plugins:

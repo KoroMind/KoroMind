@@ -4,9 +4,10 @@
 # Subagents with tools
 agents:
   researcher:
-    model: "claude-sonnet-4-20250514"
-    system_prompt_file: "./agents/researcher.md"
-    allowed_tools:
+    model: "haiku"
+    description: "Deep research assistant for complex questions"
+    prompt_file: "./agents/researcher.md"
+    tools:
       - WebSearch
       - WebFetch
       - Read

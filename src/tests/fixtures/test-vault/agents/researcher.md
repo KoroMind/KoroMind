@@ -1,7 +1,6 @@
 ---
 name: researcher
 description: Deep research when you need answers, not guesses. Use for complex questions requiring web search, documentation diving, or thorough investigation.
-model: sonnet
 tools:
   - WebSearch
   - WebFetch

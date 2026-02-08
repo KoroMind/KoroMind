@@ -6,10 +6,10 @@ as a typed VaultConfig that passes to the Claude SDK via Brain.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +45,26 @@ class McpServerConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    """Configuration for a subagent."""
+    """Configuration for a subagent.
 
-    model_config = ConfigDict(frozen=True, extra="allow")
+    Fields align with Claude SDK's AgentDefinition.
+    Model accepts short names: "sonnet", "opus", "haiku", "inherit".
+    Use prompt for inline text, or prompt_file for a file path (resolved by vault).
+    """
 
-    model: str | None = None
-    system_prompt: str | None = None
-    allowed_tools: list[str] = []
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: Literal["sonnet", "opus", "haiku", "inherit"] | None = None
+    description: str = ""
+    prompt: str | None = None
+    prompt_file: str | None = None
+    tools: list[str] | None = None
+
+    @model_validator(mode="after")
+    def check_prompt_exclusive(self) -> "AgentConfig":
+        if self.prompt and self.prompt_file:
+            raise ValueError("Use prompt or prompt_file, not both")
+        return self
 
 
 class SandboxConfig(BaseModel):
@@ -212,6 +225,14 @@ class Vault:
                 )
             result["hooks"] = self._resolve_hook_paths(result["hooks"])
 
+        # Resolve paths in agents
+        if "agents" in result:
+            if not isinstance(result["agents"], dict):
+                raise VaultError(
+                    f"agents must be a dict, got {type(result['agents']).__name__}"
+                )
+            result["agents"] = self._resolve_agent_paths(result["agents"])
+
         return result
 
     def _resolve(self, path: str) -> Path:
@@ -284,6 +305,27 @@ class Vault:
                     matcher_copy["hooks"] = resolved_hooks
                 resolved_matchers.append(matcher_copy)
             resolved[event] = resolved_matchers
+        return resolved
+
+    def _resolve_agent_paths(self, agents: dict[str, Any]) -> dict[str, Any]:
+        """Resolve paths in agent configurations.
+
+        Resolves prompt_file paths relative to vault root.
+        """
+        resolved = {}
+        for name, agent in agents.items():
+            if not isinstance(agent, dict):
+                resolved[name] = agent
+                continue
+
+            agent_copy = agent.copy()
+            if "prompt_file" in agent_copy and isinstance(
+                agent_copy["prompt_file"], str
+            ):
+                agent_copy["prompt_file"] = str(
+                    self._resolve(agent_copy["prompt_file"])
+                )
+            resolved[name] = agent_copy
         return resolved
 
     @property

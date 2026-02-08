@@ -39,18 +39,29 @@ mcp_servers:
 # Subagents
 # =============================================================================
 # Custom agents that can be invoked during conversations.
+# Model accepts: "sonnet", "opus", "haiku", "inherit" (from parent).
+# Use prompt for inline text, or prompt_file for a markdown file path.
 agents:
   # Example: Research assistant
   # researcher:
-  #   model: "claude-sonnet-4-20250514"
-  #   system_prompt: "You are a research assistant. Focus on gathering accurate information."
-  #   allowed_tools: ["WebSearch", "WebFetch", "Read"]
+  #   model: "haiku"
+  #   description: "Research assistant for complex questions"
+  #   prompt: "You are a research assistant. Focus on gathering accurate information."
+  #   tools: ["WebSearch", "WebFetch", "Read"]
+
+  # Example: Research assistant with prompt from file
+  # researcher:
+  #   model: "sonnet"
+  #   description: "Deep research agent"
+  #   prompt_file: "./agents/researcher.md"
+  #   tools: ["WebSearch", "WebFetch", "Read"]
 
   # Example: Code reviewer
   # reviewer:
-  #   model: "claude-sonnet-4-20250514"
-  #   system_prompt: "You are a code reviewer. Look for bugs, security issues, and improvements."
-  #   allowed_tools: ["Read", "Grep", "Glob"]
+  #   model: "sonnet"
+  #   description: "Code reviewer for bugs and security"
+  #   prompt: "You are a code reviewer. Look for bugs, security issues, and improvements."
+  #   tools: ["Read", "Grep", "Glob"]
 
 # =============================================================================
 # Hooks

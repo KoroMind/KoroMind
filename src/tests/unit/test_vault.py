@@ -73,7 +73,7 @@ mcp_servers:
         config_file.write_text("""
 agents:
   test:
-    system_prompt: "Test agent"
+    prompt: "Test agent"
 """)
 
         vault = Vault(tmp_path)
@@ -83,7 +83,7 @@ agents:
         config_file.write_text("""
 agents:
   different:
-    system_prompt: "Different agent"
+    prompt: "Different agent"
 """)
 
         # Should return cached version
@@ -101,7 +101,7 @@ class TestVaultReload:
         config_file.write_text("""
 agents:
   original:
-    system_prompt: "Original"
+    prompt: "Original"
 """)
 
         vault = Vault(tmp_path)
@@ -112,7 +112,7 @@ agents:
         config_file.write_text("""
 agents:
   updated:
-    system_prompt: "Updated"
+    prompt: "Updated"
 """)
 
         # Reload should get fresh content
@@ -218,9 +218,10 @@ mcp_servers:
 
 agents:
   researcher:
-    model: "claude-sonnet-4-20250514"
-    system_prompt: "You are a researcher."
-    allowed_tools: ["WebSearch", "Read"]
+    model: "sonnet"
+    description: "Research assistant"
+    prompt: "You are a researcher."
+    tools: ["WebSearch", "Read"]
 
 hooks:
   PreToolUse:
@@ -244,6 +245,8 @@ plugins: []
         # Check all sections are present
         assert "sqlite" in config.mcp_servers
         assert "researcher" in config.agents
+        assert config.agents["researcher"].model == "sonnet"
+        assert config.agents["researcher"].tools == ["WebSearch", "Read"]
         assert "PreToolUse" in config.hooks
         assert config.sandbox.enabled is False
         assert config.sandbox.white_listed_commands == ["git", "docker"]
@@ -286,3 +289,113 @@ sandbox:
         assert config.sandbox.enabled is True
         assert config.sandbox.auto_allow_bash_if_sandboxed is False
         assert config.sandbox.white_listed_commands == ["yarn"]
+
+
+class TestAgentConfig:
+    """Tests for agent configuration with model selection."""
+
+    def test_agent_with_model(self, tmp_path: Path):
+        """Agent can specify model as short name."""
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text("""
+agents:
+  researcher:
+    model: "haiku"
+    description: "Research agent"
+    prompt: "You research things."
+    tools: ["WebSearch"]
+""")
+        vault = Vault(tmp_path)
+        config = vault.load()
+
+        agent = config.agents["researcher"]
+        assert agent.model == "haiku"
+        assert agent.description == "Research agent"
+        assert agent.prompt == "You research things."
+        assert agent.tools == ["WebSearch"]
+
+    def test_agent_model_literals(self, tmp_path: Path):
+        """Model field only accepts valid SDK literals."""
+        config_file = tmp_path / "vault-config.yaml"
+
+        for model in ("sonnet", "opus", "haiku", "inherit"):
+            config_file.write_text(f"""
+agents:
+  test:
+    model: "{model}"
+    prompt: "Test"
+""")
+            vault = Vault(tmp_path)
+            config = vault.load()
+            assert config.agents["test"].model == model
+
+    def test_agent_rejects_full_model_id(self, tmp_path: Path):
+        """Full model IDs like 'claude-sonnet-4-20250514' are rejected."""
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text("""
+agents:
+  test:
+    model: "claude-sonnet-4-20250514"
+    prompt: "Test"
+""")
+        vault = Vault(tmp_path)
+        with pytest.raises(Exception):
+            vault.load()
+
+    def test_agent_prompt_file_resolves(self, tmp_path: Path):
+        """Agent prompt_file paths are resolved relative to vault root."""
+        prompt_dir = tmp_path / "agents"
+        prompt_dir.mkdir()
+        (prompt_dir / "helper.md").write_text("You are a helper.")
+
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text("""
+agents:
+  helper:
+    prompt_file: "./agents/helper.md"
+""")
+        vault = Vault(tmp_path)
+        config = vault.load()
+
+        agent = config.agents["helper"]
+        assert agent.prompt_file == str(tmp_path / "agents" / "helper.md")
+
+    def test_agent_without_model(self, tmp_path: Path):
+        """Agent without model defaults to None (inherits)."""
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text("""
+agents:
+  simple:
+    prompt: "A simple agent"
+""")
+        vault = Vault(tmp_path)
+        config = vault.load()
+
+        assert config.agents["simple"].model is None
+        assert config.agents["simple"].prompt == "A simple agent"
+
+    def test_agent_rejects_unknown_fields(self, tmp_path: Path):
+        """Unknown fields in agent config are rejected."""
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text("""
+agents:
+  test:
+    prompt: "Test"
+    unknown_field: "value"
+""")
+        vault = Vault(tmp_path)
+        with pytest.raises(Exception):
+            vault.load()
+
+    def test_agent_rejects_prompt_and_prompt_file(self, tmp_path: Path):
+        """Cannot set both prompt and prompt_file."""
+        config_file = tmp_path / "vault-config.yaml"
+        config_file.write_text("""
+agents:
+  test:
+    prompt: "Inline prompt"
+    prompt_file: "./agents/test.md"
+""")
+        vault = Vault(tmp_path)
+        with pytest.raises(Exception, match="prompt or prompt_file, not both"):
+            vault.load()

@@ -37,6 +37,3 @@ htmlcov/
 
 # Secrets
 credentials.json
-
-# Claude
-.claude/

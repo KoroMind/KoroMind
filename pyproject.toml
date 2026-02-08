@@ -85,10 +85,6 @@ disallow_any_generics = true
 disallow_incomplete_defs = true
 disallow_untyped_defs = true
 
-[[tool.mypy.overrides]]
-module = ["koro.core.vault"]
-disable_error_code = ["import-untyped"]
-
 [tool.coverage.run]
 source = ["koro"]
 omit = ["src/tests/*"]

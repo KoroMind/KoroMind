@@ -14,7 +14,6 @@ import pytest
 from dotenv import load_dotenv
 
 from koro.core.brain import Brain
-from koro.core.types import MessageType
 
 # Load environment variables
 load_dotenv()

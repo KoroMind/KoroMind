@@ -62,6 +62,38 @@ class TestShouldHandleMessage:
         assert utils.should_handle_message(thread_id) is expected
 
 
+class TestAuthorizedHandler:
+    """Tests for authorized_handler decorator behavior."""
+
+    @pytest.mark.asyncio
+    async def test_callback_uses_callback_message_thread_even_with_sync_answer(
+        self, monkeypatch
+    ):
+        """Callback updates should use callback message thread regardless of answer() type."""
+        monkeypatch.setattr(utils, "TOPIC_ID", "100")
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
+
+        called = False
+
+        @utils.authorized_handler
+        async def _handler(update, context):
+            nonlocal called
+            called = True
+            return "ok"
+
+        update = MagicMock()
+        update.message = None
+        update.effective_chat.id = 12345
+        update.callback_query = MagicMock()
+        update.callback_query.answer = MagicMock()  # Sync callable (not coroutine func)
+        update.callback_query.message.message_thread_id = 100
+
+        result = await _handler(update, MagicMock())
+
+        assert result == "ok"
+        assert called is True
+
+
 class TestSendLongMessage:
     """Tests for send_long_message function."""
 

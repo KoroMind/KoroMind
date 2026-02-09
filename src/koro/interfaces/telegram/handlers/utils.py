@@ -70,29 +70,30 @@ def authorized_handler(
         **kwargs: P.kwargs,
     ) -> R | None:
         callback_query = getattr(update, "callback_query", None)
-        answer_cb: Callable[..., Coroutine[Any, Any, object]] | None = None
         raw_answer_cb = getattr(callback_query, "answer", None)
-        if callable(raw_answer_cb) and inspect.iscoroutinefunction(raw_answer_cb):
-            answer_cb = raw_answer_cb
-        has_async_callback = callable(answer_cb) and inspect.iscoroutinefunction(
-            answer_cb
-        )
 
-        message_obj = getattr(update, "message", None)
-        if has_async_callback:
-            message_obj = getattr(callback_query, "message", None)
+        async def answer_callback_query() -> None:
+            if not callable(raw_answer_cb):
+                return
+            result = raw_answer_cb()
+            if inspect.isawaitable(result):
+                await result
+
+        message_obj = (
+            getattr(callback_query, "message", None)
+            if callback_query is not None
+            else getattr(update, "message", None)
+        )
 
         thread_id: Any = getattr(message_obj, "message_thread_id", None)
         chat = getattr(update, "effective_chat", None)
         chat_id: Any = getattr(chat, "id", None)
 
         if not should_handle_message(thread_id):
-            if has_async_callback and answer_cb is not None:
-                await answer_cb()
+            await answer_callback_query()
             return None
         if ALLOWED_CHAT_ID != 0 and chat_id != ALLOWED_CHAT_ID:
-            if has_async_callback and answer_cb is not None:
-                await answer_cb()
+            await answer_callback_query()
             return None
         return await handler(update, context, *args, **kwargs)
 

@@ -1,6 +1,8 @@
 """Unit tests for Brain error handling."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from koro.core.brain import Brain
 
@@ -99,7 +101,9 @@ class TestBrainErrorHandling:
         assert "Transcription" in str(exc_info.value) or exc_info.value is not None
 
     @pytest.mark.asyncio
-    async def test_tts_failure_still_returns_text(self, brain, mock_voice_engine, mock_claude_client):
+    async def test_tts_failure_still_returns_text(
+        self, brain, mock_voice_engine, mock_claude_client
+    ):
         """TTS failure doesn't lose text response."""
         mock_voice_engine.text_to_speech = AsyncMock(
             side_effect=Exception("TTS failed")

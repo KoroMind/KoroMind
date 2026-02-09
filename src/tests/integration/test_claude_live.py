@@ -110,7 +110,9 @@ class TestClaudeToolUse:
         test_file.write_text("This is test content 12345")
 
         response, _, metadata = await claude_client.query(
-            _query_config(f"Read the file at {test_file} and tell me what number is in it.")
+            _query_config(
+                f"Read the file at {test_file} and tell me what number is in it."
+            )
         )
 
         assert "12345" in response
@@ -126,7 +128,9 @@ class TestClaudeToolUse:
         async def on_tool(name, detail):
             tools_called.append(name)
 
-        await claude_client.query(_query_config(f"Read {test_file}", on_tool_call=on_tool))
+        await claude_client.query(
+            _query_config(f"Read {test_file}", on_tool_call=on_tool)
+        )
 
         assert "Read" in tools_called
 

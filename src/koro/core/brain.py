@@ -260,7 +260,9 @@ class Brain:
             try:
                 vault_config = self._vault.load()
             except VaultError:
-                logger.warning("Vault config load failed, proceeding without", exc_info=True)
+                logger.warning(
+                    "Vault config load failed, proceeding without", exc_info=True
+                )
 
         return _RequestContext(
             text=text,
@@ -414,7 +416,8 @@ class Brain:
         return {
             name: AgentDefinition(
                 description=agent.description,
-                prompt=agent.prompt or "You are KoroMind, a helpful personal AI assistant.",
+                prompt=agent.prompt
+                or "You are KoroMind, a helpful personal AI assistant.",
                 tools=agent.tools,
                 model=agent.model,
             )

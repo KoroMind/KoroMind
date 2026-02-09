@@ -264,9 +264,7 @@ class Vault:
                 raw, context={"vault_root": self.root}
             )
         except Exception as e:
-            raise VaultError(
-                f"Invalid vault config in {self.config_file}: {e}"
-            ) from e
+            raise VaultError(f"Invalid vault config in {self.config_file}: {e}") from e
 
         logger.info(
             f"Vault config loaded: "

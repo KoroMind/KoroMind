@@ -1,7 +1,8 @@
 """Unit tests for Brain callbacks functionality."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from koro.core.brain import Brain
 from koro.core.types import (
@@ -57,9 +58,7 @@ async def test_callbacks_on_progress_fires(brain, mock_claude_client):
     """Verify on_progress callback is called during processing."""
     progress_calls = []
 
-    callbacks = BrainCallbacks(
-        on_progress=lambda msg: progress_calls.append(msg)
-    )
+    callbacks = BrainCallbacks(on_progress=lambda msg: progress_calls.append(msg))
 
     await brain.process_message(
         user_id="user-1",
@@ -84,9 +83,7 @@ async def test_callbacks_on_progress_fires_with_audio(brain, mock_voice_engine):
     mock_buffer.read = MagicMock(return_value=b"audio-data")
     mock_voice_engine.text_to_speech = AsyncMock(return_value=mock_buffer)
 
-    callbacks = BrainCallbacks(
-        on_progress=lambda msg: progress_calls.append(msg)
-    )
+    callbacks = BrainCallbacks(on_progress=lambda msg: progress_calls.append(msg))
 
     await brain.process_message(
         user_id="user-1",
@@ -105,9 +102,7 @@ async def test_callbacks_on_progress_fires_with_voice_input(brain, mock_voice_en
     """Verify on_progress includes transcription step for voice input."""
     progress_calls = []
 
-    callbacks = BrainCallbacks(
-        on_progress=lambda msg: progress_calls.append(msg)
-    )
+    callbacks = BrainCallbacks(on_progress=lambda msg: progress_calls.append(msg))
 
     await brain.process_message(
         user_id="user-1",

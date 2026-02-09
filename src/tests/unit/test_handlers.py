@@ -662,7 +662,7 @@ class TestMessageHandlers:
     """Tests for voice and text message handlers."""
 
     @pytest.mark.asyncio
-    async def test_handle_voice_ignores_bot(self, make_update):
+    async def test_handle_voice_ignores_bot(self, make_update, allow_all_messages):
         """handle_voice ignores bot messages."""
         update = make_update(is_bot=True)
 
@@ -671,7 +671,7 @@ class TestMessageHandlers:
         update.message.reply_text.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handle_text_ignores_bot(self, make_update):
+    async def test_handle_text_ignores_bot(self, make_update, allow_all_messages):
         """handle_text ignores bot messages."""
         update = make_update(is_bot=True)
 

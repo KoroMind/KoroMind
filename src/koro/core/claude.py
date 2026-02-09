@@ -364,9 +364,7 @@ class ClaudeClient:
                                 ):
                                     try:
                                         tool_input = block.input or {}
-                                        detail = get_tool_detail(
-                                            block.name, tool_input
-                                        )
+                                        detail = get_tool_detail(block.name, tool_input)
                                         result = stream_config.on_tool_call(
                                             block.name, detail
                                         )

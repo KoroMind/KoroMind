@@ -66,6 +66,18 @@ class TestVoiceEngine:
         assert result == "This is a test transcription"
         mock_elevenlabs_client.speech_to_text.convert.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_transcribe_raises_on_unexpected_response_shape(self):
+        """transcribe raises a typed error when SDK response has no text field."""
+        engine = VoiceEngine(api_key="test_key")
+        engine.client = MagicMock()
+        engine.client.speech_to_text.convert.return_value = object()
+
+        with pytest.raises(VoiceTranscriptionError) as exc_info:
+            await engine.transcribe(b"audio_data")
+
+        assert "unexpected transcription response shape" in str(exc_info.value).lower()
+
     @pytest.mark.parametrize(
         "method,args",
         [
@@ -100,6 +112,17 @@ class TestVoiceEngine:
 
         assert isinstance(result, BytesIO)
         assert len(result.getvalue()) > 0
+
+    @pytest.mark.asyncio
+    async def test_text_to_speech_returns_none_for_non_iterable_audio(self):
+        """text_to_speech returns None when SDK output is not chunk-iterable."""
+        engine = VoiceEngine(api_key="test_key")
+        engine.client = MagicMock()
+        engine.client.text_to_speech.convert.return_value = object()
+
+        result = await engine.text_to_speech("Hello test")
+
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_text_to_speech_with_custom_speed(self, mock_elevenlabs_client):

@@ -4,7 +4,7 @@ import asyncio
 import functools
 import inspect
 from datetime import datetime
-from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar
+from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, cast
 
 from telegram import Message, Update
 from telegram.constants import ChatAction
@@ -79,10 +79,20 @@ def authorized_handler(
             if inspect.isawaitable(result):
                 await result
 
-        message_obj = (
-            callback_query.message if callback_query is not None else update.message
+        callback_message = (
+            callback_query.message if callback_query is not None else None
         )
-        thread_id = message_obj.message_thread_id if message_obj is not None else None
+        if isinstance(callback_message, Message):
+            thread_id = callback_message.message_thread_id
+        elif callback_message is not None and hasattr(
+            callback_message, "message_thread_id"
+        ):
+            thread_id = cast(Any, callback_message).message_thread_id
+        else:
+            message_obj = update.message
+            thread_id = (
+                message_obj.message_thread_id if message_obj is not None else None
+            )
         chat = update.effective_chat
         chat_id = chat.id if chat is not None else None
 

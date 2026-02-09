@@ -73,15 +73,7 @@ class VoiceEngine:
         except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
 
-        try:
-            text = transcription.text
-        except AttributeError as exc:
-            raise VoiceTranscriptionError(
-                "Unexpected transcription response shape"
-            ) from exc
-        if isinstance(text, str):
-            return text
-        raise VoiceTranscriptionError("Unexpected transcription response shape")
+        return transcription.text
 
     async def text_to_speech(
         self, text: str, speed: float | None = None

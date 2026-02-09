@@ -16,7 +16,10 @@ async def handle_settings_callback(
     """Handle settings button callbacks."""
     query = update.callback_query
     user = update.effective_user
-    if query is None or user is None or query.data is None:
+    if query is None or user is None:
+        return
+    if query.data is None:
+        await query.answer()
         return
     debug(f"SETTINGS CALLBACK: {query.data}")
 
@@ -106,7 +109,10 @@ async def handle_approval_callback(
     """Handle approval/rejection button callbacks."""
     query = update.callback_query
     user = update.effective_user
-    if query is None or user is None or query.data is None:
+    if query is None or user is None:
+        return
+    if query.data is None:
+        await query.answer()
         return
     callback_data = query.data
 
@@ -152,7 +158,10 @@ async def handle_switch_callback(
     """Handle session switch button callbacks."""
     query = update.callback_query
     user = update.effective_user
-    if query is None or user is None or query.data is None:
+    if query is None or user is None:
+        return
+    if query.data is None:
+        await query.answer()
         return
     callback_data = query.data
 

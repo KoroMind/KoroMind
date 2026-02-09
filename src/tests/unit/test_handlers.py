@@ -5,6 +5,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from telegram import Message
 
 import koro.interfaces.telegram.handlers.callbacks as callbacks
 import koro.interfaces.telegram.handlers.commands as commands
@@ -89,6 +90,7 @@ class TestAuthorizedHandler:
         update.effective_chat.id = 12345
         update.callback_query = MagicMock()
         update.callback_query.answer = MagicMock()  # Sync callable (not coroutine func)
+        update.callback_query.message = MagicMock(spec=Message)
         update.callback_query.message.message_thread_id = 100
 
         result = await _handler(update, MagicMock())
@@ -117,6 +119,7 @@ class TestAuthorizedHandler:
         update.effective_chat.id = 12345
         update.callback_query = MagicMock()
         update.callback_query.answer = MagicMock()
+        update.callback_query.message = MagicMock(spec=Message)
         update.callback_query.message.message_thread_id = 999
 
         result = await _handler(update, MagicMock())

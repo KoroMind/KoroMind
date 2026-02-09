@@ -4,16 +4,7 @@ import asyncio
 import functools
 import inspect
 from datetime import datetime
-from typing import (
-    Any,
-    Callable,
-    Concatenate,
-    Coroutine,
-    ParamSpec,
-    Protocol,
-    TypeVar,
-    runtime_checkable,
-)
+from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar
 
 from telegram import Message, Update
 from telegram.constants import ChatAction
@@ -23,13 +14,6 @@ from koro.config import ALLOWED_CHAT_ID, TOPIC_ID
 
 P = ParamSpec("P")
 R = TypeVar("R")
-
-
-@runtime_checkable
-class _HasMessageThreadId(Protocol):
-    """Structural type for objects exposing message_thread_id."""
-
-    message_thread_id: int | None
 
 
 def debug(msg: str) -> None:
@@ -95,13 +79,8 @@ def authorized_handler(
             if inspect.isawaitable(result):
                 await result
 
-        callback_message = (
-            callback_query.message if callback_query is not None else None
-        )
-        if isinstance(callback_message, Message):
-            thread_id = callback_message.message_thread_id
-        elif isinstance(callback_message, _HasMessageThreadId):
-            thread_id = callback_message.message_thread_id
+        if callback_query is not None and isinstance(callback_query.message, Message):
+            thread_id = callback_query.message.message_thread_id
         else:
             message_obj = update.message
             thread_id = (

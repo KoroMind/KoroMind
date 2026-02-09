@@ -128,6 +128,7 @@ __all__ = [
     "OutputFormat",
     "PermissionResult",
     "PermissionResultAllow",
+    "ProcessRequest",
     "PermissionResultDeny",
     "ProjectConfig",
     "SandboxSettings",
@@ -157,6 +158,26 @@ class Mode(Enum):
 
     GO_ALL = "go_all"
     APPROVE = "approve"
+
+
+@dataclass(frozen=True)
+class ProcessRequest:
+    """Request configuration for Brain message processing.
+
+    Bundles common parameters shared by process_message() and
+    process_message_stream(). Pass this instead of individual keyword
+    arguments to keep call sites stable as the API grows.
+    """
+
+    user_id: str
+    content: str | bytes
+    content_type: MessageType
+    session_id: str | None = None
+    mode: Mode = Mode.GO_ALL
+    include_audio: bool = True
+    voice_speed: float = 1.1
+    watch_enabled: bool = False
+    callbacks: BrainCallbacks | None = None
 
 
 class UserSettings(BaseModel, frozen=True):

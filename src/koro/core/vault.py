@@ -93,12 +93,19 @@ class AgentConfig(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         if self.prompt and self.prompt_file:
             raise ValueError("Use prompt or prompt_file, not both")
-        if __context and self.prompt_file:
-            vault_root = __context.get("vault_root")
-            if vault_root:
-                object.__setattr__(
-                    self, "prompt_file", _resolve_path(self.prompt_file, vault_root)
-                )
+        if self.prompt_file:
+            resolved = self.prompt_file
+            if __context:
+                vault_root = __context.get("vault_root")
+                if vault_root and not Path(self.prompt_file).is_absolute():
+                    resolved = _resolve_path(self.prompt_file, vault_root)
+            object.__setattr__(self, "prompt_file", resolved)
+            # Pre-load file content so Brain never does sync I/O per request
+            path = Path(resolved)
+            if path.exists():
+                object.__setattr__(self, "prompt", path.read_text())
+            else:
+                logger.warning(f"Agent prompt file not found: {resolved}")
 
 
 class SandboxConfig(BaseModel):

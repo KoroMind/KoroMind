@@ -31,6 +31,7 @@ from koro.core.types import (
     Mode,
     OnProgress,
     OnToolCall,
+    ProcessRequest,
     QueryConfig,
     Session,
     ToolCall,
@@ -271,9 +272,9 @@ class Brain:
 
     async def process_message(
         self,
-        user_id: str,
-        content: str | bytes,
-        content_type: MessageType,
+        user_id: str = "",
+        content: str | bytes = "",
+        content_type: MessageType = MessageType.TEXT,
         session_id: str | None = None,
         mode: Mode = Mode.GO_ALL,
         include_audio: bool = True,
@@ -282,12 +283,17 @@ class Brain:
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
         callbacks: BrainCallbacks | None = None,
+        request: ProcessRequest | None = None,
         **kwargs: Any,
     ) -> BrainResponse:
         """
         Process a message and return response.
 
+        Can be called with individual params (backward compatible) or
+        with a ProcessRequest object which takes precedence.
+
         Args:
+            request: ProcessRequest bundling all common params (preferred).
             user_id: Unique identifier for the user
             content: Message content (text string or voice bytes)
             content_type: Type of message (TEXT or VOICE)
@@ -296,15 +302,26 @@ class Brain:
             include_audio: Whether to include TTS audio in response
             voice_speed: Voice speed for TTS (0.7-1.2)
             watch_enabled: Whether to call on_tool_call for each tool
-            on_tool_call: Callback when tool is called (for watch mode)
-            can_use_tool: SDK-compatible callback for tool approval (for approve mode)
+            on_tool_call: Legacy callback (use callbacks.on_tool_use instead)
+            can_use_tool: Legacy callback (use callbacks.on_tool_approval instead)
             callbacks: Structured callbacks (preferred over individual params)
             **kwargs: Additional arguments passed to ClaudeClient.query
-                (hooks, mcp_servers, agents, plugins, sandbox, output_format, etc.)
 
         Returns:
             BrainResponse with text, optional audio, and metadata
         """
+        # ProcessRequest takes precedence over individual params
+        if request is not None:
+            user_id = request.user_id
+            content = request.content
+            content_type = request.content_type
+            session_id = request.session_id
+            mode = request.mode
+            include_audio = request.include_audio
+            voice_speed = request.voice_speed
+            watch_enabled = request.watch_enabled
+            callbacks = request.callbacks
+
         tool_calls: list[ToolCall] = []
 
         # Prefer structured callbacks over individual params
@@ -389,23 +406,20 @@ class Brain:
     def _vault_agents_to_sdk(
         agents: dict[str, AgentConfig],
     ) -> dict[str, AgentDefinition]:
-        """Convert vault AgentConfig to SDK AgentDefinition."""
-        result = {}
-        for name, agent in agents.items():
-            prompt = agent.prompt or ""
-            if agent.prompt_file:
-                path = Path(agent.prompt_file)
-                if path.exists():
-                    prompt = path.read_text()
-                else:
-                    logger.warning(f"Agent prompt file not found: {agent.prompt_file}")
-            result[name] = AgentDefinition(
+        """Convert vault AgentConfig to SDK AgentDefinition.
+
+        Prompt file contents are pre-loaded at vault load time, so no
+        file I/O happens here.
+        """
+        return {
+            name: AgentDefinition(
                 description=agent.description,
-                prompt=prompt,
+                prompt=agent.prompt or "You are KoroMind, a helpful personal AI assistant.",
                 tools=agent.tools,
                 model=agent.model,
             )
-        return result
+            for name, agent in agents.items()
+        }
 
     def _build_query_config(
         self,
@@ -483,15 +497,16 @@ class Brain:
 
     async def process_message_stream(
         self,
-        user_id: str,
-        content: str | bytes,
-        content_type: MessageType,
+        user_id: str = "",
+        content: str | bytes = "",
+        content_type: MessageType = MessageType.TEXT,
         session_id: str | None = None,
         mode: Mode = Mode.GO_ALL,
         watch_enabled: bool = False,
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
         callbacks: BrainCallbacks | None = None,
+        request: ProcessRequest | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[StreamedEvent]:
         """
@@ -501,9 +516,18 @@ class Brain:
         a BrainResponse, this method yields events as they arrive from
         the Claude SDK. Use this for real-time streaming UIs (CLI, web).
 
-        Args:
-            Same as process_message, but returns an async iterator of events.
+        Can be called with individual params or a ProcessRequest object.
         """
+        # ProcessRequest takes precedence over individual params
+        if request is not None:
+            user_id = request.user_id
+            content = request.content
+            content_type = request.content_type
+            session_id = request.session_id
+            mode = request.mode
+            watch_enabled = request.watch_enabled
+            callbacks = request.callbacks
+
         # Prefer structured callbacks over individual params
         tool_use_callback = callbacks.on_tool_use if callbacks else on_tool_call
         tool_approval_callback = (

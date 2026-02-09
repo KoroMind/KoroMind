@@ -1,6 +1,7 @@
 """Callback query handlers for inline keyboards."""
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 from koro.interfaces.telegram.handlers.commands import _session_label
@@ -96,7 +97,7 @@ async def handle_settings_callback(
 
     try:
         await query.edit_message_text(message, reply_markup=reply_markup)
-    except Exception as e:
+    except TelegramError as e:
         debug(f"Error updating settings menu: {e}")
 
     await query.answer()

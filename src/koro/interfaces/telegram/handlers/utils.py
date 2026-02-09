@@ -69,8 +69,8 @@ def authorized_handler(
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> R | None:
-        callback_query = getattr(update, "callback_query", None)
-        raw_answer_cb = getattr(callback_query, "answer", None)
+        callback_query = update.callback_query
+        raw_answer_cb = callback_query.answer if callback_query is not None else None
 
         async def answer_callback_query() -> None:
             if not callable(raw_answer_cb):
@@ -80,14 +80,11 @@ def authorized_handler(
                 await result
 
         message_obj = (
-            getattr(callback_query, "message", None)
-            if callback_query is not None
-            else getattr(update, "message", None)
+            callback_query.message if callback_query is not None else update.message
         )
-
-        thread_id: Any = getattr(message_obj, "message_thread_id", None)
-        chat = getattr(update, "effective_chat", None)
-        chat_id: Any = getattr(chat, "id", None)
+        thread_id = message_obj.message_thread_id if message_obj is not None else None
+        chat = update.effective_chat
+        chat_id = chat.id if chat is not None else None
 
         if not should_handle_message(thread_id):
             await answer_callback_query()

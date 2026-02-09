@@ -8,6 +8,7 @@ from typing import Any, Iterable
 from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
 from elevenlabs.core import ApiError
+from elevenlabs.types import SpeechToTextChunkResponseModel
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
@@ -58,7 +59,7 @@ class VoiceEngine:
         if not client:
             raise VoiceNotConfiguredError("ElevenLabs not configured")
 
-        def _transcribe_sync() -> object:
+        def _transcribe_sync() -> SpeechToTextChunkResponseModel:
             return client.speech_to_text.convert(
                 file=BytesIO(voice_bytes),
                 model_id="scribe_v1",
@@ -72,7 +73,12 @@ class VoiceEngine:
         except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
 
-        text = getattr(transcription, "text", None)
+        try:
+            text = transcription.text
+        except AttributeError as exc:
+            raise VoiceTranscriptionError(
+                "Unexpected transcription response shape"
+            ) from exc
         if isinstance(text, str):
             return text
         raise VoiceTranscriptionError("Unexpected transcription response shape")

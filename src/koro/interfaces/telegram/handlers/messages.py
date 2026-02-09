@@ -300,10 +300,8 @@ async def _call_claude_with_settings(
             pending_approvals.pop(approval_id, None)
             raise
 
-        approval_data: PendingApproval | dict[str, Any] = pending_approvals.pop(
-            approval_id, {}
-        )
-        if approval_data.get("approved"):
+        approval_data: PendingApproval | None = pending_approvals.pop(approval_id, None)
+        if approval_data is not None and approval_data["approved"]:
             return PermissionResultAllow()
         return PermissionResultDeny(message="User rejected tool")
 

@@ -44,8 +44,7 @@ class RateLimiter:
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
         self.user_limits: dict[str, UserLimits] = {}
         self._cache_lock = Lock()
-        self._reset_all_epoch = 0
-        self._user_reset_epoch: dict[str, int] = {}
+        self._reset_epoch = 0
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
@@ -126,8 +125,7 @@ class RateLimiter:
 
         with self._cache_lock:
             limits = self.user_limits.get(user_id_str)
-            reset_all_epoch = self._reset_all_epoch
-            user_reset_epoch = self._user_reset_epoch.get(user_id_str, 0)
+            reset_epoch = self._reset_epoch
 
         if limits is None:
             loaded = self._load_limits(user_id_str)
@@ -139,10 +137,7 @@ class RateLimiter:
                 }
 
         with self._cache_lock:
-            if (
-                self._reset_all_epoch != reset_all_epoch
-                or self._user_reset_epoch.get(user_id_str, 0) != user_reset_epoch
-            ):
+            if self._reset_epoch != reset_epoch:
                 loaded = None
             limits = self.user_limits.get(user_id_str)
             if limits is None:
@@ -188,9 +183,7 @@ class RateLimiter:
         """Reset rate limits for a user."""
         user_id_str = str(user_id)
         with self._cache_lock:
-            self._user_reset_epoch[user_id_str] = (
-                self._user_reset_epoch.get(user_id_str, 0) + 1
-            )
+            self._reset_epoch += 1
             self.user_limits.pop(user_id_str, None)
         with self._get_connection() as conn:
             conn.execute("DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,))
@@ -198,8 +191,7 @@ class RateLimiter:
     def reset_all(self) -> None:
         """Reset all rate limits."""
         with self._cache_lock:
-            self._reset_all_epoch += 1
-            self._user_reset_epoch.clear()
+            self._reset_epoch += 1
             self.user_limits.clear()
         with self._get_connection() as conn:
             conn.execute("DELETE FROM rate_limits")

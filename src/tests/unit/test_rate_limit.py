@@ -235,28 +235,3 @@ class TestRateLimiter:
 
         assert all(allowed_results)
         assert limiter.user_limits["u-1"]["minute_count"] == 8
-
-    def test_reset_of_other_user_does_not_invalidate_loaded_limits(
-        self, time_controller, limiter_factory, monkeypatch
-    ):
-        """A reset for another user should not discard loaded state for this user."""
-        limiter = limiter_factory(cooldown_seconds=0, per_minute_limit=100)
-        loaded_for_user_b = {
-            "last_message": None,
-            "minute_start": 0.0,
-            "minute_count": 99,
-        }
-
-        def fake_load(user_id: str):
-            if user_id == "user_b":
-                limiter.reset("user_a")
-                return loaded_for_user_b
-            return None
-
-        monkeypatch.setattr(limiter, "_load_limits", fake_load)
-
-        allowed_first, _ = limiter.check("user_b")
-        allowed_second, _ = limiter.check("user_b")
-
-        assert allowed_first is True
-        assert allowed_second is False

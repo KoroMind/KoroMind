@@ -259,6 +259,10 @@ async def _call_claude_with_settings(
         if mode != Mode.APPROVE:
             return PermissionResultAllow()
 
+        message = update.message
+        if message is None:
+            return PermissionResultDeny(message="Missing message context")
+
         approval_id = str(uuid.uuid4())[:8]
         approval_event = asyncio.Event()
 
@@ -283,9 +287,6 @@ async def _call_claude_with_settings(
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         message_text = f"Tool Request:\n{format_tool_call(tool_name, tool_input)}"
-        message = update.message
-        if message is None:
-            return PermissionResultDeny(message="Missing message context")
         await message.reply_text(
             message_text, reply_markup=reply_markup, parse_mode="Markdown"
         )

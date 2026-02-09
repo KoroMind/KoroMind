@@ -361,13 +361,21 @@ class ClaudeClient:
                                     isinstance(block, ToolUseBlock)
                                     and stream_config.on_tool_call
                                 ):
-                                    tool_input = block.input or {}
-                                    detail = get_tool_detail(block.name, tool_input)
-                                    result = stream_config.on_tool_call(
-                                        block.name, detail
-                                    )
-                                    if inspect.isawaitable(result):
-                                        await result
+                                    try:
+                                        tool_input = block.input or {}
+                                        detail = get_tool_detail(
+                                            block.name, tool_input
+                                        )
+                                        result = stream_config.on_tool_call(
+                                            block.name, detail
+                                        )
+                                        if inspect.isawaitable(result):
+                                            await result
+                                    except Exception:
+                                        logger.warning(
+                                            "on_tool_call callback failed",
+                                            exc_info=True,
+                                        )
                         yield message
                 finally:
                     self._active_client = None

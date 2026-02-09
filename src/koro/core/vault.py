@@ -234,6 +234,9 @@ class Vault:
         try:
             with open(self.config_file) as f:
                 raw = yaml.safe_load(f)
+        except OSError as e:
+            logger.error(f"Failed to read {self.config_file}: {e}")
+            raise VaultError(f"Failed to read {self.config_file}: {e}") from e
         except yaml.YAMLError as e:
             logger.error(f"Invalid YAML in {self.config_file}: {e}")
             raise VaultError(f"Invalid YAML in {self.config_file}: {e}") from e
@@ -249,9 +252,15 @@ class Vault:
                 f"vault-config.yaml must be a mapping, got {type(raw).__name__}"
             )
 
-        self._config = VaultConfig.model_validate(
-            raw, context={"vault_root": self.root}
-        )
+        try:
+            self._config = VaultConfig.model_validate(
+                raw, context={"vault_root": self.root}
+            )
+        except Exception as e:
+            raise VaultError(
+                f"Invalid vault config in {self.config_file}: {e}"
+            ) from e
+
         logger.info(
             f"Vault config loaded: "
             f"mcp_servers={len(self._config.mcp_servers)}, "

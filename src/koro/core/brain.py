@@ -36,7 +36,7 @@ from koro.core.types import (
     ToolCall,
     UserSettings,
 )
-from koro.core.vault import AgentConfig, Vault, VaultConfig, VaultHookRule
+from koro.core.vault import AgentConfig, Vault, VaultConfig, VaultError, VaultHookRule
 from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
 logger = logging.getLogger(__name__)
@@ -226,7 +226,10 @@ class Brain:
             if not isinstance(content, bytes):
                 raise ValueError("Voice content must be bytes")
             if progress_callback:
-                progress_callback("Transcribing voice input...")
+                try:
+                    progress_callback("Transcribing voice input...")
+                except Exception:
+                    logger.warning("progress callback failed", exc_info=True)
             try:
                 text = await self.voice_engine.transcribe(content)
             except VoiceError as exc:
@@ -251,7 +254,12 @@ class Brain:
             model_override = stored_settings.model or None
 
         # Load vault config if available
-        vault_config = self._vault.load() if self._vault else None
+        vault_config: VaultConfig | None = None
+        if self._vault:
+            try:
+                vault_config = self._vault.load()
+            except VaultError:
+                logger.warning("Vault config load failed, proceeding without", exc_info=True)
 
         return _RequestContext(
             text=text,
@@ -327,7 +335,10 @@ class Brain:
         async def _on_tool_call(tool_name: str, detail: str | None) -> None:
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if tool_use_callback and watch_enabled:
-                await _maybe_await(tool_use_callback(tool_name, detail))
+                try:
+                    await _maybe_await(tool_use_callback(tool_name, detail))
+                except Exception:
+                    logger.warning("on_tool_use callback failed", exc_info=True)
 
         config = self._build_query_config(
             prompt=ctx.text,
@@ -344,7 +355,10 @@ class Brain:
 
         # Call Claude
         if progress_callback:
-            progress_callback("Processing with Claude SDK...")
+            try:
+                progress_callback("Processing with Claude SDK...")
+            except Exception:
+                logger.warning("progress callback failed", exc_info=True)
         response_text, new_session_id, metadata = await self.claude_client.query(config)
 
         # Update session state only on successful Claude responses
@@ -495,6 +509,7 @@ class Brain:
         tool_approval_callback = (
             callbacks.on_tool_approval if callbacks else can_use_tool
         )
+        progress_callback = callbacks.on_progress if callbacks else None
 
         ctx = await self._resolve_request_context(
             user_id=user_id,
@@ -502,6 +517,7 @@ class Brain:
             content_type=content_type,
             session_id=session_id,
             kwargs=kwargs,
+            progress_callback=progress_callback,
         )
 
         user_settings = UserSettings(
@@ -513,7 +529,10 @@ class Brain:
         # Wrap callback in async to match SDK expectations (like process_message does)
         async def _on_tool_call(tool_name: str, detail: str | None) -> None:
             if tool_use_callback:
-                await _maybe_await(tool_use_callback(tool_name, detail))
+                try:
+                    await _maybe_await(tool_use_callback(tool_name, detail))
+                except Exception:
+                    logger.warning("on_tool_use callback failed", exc_info=True)
 
         config = self._build_query_config(
             prompt=ctx.text,

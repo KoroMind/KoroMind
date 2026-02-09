@@ -52,6 +52,9 @@ async def _maybe_await(value: Any) -> Any:
     return value
 
 
+_HOOK_TIMEOUT_SECONDS = 30
+
+
 def _make_command_hook(command: str) -> HookCallback:
     """Create an SDK HookCallback that executes a shell command.
 
@@ -60,14 +63,33 @@ def _make_command_hook(command: str) -> HookCallback:
     """
 
     async def _run(hook_input: Any, tool_use_id: str | None, ctx: Any) -> Any:
-        input_data = json.dumps({"hook_input": hook_input, "tool_use_id": tool_use_id})
+        try:
+            input_data = json.dumps(
+                {"hook_input": hook_input, "tool_use_id": tool_use_id},
+                default=str,
+            )
+        except (TypeError, ValueError) as exc:
+            logger.warning(f"Hook input serialization failed: {exc}")
+            return {"continue_": True}
+
         proc = await asyncio.create_subprocess_shell(
             command,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate(input_data.encode())
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input_data.encode()),
+                timeout=_HOOK_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Hook command timed out after {_HOOK_TIMEOUT_SECONDS}s: {command}"
+            )
+            proc.kill()
+            return {"continue_": True}
+
         if proc.returncode != 0:
             logger.warning(
                 f"Hook command failed (exit {proc.returncode}): {stderr.decode()}"
@@ -305,7 +327,7 @@ class Brain:
         async def _on_tool_call(tool_name: str, detail: str | None) -> None:
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
             if tool_use_callback and watch_enabled:
-                await tool_use_callback(tool_name, detail)
+                await _maybe_await(tool_use_callback(tool_name, detail))
 
         config = self._build_query_config(
             prompt=ctx.text,

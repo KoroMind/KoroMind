@@ -93,6 +93,35 @@ class TestAuthorizedHandler:
         assert result == "ok"
         assert called is True
 
+    @pytest.mark.asyncio
+    async def test_callback_wrong_topic_still_answers_with_sync_answer(
+        self, monkeypatch
+    ):
+        """Rejected callback updates should still answer callback query."""
+        monkeypatch.setattr(utils, "TOPIC_ID", "100")
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
+
+        called = False
+
+        @utils.authorized_handler
+        async def _handler(update, context):
+            nonlocal called
+            called = True
+            return "ok"
+
+        update = MagicMock()
+        update.message = None
+        update.effective_chat.id = 12345
+        update.callback_query = MagicMock()
+        update.callback_query.answer = MagicMock()
+        update.callback_query.message.message_thread_id = 999
+
+        result = await _handler(update, MagicMock())
+
+        assert result is None
+        assert called is False
+        update.callback_query.answer.assert_called_once()
+
 
 class TestSendLongMessage:
     """Tests for send_long_message function."""
@@ -743,6 +772,66 @@ class TestCallbackHandlers:
         update.effective_chat.id = 99999
 
         await callbacks.handle_approval_callback(update, MagicMock())
+
+        query.answer.assert_called_once()
+        query.edit_message_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_settings_callback_answers_when_data_missing(self, monkeypatch):
+        """Settings callback acknowledges callback query when data is missing."""
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
+
+        query = MagicMock()
+        query.data = None
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+
+        await callbacks.handle_settings_callback(update, MagicMock())
+
+        query.answer.assert_called_once()
+        query.edit_message_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_approval_callback_answers_when_data_missing(self, monkeypatch):
+        """Approval callback acknowledges callback query when data is missing."""
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
+
+        query = MagicMock()
+        query.data = None
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+
+        await callbacks.handle_approval_callback(update, MagicMock())
+
+        query.answer.assert_called_once()
+        query.edit_message_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_switch_callback_answers_when_data_missing(self, monkeypatch):
+        """Switch callback acknowledges callback query when data is missing."""
+        monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
+        monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
+
+        query = MagicMock()
+        query.data = None
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_user.id = 12345
+        update.effective_chat.id = 12345
+
+        await callbacks.handle_switch_callback(update, MagicMock())
 
         query.answer.assert_called_once()
         query.edit_message_text.assert_not_called()

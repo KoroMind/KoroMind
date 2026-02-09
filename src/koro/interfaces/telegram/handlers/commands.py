@@ -1,6 +1,7 @@
 """Telegram command handlers."""
 
 import os
+import re
 from pathlib import Path
 
 from telegram import (
@@ -23,6 +24,8 @@ from koro.interfaces.telegram.handlers.utils import (
 )
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
+
+MODEL_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 
 
 def _message_user_chat(update: Update) -> tuple[Message, User, Chat] | None:
@@ -409,6 +412,12 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if model.lower() == "default":
         await state_manager.update_settings(user_id, model="")
         await message.reply_text("Model set to default.")
+        return
+
+    if not MODEL_PATTERN.fullmatch(model):
+        await message.reply_text(
+            "Invalid model identifier. Use only letters, numbers, '.', '_', or '-'."
+        )
         return
 
     await state_manager.update_settings(user_id, model=model)

@@ -21,17 +21,20 @@ def state_manager(tmp_path):
 
 
 @pytest.fixture
-def allow_all_commands(monkeypatch):
-    """Allow commands to run for any chat/topic."""
+def allow_all_handlers(monkeypatch):
+    """Allow handlers to run for any chat/topic."""
     monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
     monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
 
 
 @pytest.fixture
-def allow_all_messages(monkeypatch):
+def allow_all_commands(allow_all_handlers):
+    """Allow commands to run for any chat/topic."""
+
+
+@pytest.fixture
+def allow_all_messages(allow_all_handlers):
     """Allow messages to run for any chat/topic."""
-    monkeypatch.setattr(utils, "ALLOWED_CHAT_ID", 0)
-    monkeypatch.setattr(utils, "should_handle_message", lambda _: True)
 
 
 @pytest.fixture
@@ -499,6 +502,24 @@ class TestCommandHandlers:
 
         settings = await state_manager.get_settings("12345")
         assert settings.model == "claude-test"
+
+    @pytest.mark.asyncio
+    async def test_cmd_model_rejects_invalid_identifier(
+        self, make_update, allow_all_commands, state_manager, monkeypatch
+    ):
+        """cmd_model rejects invalid model identifier values."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["bad/model"]
+
+        await commands.cmd_model(update, context)
+
+        settings = await state_manager.get_settings("12345")
+        assert settings.model == ""
+        update.message.reply_text.assert_called_once()
+        assert "Invalid model identifier" in update.message.reply_text.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_cmd_claude_token_no_args(self, make_update, allow_all_commands):

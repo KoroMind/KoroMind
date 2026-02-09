@@ -43,8 +43,6 @@ class RateLimiter:
         )
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
         self.user_limits: dict[str, UserLimits] = {}
-        self._connection: sqlite3.Connection | None = None
-        self._connection_lock = Lock()
         self._cache_lock = Lock()
         self._reset_epoch = 0
         self._ensure_schema()
@@ -62,26 +60,17 @@ class RateLimiter:
 
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
-        """Get a reusable database connection with thread safety."""
-        with self._connection_lock:
-            if self._connection is None:
-                self._connection = sqlite3.connect(
-                    self.db_path, check_same_thread=False
-                )
-                self._connection.row_factory = sqlite3.Row
-            try:
-                yield self._connection
-                self._connection.commit()
-            except Exception:
-                self._connection.rollback()
-                raise
-
-    def close(self) -> None:
-        """Close the shared database connection."""
-        with self._connection_lock:
-            if self._connection is not None:
-                self._connection.close()
-                self._connection = None
+        """Open a short-lived DB connection per operation."""
+        conn: sqlite3.Connection = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _load_limits(self, user_id: str) -> UserLimits | None:
         with self._get_connection() as conn:

@@ -1,15 +1,19 @@
 """The Brain - central orchestration layer for KoroMind."""
 
+import asyncio
 import inspect
+import json
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, NamedTuple
 
 from claude_agent_sdk.types import (
     AgentDefinition,
     AssistantMessage,
+    HookCallback,
+    HookMatcher,
     ResultMessage,
     StreamEvent,
     SystemMessage,
@@ -20,17 +24,20 @@ from koro.core.claude import ClaudeClient, get_claude_client
 from koro.core.rate_limit import RateLimiter, get_rate_limiter
 from koro.core.state import StateManager, get_state_manager
 from koro.core.types import (
+    BrainCallbacks,
     BrainResponse,
     CanUseTool,
     MessageType,
     Mode,
+    OnProgress,
     OnToolCall,
+    ProcessRequest,
     QueryConfig,
     Session,
     ToolCall,
     UserSettings,
 )
-from koro.core.vault import AgentConfig, Vault, VaultConfig
+from koro.core.vault import AgentConfig, Vault, VaultConfig, VaultError, VaultHookRule
 from koro.core.voice import VoiceEngine, VoiceError, get_voice_engine
 
 logger = logging.getLogger(__name__)
@@ -44,6 +51,83 @@ async def _maybe_await(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
     return value
+
+
+_HOOK_TIMEOUT_SECONDS = 30
+
+
+def _make_command_hook(command: str) -> HookCallback:
+    """Create an SDK HookCallback that executes a shell command.
+
+    The hook passes HookInput as JSON on stdin and parses
+    HookJSONOutput from stdout.
+    """
+
+    async def _run(hook_input: Any, tool_use_id: str | None, ctx: Any) -> Any:
+        try:
+            input_data = json.dumps(
+                {"hook_input": hook_input, "tool_use_id": tool_use_id},
+                default=str,
+            )
+        except (TypeError, ValueError) as exc:
+            logger.warning(f"Hook input serialization failed: {exc}")
+            return {"continue_": True}
+
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input_data.encode()),
+                timeout=_HOOK_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Hook command timed out after {_HOOK_TIMEOUT_SECONDS}s: {command}"
+            )
+            proc.kill()
+            return {"continue_": True}
+
+        if proc.returncode != 0:
+            logger.warning(
+                f"Hook command failed (exit {proc.returncode}): {stderr.decode()}"
+            )
+            return {"continue_": True}
+        if stdout.strip():
+            try:
+                return json.loads(stdout)
+            except json.JSONDecodeError:
+                logger.warning(f"Hook returned invalid JSON: {stdout.decode()[:200]}")
+        return {"continue_": True}
+
+    return _run
+
+
+def _vault_hooks_to_sdk(
+    vault_hooks: dict[str, list[VaultHookRule]],
+) -> dict[str, list[HookMatcher]]:
+    """Convert vault command-based hooks to SDK callable hooks."""
+    sdk_hooks: dict[str, list[HookMatcher]] = {}
+    for event_name, rules in vault_hooks.items():
+        sdk_matchers = []
+        for rule in rules:
+            callbacks = [_make_command_hook(h.command) for h in rule.hooks]
+            sdk_matchers.append(HookMatcher(matcher=rule.matcher, hooks=callbacks))
+        sdk_hooks[event_name] = sdk_matchers
+    return sdk_hooks
+
+
+class _RequestContext(NamedTuple):
+    """Internal: resolved context for a Brain request."""
+
+    text: str
+    session_id: str | None
+    stored_settings: UserSettings
+    vault_config: VaultConfig | None
+    model_override: str | None
 
 
 class Brain:
@@ -124,46 +208,29 @@ class Brain:
         """
         return await self.claude_client.interrupt()
 
-    async def process_message(
+    async def _resolve_request_context(
         self,
+        *,
         user_id: str,
         content: str | bytes,
         content_type: MessageType,
-        session_id: str | None = None,
-        mode: Mode = Mode.GO_ALL,
-        include_audio: bool = True,
-        voice_speed: float = 1.1,
-        watch_enabled: bool = False,
-        on_tool_call: OnToolCall | None = None,
-        can_use_tool: CanUseTool | None = None,
-        **kwargs: Any,
-    ) -> BrainResponse:
+        session_id: str | None,
+        kwargs: dict[str, Any],
+        progress_callback: OnProgress | None = None,
+    ) -> _RequestContext:
+        """Resolve common request context: transcription, session, settings, vault.
+
+        Note: Pops 'model' from kwargs if present (consumed for model_override).
         """
-        Process a message and return response.
-
-        Args:
-            user_id: Unique identifier for the user
-            content: Message content (text string or voice bytes)
-            content_type: Type of message (TEXT or VOICE)
-            session_id: Optional session ID to continue
-            mode: Execution mode (GO_ALL or APPROVE)
-            include_audio: Whether to include TTS audio in response
-            voice_speed: Voice speed for TTS (0.7-1.2)
-            watch_enabled: Whether to call on_tool_call for each tool
-            on_tool_call: Callback when tool is called (for watch mode)
-            can_use_tool: SDK-compatible callback for tool approval (for approve mode)
-            **kwargs: Additional arguments passed to ClaudeClient.query
-                (hooks, mcp_servers, agents, plugins, sandbox, output_format, etc.)
-
-        Returns:
-            BrainResponse with text, optional audio, and metadata
-        """
-        tool_calls: list[ToolCall] = []
-
         # Transcribe voice if needed
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
                 raise ValueError("Voice content must be bytes")
+            if progress_callback:
+                try:
+                    progress_callback("Transcribing voice input...")
+                except Exception:
+                    logger.warning("progress callback failed", exc_info=True)
             try:
                 text = await self.voice_engine.transcribe(content)
             except VoiceError as exc:
@@ -176,48 +243,139 @@ class Brain:
             current_session = await self.state_manager.get_current_session(user_id)
             session_id = current_session.id if current_session else None
 
-        # Always prefer explicit resume by session_id when available.
-        continue_last = False
-
+        # Fetch stored settings
         stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
         if not isinstance(stored_settings, UserSettings):
             stored_settings = UserSettings()
+
+        # Resolve model override (pops from kwargs)
+        if "model" in kwargs:
+            model_override: str | None = kwargs.pop("model") or None
+        else:
+            model_override = stored_settings.model or None
+
+        # Load vault config if available
+        vault_config: VaultConfig | None = None
+        if self._vault:
+            try:
+                vault_config = self._vault.load()
+            except VaultError:
+                logger.warning("Vault config load failed, proceeding without", exc_info=True)
+
+        return _RequestContext(
+            text=text,
+            session_id=session_id,
+            stored_settings=stored_settings,
+            vault_config=vault_config,
+            model_override=model_override,
+        )
+
+    async def process_message(
+        self,
+        user_id: str = "",
+        content: str | bytes = "",
+        content_type: MessageType = MessageType.TEXT,
+        session_id: str | None = None,
+        mode: Mode = Mode.GO_ALL,
+        include_audio: bool = True,
+        voice_speed: float = 1.1,
+        watch_enabled: bool = False,
+        on_tool_call: OnToolCall | None = None,
+        can_use_tool: CanUseTool | None = None,
+        callbacks: BrainCallbacks | None = None,
+        request: ProcessRequest | None = None,
+        **kwargs: Any,
+    ) -> BrainResponse:
+        """
+        Process a message and return response.
+
+        Can be called with individual params (backward compatible) or
+        with a ProcessRequest object which takes precedence.
+
+        Args:
+            request: ProcessRequest bundling all common params (preferred).
+            user_id: Unique identifier for the user
+            content: Message content (text string or voice bytes)
+            content_type: Type of message (TEXT or VOICE)
+            session_id: Optional session ID to continue
+            mode: Execution mode (GO_ALL or APPROVE)
+            include_audio: Whether to include TTS audio in response
+            voice_speed: Voice speed for TTS (0.7-1.2)
+            watch_enabled: Whether to call on_tool_call for each tool
+            on_tool_call: Legacy callback (use callbacks.on_tool_use instead)
+            can_use_tool: Legacy callback (use callbacks.on_tool_approval instead)
+            callbacks: Structured callbacks (preferred over individual params)
+            **kwargs: Additional arguments passed to ClaudeClient.query
+
+        Returns:
+            BrainResponse with text, optional audio, and metadata
+        """
+        # ProcessRequest takes precedence over individual params
+        if request is not None:
+            user_id = request.user_id
+            content = request.content
+            content_type = request.content_type
+            session_id = request.session_id
+            mode = request.mode
+            include_audio = request.include_audio
+            voice_speed = request.voice_speed
+            watch_enabled = request.watch_enabled
+            callbacks = request.callbacks
+
+        tool_calls: list[ToolCall] = []
+
+        # Prefer structured callbacks over individual params
+        tool_use_callback = callbacks.on_tool_use if callbacks else on_tool_call
+        tool_approval_callback = (
+            callbacks.on_tool_approval if callbacks else can_use_tool
+        )
+        progress_callback = callbacks.on_progress if callbacks else None
+
+        ctx = await self._resolve_request_context(
+            user_id=user_id,
+            content=content,
+            content_type=content_type,
+            session_id=session_id,
+            kwargs=kwargs,
+            progress_callback=progress_callback,
+        )
+
         user_settings = UserSettings(
             mode=mode,
             audio_enabled=include_audio,
             voice_speed=voice_speed,
             watch_enabled=watch_enabled,
-            model=stored_settings.model,
+            model=ctx.stored_settings.model,
         )
 
         # Tool call tracking wrapper
         async def _on_tool_call(tool_name: str, detail: str | None) -> None:
             tool_calls.append(ToolCall(name=tool_name, detail=detail))
-            if on_tool_call and watch_enabled:
-                await on_tool_call(tool_name, detail)
-
-        if "model" in kwargs:
-            model_override = kwargs.pop("model")
-        else:
-            model_override = stored_settings.model
-
-        # Load vault config if available
-        vault_config = self._vault.load() if self._vault else None
+            if tool_use_callback and watch_enabled:
+                try:
+                    await _maybe_await(tool_use_callback(tool_name, detail))
+                except Exception:
+                    logger.warning("on_tool_use callback failed", exc_info=True)
 
         config = self._build_query_config(
-            prompt=text,
-            session_id=session_id,
-            continue_last=continue_last,
+            prompt=ctx.text,
+            session_id=ctx.session_id,
+            continue_last=False,
             user_settings=user_settings,
             mode=mode,
             on_tool_call=_on_tool_call if watch_enabled else None,
-            can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
-            vault_config=vault_config,
-            model=model_override or None,
+            can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
+            vault_config=ctx.vault_config,
+            model=ctx.model_override,
             **kwargs,
         )
 
         # Call Claude
+        if progress_callback:
+            try:
+                progress_callback("Processing with Claude SDK...")
+            except Exception:
+                logger.warning("progress callback failed", exc_info=True)
         response_text, new_session_id, metadata = await self.claude_client.query(config)
 
         # Update session state only on successful Claude responses
@@ -227,6 +385,8 @@ class Brain:
         # Generate TTS if requested
         audio_bytes: bytes | None = None
         if include_audio:
+            if progress_callback:
+                progress_callback("Generating voice response...")
             # Note: We only TTS the main text response, not structured output or thinking
             audio_buffer = await self.voice_engine.text_to_speech(
                 response_text, speed=voice_speed
@@ -246,23 +406,20 @@ class Brain:
     def _vault_agents_to_sdk(
         agents: dict[str, AgentConfig],
     ) -> dict[str, AgentDefinition]:
-        """Convert vault AgentConfig to SDK AgentDefinition."""
-        result = {}
-        for name, agent in agents.items():
-            prompt = agent.prompt or ""
-            if agent.prompt_file:
-                path = Path(agent.prompt_file)
-                if path.exists():
-                    prompt = path.read_text()
-                else:
-                    logger.warning(f"Agent prompt file not found: {agent.prompt_file}")
-            result[name] = AgentDefinition(
+        """Convert vault AgentConfig to SDK AgentDefinition.
+
+        Prompt file contents are pre-loaded at vault load time, so no
+        file I/O happens here.
+        """
+        return {
+            name: AgentDefinition(
                 description=agent.description,
-                prompt=prompt,
+                prompt=agent.prompt or "You are KoroMind, a helpful personal AI assistant.",
                 tools=agent.tools,
                 model=agent.model,
             )
-        return result
+            for name, agent in agents.items()
+        }
 
     def _build_query_config(
         self,
@@ -292,9 +449,11 @@ class Brain:
             vault_data = vault_config.model_dump(
                 exclude_none=True,
                 exclude_defaults=True,
-                include={"hooks", "mcp_servers", "sandbox", "plugins"},
+                include={"mcp_servers", "sandbox", "plugins"},
             )
             config_kwargs.update(vault_data)
+            if vault_config.hooks:
+                config_kwargs["hooks"] = _vault_hooks_to_sdk(vault_config.hooks)
             if vault_config.agents:
                 config_kwargs["agents"] = self._vault_agents_to_sdk(vault_config.agents)
             logger.debug(
@@ -338,14 +497,16 @@ class Brain:
 
     async def process_message_stream(
         self,
-        user_id: str,
-        content: str | bytes,
-        content_type: MessageType,
+        user_id: str = "",
+        content: str | bytes = "",
+        content_type: MessageType = MessageType.TEXT,
         session_id: str | None = None,
         mode: Mode = Mode.GO_ALL,
         watch_enabled: bool = False,
         on_tool_call: OnToolCall | None = None,
         can_use_tool: CanUseTool | None = None,
+        callbacks: BrainCallbacks | None = None,
+        request: ProcessRequest | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[StreamedEvent]:
         """
@@ -355,73 +516,70 @@ class Brain:
         a BrainResponse, this method yields events as they arrive from
         the Claude SDK. Use this for real-time streaming UIs (CLI, web).
 
-        Args:
-            Same as process_message, but returns an async iterator of events.
+        Can be called with individual params or a ProcessRequest object.
         """
-        # Transcribe voice if needed (blocking step before stream starts)
-        if content_type == MessageType.VOICE:
-            if not isinstance(content, bytes):
-                raise ValueError("Voice content must be bytes")
-            try:
-                text = await self.voice_engine.transcribe(content)
-            except VoiceError as exc:
-                raise RuntimeError(str(exc)) from exc
-        else:
-            text = content if isinstance(content, str) else content.decode("utf-8")
+        # ProcessRequest takes precedence over individual params
+        if request is not None:
+            user_id = request.user_id
+            content = request.content
+            content_type = request.content_type
+            session_id = request.session_id
+            mode = request.mode
+            watch_enabled = request.watch_enabled
+            callbacks = request.callbacks
 
-        if session_id is None:
-            current_session = await self.state_manager.get_current_session(user_id)
-            session_id = current_session.id if current_session else None
+        # Prefer structured callbacks over individual params
+        tool_use_callback = callbacks.on_tool_use if callbacks else on_tool_call
+        tool_approval_callback = (
+            callbacks.on_tool_approval if callbacks else can_use_tool
+        )
+        progress_callback = callbacks.on_progress if callbacks else None
 
-        # Always prefer explicit resume by session_id when available.
-        continue_last = False
+        ctx = await self._resolve_request_context(
+            user_id=user_id,
+            content=content,
+            content_type=content_type,
+            session_id=session_id,
+            kwargs=kwargs,
+            progress_callback=progress_callback,
+        )
 
-        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
-        if not isinstance(stored_settings, UserSettings):
-            stored_settings = UserSettings()
         user_settings = UserSettings(
             mode=mode,
             watch_enabled=watch_enabled,
-            model=stored_settings.model,
+            model=ctx.stored_settings.model,
         )
 
-        if "model" in kwargs:
-            model_override = kwargs.pop("model")
-        else:
-            model_override = stored_settings.model
-
-        # Load vault config if available
-        vault_config = self._vault.load() if self._vault else None
+        # Wrap callback in async to match SDK expectations (like process_message does)
+        async def _on_tool_call(tool_name: str, detail: str | None) -> None:
+            if tool_use_callback:
+                try:
+                    await _maybe_await(tool_use_callback(tool_name, detail))
+                except Exception:
+                    logger.warning("on_tool_use callback failed", exc_info=True)
 
         config = self._build_query_config(
-            prompt=text,
-            session_id=session_id,
-            continue_last=continue_last,
+            prompt=ctx.text,
+            session_id=ctx.session_id,
+            continue_last=False,
             user_settings=user_settings,
             mode=mode,
-            on_tool_call=on_tool_call if watch_enabled else None,
-            can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
-            vault_config=vault_config,
-            model=model_override or None,
+            on_tool_call=_on_tool_call if watch_enabled else None,
+            can_use_tool=tool_approval_callback if mode == Mode.APPROVE else None,
+            vault_config=ctx.vault_config,
+            model=ctx.model_override,
             **kwargs,
         )
 
         # Yield events from Claude
+        resolved_session_id = ctx.session_id
         async for event in self.claude_client.query_stream(config):
             yield event
 
-            # Update session state if we get a new session ID from result
-            # Note: query_stream yields raw messages/events. We might need to inspect them here
-            # to capture session_id update.
-            # But query_stream logic in claude.py doesn't return metadata at end, it yields objects.
-            # Let's check ResultMessage handling in stream.
-            # The client should probably persist session ID updates internally or we handle it here.
-            # For now, let's assume session update happens on the caller side or we need to intercept ResultMessage.
-
             if isinstance(event, ResultMessage) and event.session_id:
-                if event.session_id != session_id:
+                if event.session_id != resolved_session_id:
                     await self.state_manager.update_session(user_id, event.session_id)
-                    session_id = event.session_id
+                    resolved_session_id = event.session_id
 
     async def process_text(
         self,

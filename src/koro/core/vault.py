@@ -29,8 +29,8 @@ def _resolve_path(path_str: str, vault_root: Path) -> str:
 # --- Typed Configuration Models ---
 
 
-class HookConfig(BaseModel):
-    """Configuration for a single hook."""
+class VaultHookCommand(BaseModel):
+    """Configuration for a single hook command in vault config."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -46,13 +46,13 @@ class HookConfig(BaseModel):
                 )
 
 
-class HookMatcher(BaseModel):
-    """Matcher configuration for hooks."""
+class VaultHookRule(BaseModel):
+    """Matcher configuration for vault hooks."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     matcher: str
-    hooks: list[HookConfig] = Field(default_factory=list)
+    hooks: list[VaultHookCommand] = Field(default_factory=list)
 
 
 class McpServerConfig(BaseModel):
@@ -93,12 +93,19 @@ class AgentConfig(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         if self.prompt and self.prompt_file:
             raise ValueError("Use prompt or prompt_file, not both")
-        if __context and self.prompt_file:
-            vault_root = __context.get("vault_root")
-            if vault_root:
-                object.__setattr__(
-                    self, "prompt_file", _resolve_path(self.prompt_file, vault_root)
-                )
+        if self.prompt_file:
+            resolved = self.prompt_file
+            if __context:
+                vault_root = __context.get("vault_root")
+                if vault_root and not Path(self.prompt_file).is_absolute():
+                    resolved = _resolve_path(self.prompt_file, vault_root)
+            object.__setattr__(self, "prompt_file", resolved)
+            # Pre-load file content so Brain never does sync I/O per request
+            path = Path(resolved)
+            if path.exists():
+                object.__setattr__(self, "prompt", path.read_text())
+            else:
+                logger.warning(f"Agent prompt file not found: {resolved}")
 
 
 class SandboxConfig(BaseModel):
@@ -133,7 +140,7 @@ class VaultConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # Extensibility - user-specific configurations
-    hooks: dict[str, list[HookMatcher]] = Field(default_factory=dict)
+    hooks: dict[str, list[VaultHookRule]] = Field(default_factory=dict)
     mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     sandbox: SandboxConfig | None = None
@@ -234,6 +241,9 @@ class Vault:
         try:
             with open(self.config_file) as f:
                 raw = yaml.safe_load(f)
+        except OSError as e:
+            logger.error(f"Failed to read {self.config_file}: {e}")
+            raise VaultError(f"Failed to read {self.config_file}: {e}") from e
         except yaml.YAMLError as e:
             logger.error(f"Invalid YAML in {self.config_file}: {e}")
             raise VaultError(f"Invalid YAML in {self.config_file}: {e}") from e
@@ -249,9 +259,15 @@ class Vault:
                 f"vault-config.yaml must be a mapping, got {type(raw).__name__}"
             )
 
-        self._config = VaultConfig.model_validate(
-            raw, context={"vault_root": self.root}
-        )
+        try:
+            self._config = VaultConfig.model_validate(
+                raw, context={"vault_root": self.root}
+            )
+        except Exception as e:
+            raise VaultError(
+                f"Invalid vault config in {self.config_file}: {e}"
+            ) from e
+
         logger.info(
             f"Vault config loaded: "
             f"mcp_servers={len(self._config.mcp_servers)}, "

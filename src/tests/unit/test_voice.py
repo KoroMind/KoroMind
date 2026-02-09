@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import koro.voice as voice_module
-from koro.voice import VoiceEngine
+from koro.voice import VoiceEngine, VoiceNotConfiguredError, VoiceTranscriptionError
 
 
 class TestVoiceEngine:
@@ -43,8 +43,9 @@ class TestVoiceEngine:
         """Methods fail gracefully without a configured client."""
         engine = VoiceEngine.__new__(VoiceEngine)
         engine.client = None
+        engine.voice_id = None
         if method == "transcribe":
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(VoiceNotConfiguredError) as exc_info:
                 await getattr(engine, method)(*args)
             assert expected in str(exc_info.value).lower()
         else:
@@ -82,7 +83,7 @@ class TestVoiceEngine:
         else:
             engine.client.text_to_speech.convert.side_effect = RuntimeError("API error")
         if method == "transcribe":
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(VoiceTranscriptionError) as exc_info:
                 await getattr(engine, method)(*args)
             assert "api error" in str(exc_info.value).lower()
         else:
@@ -115,6 +116,7 @@ class TestVoiceEngine:
         """health_check fails without client."""
         engine = VoiceEngine.__new__(VoiceEngine)
         engine.client = None
+        engine.voice_id = None
 
         success, message = engine.health_check()
 

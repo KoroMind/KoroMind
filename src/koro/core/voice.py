@@ -67,14 +67,15 @@ class VoiceEngine:
 
         try:
             transcription = await asyncio.to_thread(_transcribe_sync)
-            text = getattr(transcription, "text", None)
-            if isinstance(text, str):
-                return text
-            raise VoiceTranscriptionError("Unexpected transcription response shape")
         except ApiError as exc:
             raise VoiceTranscriptionError(f"ElevenLabs API error: {exc}") from exc
         except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
+
+        text = getattr(transcription, "text", None)
+        if isinstance(text, str):
+            return text
+        raise VoiceTranscriptionError("Unexpected transcription response shape")
 
     async def text_to_speech(
         self, text: str, speed: float | None = None
@@ -90,7 +91,7 @@ class VoiceEngine:
             Audio buffer or None on error
         """
         client = self.client
-        voice_id = getattr(self, "voice_id", None)
+        voice_id = self.voice_id
         if not client or voice_id is None:
             return None
 

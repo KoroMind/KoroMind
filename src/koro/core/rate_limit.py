@@ -23,8 +23,8 @@ class RateLimiter:
 
     def __init__(
         self,
-        cooldown_seconds: float = None,
-        per_minute_limit: int = None,
+        cooldown_seconds: float | None = None,
+        per_minute_limit: int | None = None,
         db_path: Path | str | None = None,
     ):
         """
@@ -46,6 +46,7 @@ class RateLimiter:
         self._connection: sqlite3.Connection | None = None
         self._connection_lock = Lock()
         self._cache_lock = Lock()
+        self._reset_epoch = 0
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
@@ -135,6 +136,7 @@ class RateLimiter:
 
         with self._cache_lock:
             limits = self.user_limits.get(user_id_str)
+            reset_epoch = self._reset_epoch
 
         if limits is None:
             loaded = self._load_limits(user_id_str)
@@ -146,6 +148,8 @@ class RateLimiter:
                 }
 
         with self._cache_lock:
+            if self._reset_epoch != reset_epoch:
+                loaded = None
             limits = self.user_limits.get(user_id_str)
             if limits is None:
                 if loaded is None:
@@ -190,6 +194,7 @@ class RateLimiter:
         """Reset rate limits for a user."""
         user_id_str = str(user_id)
         with self._cache_lock:
+            self._reset_epoch += 1
             self.user_limits.pop(user_id_str, None)
         with self._get_connection() as conn:
             conn.execute("DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,))
@@ -197,6 +202,7 @@ class RateLimiter:
     def reset_all(self) -> None:
         """Reset all rate limits."""
         with self._cache_lock:
+            self._reset_epoch += 1
             self.user_limits.clear()
         with self._get_connection() as conn:
             conn.execute("DELETE FROM rate_limits")

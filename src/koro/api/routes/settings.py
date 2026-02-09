@@ -1,14 +1,16 @@
 """User settings endpoints."""
 
+import re
 from typing import Literal
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from koro.core.brain import get_brain
 from koro.core.types import Mode
 
 router = APIRouter()
+MODEL_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 
 
 class SettingsResponse(BaseModel):
@@ -39,6 +41,16 @@ class UpdateSettingsRequest(BaseModel):
     model: str | None = Field(
         default=None, description="Claude model override (empty string for default)"
     )
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: str | None) -> str | None:
+        """Allow empty/default model, otherwise enforce a safe model identifier."""
+        if value is None or value == "":
+            return value
+        if not MODEL_PATTERN.fullmatch(value):
+            raise ValueError("Invalid model identifier")
+        return value
 
 
 @router.get("/settings", response_model=SettingsResponse)

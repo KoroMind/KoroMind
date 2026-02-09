@@ -195,3 +195,21 @@ class TestRateLimiter:
         allowed, _ = new_limiter.check(12345)
 
         assert allowed is False
+
+    def test_check_discards_loaded_state_if_reset_occurs_during_load(
+        self, time_controller, limiter_factory, monkeypatch
+    ):
+        """check() should not reinsert stale loaded limits after a concurrent reset."""
+        limiter = limiter_factory(cooldown_seconds=0, per_minute_limit=100)
+        stale = {"last_message": None, "minute_start": 0.0, "minute_count": 99}
+
+        def fake_load(user_id: str):
+            limiter.reset(user_id)
+            return stale
+
+        monkeypatch.setattr(limiter, "_load_limits", fake_load)
+
+        allowed, _ = limiter.check("12345")
+
+        assert allowed is True
+        assert limiter.user_limits["12345"]["minute_count"] == 1

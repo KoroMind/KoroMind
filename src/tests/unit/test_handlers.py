@@ -29,16 +29,6 @@ def allow_all_handlers(monkeypatch):
 
 
 @pytest.fixture
-def allow_all_commands(allow_all_handlers):
-    """Allow commands to run for any chat/topic."""
-
-
-@pytest.fixture
-def allow_all_messages(allow_all_handlers):
-    """Allow messages to run for any chat/topic."""
-
-
-@pytest.fixture
 def clear_pending_approvals():
     """Clear pending approvals between tests."""
     messages.pending_approvals.clear()
@@ -174,7 +164,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_new_creates_session(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_new resets current session."""
         await state_manager.update_session("12345", "old_session")
@@ -192,7 +182,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_new_with_name(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_new with name shows session name."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -210,7 +200,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_continue_with_session(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_continue shows session info when exists."""
         await state_manager.update_session("12345", "abc12345")
@@ -225,7 +215,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_continue_without_session(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_continue shows message when no session."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -239,7 +229,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_sessions_empty(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_sessions shows empty message when no sessions."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -253,7 +243,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_sessions_lists_sessions(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_sessions lists available sessions."""
         await state_manager.update_session("12345", "sess1-abcdef")
@@ -272,7 +262,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_sessions_shows_pending_name(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_sessions includes pending new-session label."""
         await state_manager.set_pending_session_name("12345", "project-z")
@@ -286,7 +276,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_switch_no_args(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_switch shows empty state when no sessions exist."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -302,7 +292,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_switch_no_args_shows_picker(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_switch without args shows inline selector when sessions exist."""
         await state_manager.update_session("12345", "abc123456789")
@@ -321,7 +311,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_switch_finds_session(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_switch switches to matching session."""
         await state_manager.update_session("12345", "abc123456789")
@@ -339,7 +329,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_switch_finds_session_by_name(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_switch switches by session name."""
         await state_manager.update_session("12345", "id-1", session_name="alpha")
@@ -357,7 +347,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_switch_by_name_reports_ambiguous(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_switch reports ambiguity for non-unique name prefix."""
         await state_manager.update_session("12345", "id-1", session_name="project-a")
@@ -377,7 +367,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_switch_not_found(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_switch shows error when session not found."""
         await state_manager.update_session("12345", "abc123")
@@ -394,7 +384,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_status_with_session(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_status shows session info."""
         await state_manager.update_session("12345", "abc12345")
@@ -409,7 +399,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_status_no_session(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_status shows message when no session."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -423,7 +413,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_setup_shows_status(
-        self, make_update, allow_all_commands, monkeypatch
+        self, make_update, allow_all_handlers, monkeypatch
     ):
         """cmd_setup shows credentials status."""
         monkeypatch.setattr(commands, "load_credentials", lambda: {})
@@ -438,7 +428,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_health_checks_systems(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_health checks all systems."""
         mock_voice = MagicMock()
@@ -462,7 +452,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_settings_shows_menu(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_settings shows settings menu."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -476,7 +466,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_model_shows_current(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_model shows current model."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -492,7 +482,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_model_sets_value(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_model sets the model."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -508,7 +498,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_model_rejects_invalid_identifier(
-        self, make_update, allow_all_commands, state_manager, monkeypatch
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
     ):
         """cmd_model rejects invalid model identifier values."""
         monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
@@ -525,7 +515,7 @@ class TestCommandHandlers:
         assert "Invalid model identifier" in update.message.reply_text.call_args.args[0]
 
     @pytest.mark.asyncio
-    async def test_cmd_claude_token_no_args(self, make_update, allow_all_commands):
+    async def test_cmd_claude_token_no_args(self, make_update, allow_all_handlers):
         """cmd_claude_token shows usage without args."""
         update = make_update(chat_id=12345)
         context = MagicMock()
@@ -538,7 +528,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_claude_token_invalid_format(
-        self, make_update, allow_all_commands
+        self, make_update, allow_all_handlers
     ):
         """cmd_claude_token rejects invalid token format."""
         update = make_update(chat_id=12345)
@@ -552,7 +542,7 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_claude_token_saves_valid(
-        self, make_update, allow_all_commands, monkeypatch
+        self, make_update, allow_all_handlers, monkeypatch
     ):
         """cmd_claude_token saves valid token."""
         creds = {}
@@ -570,7 +560,7 @@ class TestCommandHandlers:
         assert "saved" in call_text.lower()
 
     @pytest.mark.asyncio
-    async def test_cmd_elevenlabs_key_no_args(self, make_update, allow_all_commands):
+    async def test_cmd_elevenlabs_key_no_args(self, make_update, allow_all_handlers):
         """cmd_elevenlabs_key shows usage without args."""
         update = make_update(chat_id=12345)
         context = MagicMock()
@@ -582,7 +572,7 @@ class TestCommandHandlers:
         assert "Usage" in call_text
 
     @pytest.mark.asyncio
-    async def test_cmd_elevenlabs_key_too_short(self, make_update, allow_all_commands):
+    async def test_cmd_elevenlabs_key_too_short(self, make_update, allow_all_handlers):
         """cmd_elevenlabs_key rejects short key."""
         update = make_update(chat_id=12345)
         context = MagicMock()
@@ -599,7 +589,7 @@ class TestApprovalCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_approval_callback_approves(
-        self, make_callback_query, clear_pending_approvals, allow_all_messages
+        self, make_callback_query, clear_pending_approvals, allow_all_handlers
     ):
         """Approval callback approves tool use."""
         approval_event = asyncio.Event()
@@ -623,7 +613,7 @@ class TestApprovalCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_approval_callback_rejects(
-        self, make_callback_query, clear_pending_approvals, allow_all_messages
+        self, make_callback_query, clear_pending_approvals, allow_all_handlers
     ):
         """Approval callback rejects tool use."""
         approval_event = asyncio.Event()
@@ -647,7 +637,7 @@ class TestApprovalCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_approval_callback_expired(
-        self, make_callback_query, clear_pending_approvals, allow_all_messages
+        self, make_callback_query, clear_pending_approvals, allow_all_handlers
     ):
         """Approval callback handles expired approvals."""
         query = make_callback_query("approve_expired123")
@@ -665,7 +655,7 @@ class TestMessageHandlers:
     """Tests for voice and text message handlers."""
 
     @pytest.mark.asyncio
-    async def test_handle_voice_ignores_bot(self, make_update, allow_all_messages):
+    async def test_handle_voice_ignores_bot(self, make_update, allow_all_handlers):
         """handle_voice ignores bot messages."""
         update = make_update(is_bot=True)
 
@@ -674,7 +664,7 @@ class TestMessageHandlers:
         update.message.reply_text.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handle_text_ignores_bot(self, make_update, allow_all_messages):
+    async def test_handle_text_ignores_bot(self, make_update, allow_all_handlers):
         """handle_text ignores bot messages."""
         update = make_update(is_bot=True)
 
@@ -726,7 +716,7 @@ class TestMessageHandlers:
 
     @pytest.mark.asyncio
     async def test_handle_voice_rate_limited(
-        self, make_update, allow_all_messages, monkeypatch
+        self, make_update, allow_all_handlers, monkeypatch
     ):
         """handle_voice respects rate limits."""
         limiter = MagicMock()
@@ -743,7 +733,7 @@ class TestMessageHandlers:
 
     @pytest.mark.asyncio
     async def test_handle_text_rate_limited(
-        self, make_update, allow_all_messages, monkeypatch
+        self, make_update, allow_all_handlers, monkeypatch
     ):
         """handle_text respects rate limits."""
         limiter = MagicMock()
@@ -862,7 +852,7 @@ class TestCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_settings_toggle_audio(
-        self, make_callback_query, state_manager, monkeypatch, allow_all_messages
+        self, make_callback_query, state_manager, monkeypatch, allow_all_handlers
     ):
         """Settings callback toggles audio."""
         await state_manager.update_settings("12345", audio_enabled=True)
@@ -880,7 +870,7 @@ class TestCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_settings_toggle_mode(
-        self, make_callback_query, state_manager, monkeypatch, allow_all_messages
+        self, make_callback_query, state_manager, monkeypatch, allow_all_handlers
     ):
         """Settings callback toggles mode."""
         await state_manager.update_settings("12345", mode="go_all")
@@ -898,7 +888,7 @@ class TestCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_settings_set_speed(
-        self, make_callback_query, state_manager, monkeypatch, allow_all_messages
+        self, make_callback_query, state_manager, monkeypatch, allow_all_handlers
     ):
         """Settings callback sets voice speed."""
         await state_manager.update_settings("12345", voice_speed=1.0)
@@ -916,7 +906,7 @@ class TestCallbackHandlers:
 
     @pytest.mark.asyncio
     async def test_settings_rejects_invalid_speed(
-        self, make_callback_query, state_manager, monkeypatch, allow_all_messages
+        self, make_callback_query, state_manager, monkeypatch, allow_all_handlers
     ):
         """Settings callback rejects invalid speed."""
         await state_manager.update_settings("12345", voice_speed=1.0)
@@ -942,7 +932,7 @@ class TestMessageHandlersFullFlow:
         self,
         make_update,
         make_processing_message,
-        allow_all_messages,
+        allow_all_handlers,
         state_manager,
         monkeypatch,
     ):
@@ -979,7 +969,7 @@ class TestMessageHandlersFullFlow:
         self,
         make_update,
         make_processing_message,
-        allow_all_messages,
+        allow_all_handlers,
         state_manager,
         monkeypatch,
     ):
@@ -1013,7 +1003,7 @@ class TestMessageHandlersFullFlow:
         make_update,
         make_processing_message,
         make_voice_message,
-        allow_all_messages,
+        allow_all_handlers,
         state_manager,
         monkeypatch,
     ):
@@ -1050,7 +1040,7 @@ class TestMessageHandlersFullFlow:
         make_update,
         make_processing_message,
         make_voice_message,
-        allow_all_messages,
+        allow_all_handlers,
         state_manager,
         monkeypatch,
     ):
@@ -1084,7 +1074,7 @@ class TestMessageHandlersFullFlow:
         self,
         make_update,
         make_processing_message,
-        allow_all_messages,
+        allow_all_handlers,
         state_manager,
         monkeypatch,
     ):
@@ -1143,7 +1133,7 @@ class TestExceptionLogging:
 
     @pytest.mark.asyncio
     async def test_message_delete_failure_logged(
-        self, capsys, make_update, allow_all_commands
+        self, capsys, make_update, allow_all_handlers
     ):
         """Failed message deletion should be logged."""
         update = make_update(chat_id=12345)

@@ -185,16 +185,18 @@ class RateLimiter:
         with self._cache_lock:
             self._reset_epoch += 1
             self.user_limits.pop(user_id_str, None)
-        with self._get_connection() as conn:
-            conn.execute("DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,))
+            with self._get_connection() as conn:
+                conn.execute(
+                    "DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,)
+                )
 
     def reset_all(self) -> None:
         """Reset all rate limits."""
         with self._cache_lock:
             self._reset_epoch += 1
             self.user_limits.clear()
-        with self._get_connection() as conn:
-            conn.execute("DELETE FROM rate_limits")
+            with self._get_connection() as conn:
+                conn.execute("DELETE FROM rate_limits")
 
 
 # Default instance

@@ -1,7 +1,8 @@
 """Unit tests for Brain vault integration."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from koro.core.brain import Brain
 from koro.core.types import MessageType, UserSettings
@@ -37,7 +38,9 @@ def mock_voice_engine():
 class TestBrainVaultIntegration:
     """Tests for Brain + Vault config integration."""
 
-    def test_brain_initializes_vault_from_path(self, tmp_path, mock_state_manager, mock_claude_client):
+    def test_brain_initializes_vault_from_path(
+        self, tmp_path, mock_state_manager, mock_claude_client
+    ):
         """Brain creates Vault when vault_path provided."""
         vault_dir = tmp_path / "vault"
         vault_dir.mkdir()
@@ -159,7 +162,9 @@ agents:
         assert brain is not None
 
     @pytest.mark.asyncio
-    async def test_brain_works_without_vault(self, mock_state_manager, mock_claude_client):
+    async def test_brain_works_without_vault(
+        self, mock_state_manager, mock_claude_client
+    ):
         """Brain works when no vault_path provided."""
         brain = Brain(
             state_manager=mock_state_manager,

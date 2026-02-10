@@ -2,17 +2,16 @@
 
 import sqlite3
 import time
-from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
-from typing import TypedDict
+from typing import Generator, TypedDict
 
 from koro.core.config import DATABASE_PATH, RATE_LIMIT_PER_MINUTE, RATE_LIMIT_SECONDS
 
 
-class UserLimitState(TypedDict):
-    """Per-user rate limit state persisted in-memory and SQLite."""
+class UserLimits(TypedDict):
+    """In-memory and persisted rate-limit counters for a user."""
 
     last_message: float | None
     minute_start: float
@@ -43,7 +42,9 @@ class RateLimiter:
             RATE_LIMIT_PER_MINUTE if per_minute_limit is None else per_minute_limit
         )
         self.db_path = Path(db_path) if db_path else DATABASE_PATH
-        self.user_limits: dict[str, UserLimitState] = {}
+        self.user_limits: dict[str, UserLimits] = {}
+        self._cache_lock = Lock()
+        self._reset_epoch = 0
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
@@ -58,16 +59,20 @@ class RateLimiter:
                 """)
 
     @contextmanager
-    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Open a short-lived DB connection per operation."""
         conn: sqlite3.Connection = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
             conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 
-    def _load_limits(self, user_id: str) -> UserLimitState | None:
+    def _load_limits(self, user_id: str) -> UserLimits | None:
         with self._get_connection() as conn:
             row = conn.execute(
                 """
@@ -85,7 +90,7 @@ class RateLimiter:
             "minute_count": row["minute_count"],
         }
 
-    def _save_limits(self, user_id: str, limits: "UserLimitState") -> None:
+    def _save_limits(self, user_id: str, limits: UserLimits) -> None:
         with self._get_connection() as conn:
             conn.execute(
                 """
@@ -116,61 +121,82 @@ class RateLimiter:
         """
         now = time.time()
         user_id_str = str(user_id)
+        loaded: UserLimits | None = None
 
-        if user_id_str not in self.user_limits:
-            limits = self._load_limits(user_id_str)
-            if limits is None:
-                limits = {
+        with self._cache_lock:
+            limits = self.user_limits.get(user_id_str)
+            reset_epoch = self._reset_epoch
+
+        if limits is None:
+            loaded = self._load_limits(user_id_str)
+            if loaded is None:
+                loaded = {
                     "last_message": None,
                     "minute_count": 0,
                     "minute_start": now,
                 }
-            self.user_limits[user_id_str] = limits
-        else:
-            limits = self.user_limits[user_id_str]
 
-        # Check per-message cooldown
-        if limits["last_message"] is not None and self.cooldown_seconds > 0:
-            time_since_last = now - limits["last_message"]
-            if time_since_last < self.cooldown_seconds:
-                wait_time = self.cooldown_seconds - time_since_last
+        with self._cache_lock:
+            if self._reset_epoch != reset_epoch:
+                loaded = None
+            limits = self.user_limits.get(user_id_str)
+            if limits is None:
+                if loaded is None:
+                    loaded = {
+                        "last_message": None,
+                        "minute_count": 0,
+                        "minute_start": now,
+                    }
+                limits = self.user_limits.setdefault(user_id_str, loaded)
+
+            # Check per-message cooldown
+            if limits["last_message"] is not None and self.cooldown_seconds > 0:
+                time_since_last = now - limits["last_message"]
+                if time_since_last < self.cooldown_seconds:
+                    wait_time = self.cooldown_seconds - time_since_last
+                    return (
+                        False,
+                        f"Please wait {wait_time:.1f}s before sending another message.",
+                    )
+
+            # Check per-minute limit
+            if now - limits["minute_start"] > 60:
+                # Reset minute counter
+                limits["minute_start"] = now
+                limits["minute_count"] = 0
+
+            if limits["minute_count"] >= self.per_minute_limit:
                 return (
                     False,
-                    f"Please wait {wait_time:.1f}s before sending another message.",
+                    f"Rate limit reached ({self.per_minute_limit}/min). Please wait.",
                 )
 
-        # Check per-minute limit
-        if now - limits["minute_start"] > 60:
-            # Reset minute counter
-            limits["minute_start"] = now
-            limits["minute_count"] = 0
+            # Update limits
+            limits["last_message"] = now
+            limits["minute_count"] += 1
+            limits_to_save = limits.copy()
 
-        if limits["minute_count"] >= self.per_minute_limit:
-            return (
-                False,
-                f"Rate limit reached ({self.per_minute_limit}/min). Please wait.",
-            )
-
-        # Update limits
-        limits["last_message"] = now
-        limits["minute_count"] += 1
-
-        self._save_limits(user_id_str, limits)
+        self._save_limits(user_id_str, limits_to_save)
         return True, ""
 
     def reset(self, user_id: int | str) -> None:
         """Reset rate limits for a user."""
         user_id_str = str(user_id)
-        if user_id_str in self.user_limits:
-            del self.user_limits[user_id_str]
-        with self._get_connection() as conn:
-            conn.execute("DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,))
+        with self._cache_lock:
+            self._reset_epoch += 1
+            self.user_limits.pop(user_id_str, None)
+            with self._get_connection() as conn:
+                conn.execute(
+                    "DELETE FROM rate_limits WHERE user_id = ?", (user_id_str,)
+                )
 
     def reset_all(self) -> None:
         """Reset all rate limits."""
-        self.user_limits.clear()
-        with self._get_connection() as conn:
-            conn.execute("DELETE FROM rate_limits")
+        with self._cache_lock:
+            self._reset_epoch += 1
+            self.user_limits.clear()
+            with self._get_connection() as conn:
+                conn.execute("DELETE FROM rate_limits")
 
 
 # Default instance

@@ -1,5 +1,8 @@
 """Tests for koro.rate_limit module."""
 
+import concurrent.futures
+import threading
+
 import pytest
 
 import koro.core.rate_limit as rate_limit
@@ -195,3 +198,40 @@ class TestRateLimiter:
         allowed, _ = new_limiter.check(12345)
 
         assert allowed is False
+
+    def test_check_discards_loaded_state_if_reset_occurs_during_load(
+        self, time_controller, limiter_factory, monkeypatch
+    ):
+        """check() should not reinsert stale loaded limits after a concurrent reset."""
+        limiter = limiter_factory(cooldown_seconds=0, per_minute_limit=100)
+        stale = {"last_message": None, "minute_start": 0.0, "minute_count": 99}
+
+        def fake_load(user_id: str):
+            limiter.reset(user_id)
+            return stale
+
+        monkeypatch.setattr(limiter, "_load_limits", fake_load)
+
+        allowed, _ = limiter.check("12345")
+
+        assert allowed is True
+        assert limiter.user_limits["12345"]["minute_count"] == 1
+
+    def test_check_is_thread_safe_for_same_user(self, limiter_factory, monkeypatch):
+        """Concurrent checks for one user should not corrupt in-memory counters."""
+        limiter = limiter_factory(cooldown_seconds=0, per_minute_limit=1000)
+        monkeypatch.setattr(limiter, "_load_limits", lambda user_id: None)
+        monkeypatch.setattr(limiter, "_save_limits", lambda user_id, limits: None)
+
+        start = threading.Barrier(8)
+
+        def _run_once() -> bool:
+            start.wait(timeout=2)
+            allowed, _ = limiter.check("u-1")
+            return allowed
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            allowed_results = list(pool.map(lambda _: _run_once(), range(8)))
+
+        assert all(allowed_results)
+        assert limiter.user_limits["u-1"]["minute_count"] == 8

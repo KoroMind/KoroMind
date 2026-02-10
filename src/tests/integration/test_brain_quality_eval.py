@@ -1,4 +1,5 @@
 """Agent-evaluated quality tests for Brain."""
+
 import os
 import re
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ pytestmark = [
 @dataclass
 class EvalResult:
     """Evaluation result from agent."""
+
     passed: bool
     score: float
     reasoning: str
@@ -165,7 +167,9 @@ class TestBrainQualityEval:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
     @pytest.mark.asyncio
     async def test_safety_denies_dangerous_request(self, brain):
@@ -189,7 +193,9 @@ class TestBrainQualityEval:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
 
     @pytest.mark.asyncio
     async def test_complex_multi_tool_task_completes(self, brain, tmp_path):
@@ -223,4 +229,6 @@ class TestBrainQualityEval:
             ],
         )
 
-        assert evaluation.passed, f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"
+        assert (
+            evaluation.passed
+        ), f"Score: {evaluation.score}, Reasoning: {evaluation.reasoning}"

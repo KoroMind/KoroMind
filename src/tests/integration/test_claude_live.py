@@ -38,6 +38,11 @@ def claude_client(tmp_path):
     return ClaudeClient(sandbox_dir=str(sandbox), working_dir=str(tmp_path))
 
 
+def _query_config(prompt: str, **kwargs) -> QueryConfig:
+    """Build query config with MEGG disabled for deterministic live tests."""
+    return QueryConfig(prompt=prompt, include_megg=False, **kwargs)
+
+
 @pytest.mark.live
 class TestClaudeHealthCheck:
     """Live tests for Claude health check."""
@@ -57,8 +62,9 @@ class TestClaudeQuery:
     @pytest.mark.asyncio
     async def test_simple_query(self, claude_client):
         """Simple query returns response."""
-        config = QueryConfig(prompt="Say exactly: 'Hello test'", include_megg=False)
-        response, session_id, metadata = await claude_client.query(config)
+        response, session_id, metadata = await claude_client.query(
+            _query_config("Say exactly: 'Hello test'")
+        )
 
         assert response
         assert len(response) > 0
@@ -66,8 +72,9 @@ class TestClaudeQuery:
     @pytest.mark.asyncio
     async def test_query_returns_session_id(self, claude_client):
         """Query returns session ID for continuation."""
-        config = QueryConfig(prompt="Remember this number: 42", include_megg=False)
-        response, session_id, metadata = await claude_client.query(config)
+        response, session_id, metadata = await claude_client.query(
+            _query_config("Remember this number: 42")
+        )
 
         assert session_id is not None
         assert len(session_id) > 0
@@ -76,18 +83,17 @@ class TestClaudeQuery:
     async def test_session_continuation(self, claude_client):
         """Session continuation preserves context."""
         # First message
-        config1 = QueryConfig(
-            prompt="Remember this secret word: banana", include_megg=False
+        _, session_id, _ = await claude_client.query(
+            _query_config("Remember this secret word: banana")
         )
-        _, session_id, _ = await claude_client.query(config1)
 
         # Continue session
-        config2 = QueryConfig(
-            prompt="What was the secret word I told you?",
-            session_id=session_id,
-            include_megg=False,
+        response, _, _ = await claude_client.query(
+            _query_config(
+                "What was the secret word I told you?",
+                session_id=session_id,
+            )
         )
-        response, _, _ = await claude_client.query(config2)
 
         assert "banana" in response.lower()
 
@@ -103,11 +109,11 @@ class TestClaudeToolUse:
         test_file = tmp_path / "test.txt"
         test_file.write_text("This is test content 12345")
 
-        config = QueryConfig(
-            prompt=f"Read the file at {test_file} and reply with only the exact file contents, nothing else.",
-            include_megg=False,
+        response, _, metadata = await claude_client.query(
+            _query_config(
+                f"Read the file at {test_file} and tell me what number is in it."
+            )
         )
-        response, _, metadata = await claude_client.query(config)
 
         assert "12345" in response
 
@@ -122,12 +128,9 @@ class TestClaudeToolUse:
         async def on_tool(name, detail):
             tools_called.append(name)
 
-        config = QueryConfig(
-            prompt=f"Read {test_file}",
-            include_megg=False,
-            on_tool_call=on_tool,
+        await claude_client.query(
+            _query_config(f"Read {test_file}", on_tool_call=on_tool)
         )
-        await claude_client.query(config)
 
         assert "Read" in tools_called
 
@@ -139,9 +142,8 @@ class TestClaudeStreaming:
     @pytest.mark.asyncio
     async def test_stream_yields_events(self, claude_client):
         """Streaming yields multiple events."""
-        config = QueryConfig(prompt="Say hello", include_megg=False)
         events = []
-        async for event in claude_client.query_stream(config):
+        async for event in claude_client.query_stream(_query_config("Say hello")):
             events.append(type(event).__name__)
 
         # Should have at least AssistantMessage and ResultMessage
@@ -151,11 +153,10 @@ class TestClaudeStreaming:
     @pytest.mark.asyncio
     async def test_stream_result_contains_text(self, claude_client):
         """Streaming result contains response text."""
-        config = QueryConfig(
-            prompt="Say exactly: 'streaming works'", include_megg=False
-        )
         result_text = None
-        async for event in claude_client.query_stream(config):
+        async for event in claude_client.query_stream(
+            _query_config("Say exactly: 'streaming works'")
+        ):
             if isinstance(event, ResultMessage):
                 result_text = event.result
 
@@ -170,8 +171,7 @@ class TestClaudeMetadata:
     @pytest.mark.asyncio
     async def test_metadata_includes_cost(self, claude_client):
         """Response metadata includes cost."""
-        config = QueryConfig(prompt="Say OK", include_megg=False)
-        _, _, metadata = await claude_client.query(config)
+        _, _, metadata = await claude_client.query(_query_config("Say OK"))
 
         assert "cost" in metadata
         assert metadata["cost"] > 0
@@ -179,8 +179,7 @@ class TestClaudeMetadata:
     @pytest.mark.asyncio
     async def test_metadata_includes_turns(self, claude_client):
         """Response metadata includes turn count."""
-        config = QueryConfig(prompt="Say OK", include_megg=False)
-        _, _, metadata = await claude_client.query(config)
+        _, _, metadata = await claude_client.query(_query_config("Say OK"))
 
         assert "num_turns" in metadata
         assert metadata["num_turns"] >= 1
@@ -191,8 +190,7 @@ class TestClaudeMetadata:
         test_file = tmp_path / "tool_count.txt"
         test_file.write_text("test")
 
-        config = QueryConfig(prompt=f"Read {test_file}", include_megg=False)
-        _, _, metadata = await claude_client.query(config)
+        _, _, metadata = await claude_client.query(_query_config(f"Read {test_file}"))
 
         assert "tool_count" in metadata
         assert metadata["tool_count"] >= 1

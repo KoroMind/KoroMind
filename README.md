@@ -337,6 +337,7 @@ pytest --cov=koro --cov-report=term-missing
 ## Architecture Decisions
 
 - **Core Library Pattern**: `koro.core` is interface-agnostic, enabling multiple frontends
+- **Single-user instance**: One KoroMind process is designed for one user; multi-tenant support is future work
 - **SQLite for State**: Replaces JSON files for better concurrency and querying
 - **FastAPI for API**: Modern async framework with automatic OpenAPI docs
 - **ElevenLabs Scribe** for STT: Handles accents and ambient noise well

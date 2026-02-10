@@ -7,6 +7,7 @@ import os
 import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from claude_agent_sdk import (
@@ -363,9 +364,7 @@ class ClaudeClient:
                                 ):
                                     try:
                                         tool_input = block.input or {}
-                                        detail = get_tool_detail(
-                                            block.name, tool_input
-                                        )
+                                        detail = get_tool_detail(block.name, tool_input)
                                         result = stream_config.on_tool_call(
                                             block.name, detail
                                         )
@@ -424,13 +423,16 @@ class ClaudeClient:
 
 # Default instance
 _claude_client: ClaudeClient | None = None
+_claude_client_lock = Lock()
 
 
 def get_claude_client() -> ClaudeClient:
     """Get or create the default Claude client instance."""
     global _claude_client
     if _claude_client is None:
-        _claude_client = ClaudeClient()
+        with _claude_client_lock:
+            if _claude_client is None:
+                _claude_client = ClaudeClient()
     return _claude_client
 
 

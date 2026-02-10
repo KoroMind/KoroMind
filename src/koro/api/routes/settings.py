@@ -3,9 +3,10 @@
 from typing import Literal
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from koro.core.brain import get_brain
+from koro.core.model_validation import MODEL_IDENTIFIER_PATTERN
 from koro.core.types import Mode
 
 router = APIRouter()
@@ -18,6 +19,7 @@ class SettingsResponse(BaseModel):
     audio_enabled: bool
     voice_speed: float
     watch_enabled: bool
+    model: str = Field(default="", description="Claude model override")
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -35,6 +37,19 @@ class UpdateSettingsRequest(BaseModel):
     watch_enabled: bool | None = Field(
         default=None, description="Whether to stream tool calls"
     )
+    model: str | None = Field(
+        default=None, description="Claude model override (empty string for default)"
+    )
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: str | None) -> str | None:
+        """Allow empty/default model, otherwise enforce a safe model identifier."""
+        if value is None or value == "":
+            return value
+        if not MODEL_IDENTIFIER_PATTERN.fullmatch(value):
+            raise ValueError("Invalid model identifier")
+        return value
 
 
 @router.get("/settings", response_model=SettingsResponse)
@@ -54,6 +69,7 @@ async def get_settings(
         audio_enabled=settings.audio_enabled,
         voice_speed=settings.voice_speed,
         watch_enabled=settings.watch_enabled,
+        model=settings.model,
     )
 
 
@@ -71,7 +87,7 @@ async def update_settings(
     user_id = http_request.state.user_id
 
     # Build kwargs for update
-    kwargs: dict[str, Mode | bool | float] = {}
+    kwargs: dict[str, Mode | bool | float | str] = {}
     if request.mode is not None:
         kwargs["mode"] = Mode(request.mode)
     if request.audio_enabled is not None:
@@ -80,6 +96,8 @@ async def update_settings(
         kwargs["voice_speed"] = request.voice_speed
     if request.watch_enabled is not None:
         kwargs["watch_enabled"] = request.watch_enabled
+    if request.model is not None:
+        kwargs["model"] = request.model
 
     settings = await brain.update_settings(user_id, **kwargs)
 
@@ -88,6 +106,7 @@ async def update_settings(
         audio_enabled=settings.audio_enabled,
         voice_speed=settings.voice_speed,
         watch_enabled=settings.watch_enabled,
+        model=settings.model,
     )
 
 
@@ -108,6 +127,7 @@ async def reset_settings(
         audio_enabled=True,
         voice_speed=1.1,
         watch_enabled=False,
+        model="",
     )
 
     return SettingsResponse(
@@ -115,4 +135,5 @@ async def reset_settings(
         audio_enabled=settings.audio_enabled,
         voice_speed=settings.voice_speed,
         watch_enabled=settings.watch_enabled,
+        model=settings.model,
     )

@@ -1,8 +1,8 @@
 """Unit tests for Brain streaming functionality."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from claude_agent_sdk.types import ResultMessage
 
 from koro.core.brain import Brain
@@ -49,7 +49,9 @@ class TestBrainStreaming:
     """Tests for Brain streaming functionality."""
 
     @pytest.mark.asyncio
-    async def test_stream_yields_assistant_message_events(self, brain, mock_claude_client):
+    async def test_stream_yields_assistant_message_events(
+        self, brain, mock_claude_client
+    ):
         """Stream yields events from Claude client."""
         events = [
             MagicMock(type="assistant_message", text="Hello"),
@@ -77,7 +79,9 @@ class TestBrainStreaming:
     @pytest.mark.asyncio
     async def test_stream_yields_result_message_at_end(self, brain, mock_claude_client):
         """Stream includes result message with metadata."""
-        result_event = MagicMock(type="result", session_id="new-session", metadata={"cost": 0.01})
+        result_event = MagicMock(
+            type="result", session_id="new-session", metadata={"cost": 0.01}
+        )
 
         async def mock_stream(config):
             yield MagicMock(type="text", text="response")
@@ -97,7 +101,9 @@ class TestBrainStreaming:
         assert received[-1].type == "result"
 
     @pytest.mark.asyncio
-    async def test_stream_captures_session_id(self, brain, mock_claude_client, mock_state_manager):
+    async def test_stream_captures_session_id(
+        self, brain, mock_claude_client, mock_state_manager
+    ):
         """Session ID from ResultMessage updates state manager."""
         result_msg = MagicMock(spec=ResultMessage)
         result_msg.session_id = "stream-session-123"
@@ -116,11 +122,16 @@ class TestBrainStreaming:
             pass
 
         # State manager should be updated with new session
-        mock_state_manager.update_session.assert_called_with("user1", "stream-session-123")
+        mock_state_manager.update_session.assert_called_with(
+            "user1", "stream-session-123"
+        )
 
     @pytest.mark.asyncio
-    async def test_stream_accepts_callbacks_without_error(self, brain, mock_claude_client):
+    async def test_stream_accepts_callbacks_without_error(
+        self, brain, mock_claude_client
+    ):
         """Passing BrainCallbacks to stream doesn't raise."""
+
         async def mock_stream(config):
             yield MagicMock(type="text", text="response")
 

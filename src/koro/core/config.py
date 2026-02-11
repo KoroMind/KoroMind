@@ -64,7 +64,7 @@ ELEVENLABS_VOICE_ID = get_env("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 
 # Persona settings
 PERSONA_NAME = get_env("PERSONA_NAME", "Assistant")
-SYSTEM_PROMPT_FILE = get_env("SYSTEM_PROMPT_FILE", "")
+SYSTEM_PROMPT_FILE = get_env("SYSTEM_PROMPT_FILE", "src/prompts/koro.md")
 CLAUDE_SETTINGS_FILE = get_env("CLAUDE_SETTINGS_FILE", "")
 
 # Logging

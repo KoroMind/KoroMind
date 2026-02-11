@@ -1,10 +1,12 @@
 """Tests for koro.claude module."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import koro.core.claude as claude
+import koro.core.prompt as prompt
 from koro.core.types import QueryConfig
 
 
@@ -43,6 +45,15 @@ def patch_sdk_client(monkeypatch, mock_sdk_client):
 def reset_default_client(monkeypatch):
     """Reset the default client between tests."""
     monkeypatch.setattr(claude, "_claude_client", None)
+
+
+@pytest.fixture(autouse=True)
+def valid_system_prompt_file(monkeypatch):
+    """Ensure tests use a deterministic, valid system prompt file."""
+    repo_root = Path(__file__).resolve().parents[3]
+    monkeypatch.setattr(
+        prompt, "SYSTEM_PROMPT_FILE", str(repo_root / "src/prompts/koro.md")
+    )
 
 
 class TestLoadMeggContext:

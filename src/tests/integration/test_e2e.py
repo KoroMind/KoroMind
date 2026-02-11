@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from koro.claude import ClaudeClient
 from koro.core.types import QueryConfig
-from koro.voice import VoiceEngine
+from koro.voice import VoiceEngine, VoiceTranscriptionError
 
 # Load environment variables
 load_dotenv()
@@ -123,14 +123,11 @@ class TestErrorHandling:
 
     @pytest.mark.asyncio
     async def test_handles_empty_transcription(self):
-        """Pipeline handles empty/failed transcription gracefully."""
+        """Pipeline raises VoiceTranscriptionError on invalid audio."""
         voice = VoiceEngine(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
-        # Try to transcribe invalid audio
-        result = await voice.transcribe(b"not valid audio data")
-
-        # Should return error message, not crash
-        assert "error" in result.lower() or len(result) > 0
+        with pytest.raises(VoiceTranscriptionError):
+            await voice.transcribe(b"not valid audio data")
 
     @pytest.mark.asyncio
     async def test_handles_long_response(self, tmp_path):

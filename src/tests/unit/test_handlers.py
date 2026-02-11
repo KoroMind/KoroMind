@@ -11,8 +11,8 @@ import koro.interfaces.telegram.handlers.callbacks as callbacks
 import koro.interfaces.telegram.handlers.commands as commands
 import koro.interfaces.telegram.handlers.messages as messages
 import koro.interfaces.telegram.handlers.utils as utils
+from koro.core.types import BrainResponse, MessageType, UserSettings
 from koro.state import StateManager
-from koro.voice import VoiceTranscriptionError
 
 
 @pytest.fixture
@@ -593,13 +593,11 @@ class TestApprovalCallbackHandlers:
     ):
         """Approval callback approves tool use."""
         approval_event = asyncio.Event()
-        messages.pending_approvals["test123"] = {
-            "user_id": "12345",
-            "event": approval_event,
-            "approved": None,
-            "tool_name": "Read",
-            "input": {},
-        }
+        messages.pending_approvals["test123"] = messages.PendingApproval(
+            user_id="12345",
+            event=approval_event,
+            tool_name="Read",
+        )
 
         query = make_callback_query("approve_test123")
         update = MagicMock()
@@ -608,7 +606,7 @@ class TestApprovalCallbackHandlers:
 
         await callbacks.handle_approval_callback(update, MagicMock())
 
-        assert messages.pending_approvals.get("test123", {}).get("approved") is True
+        assert messages.pending_approvals["test123"].approved is True
         query.edit_message_text.assert_called()
 
     @pytest.mark.asyncio
@@ -617,13 +615,11 @@ class TestApprovalCallbackHandlers:
     ):
         """Approval callback rejects tool use."""
         approval_event = asyncio.Event()
-        messages.pending_approvals["test456"] = {
-            "user_id": "12345",
-            "event": approval_event,
-            "approved": None,
-            "tool_name": "Bash",
-            "input": {},
-        }
+        messages.pending_approvals["test456"] = messages.PendingApproval(
+            user_id="12345",
+            event=approval_event,
+            tool_name="Bash",
+        )
 
         query = make_callback_query("reject_test456")
         update = MagicMock()
@@ -933,23 +929,15 @@ class TestMessageHandlersFullFlow:
         make_update,
         make_processing_message,
         allow_all_handlers,
-        state_manager,
+        mock_brain,
         monkeypatch,
     ):
-        """handle_text processes text and calls Claude."""
+        """handle_text routes text through Brain."""
         limiter = MagicMock()
         limiter.check.return_value = (True, "")
-        mock_voice = MagicMock()
-        mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
-        mock_claude = MagicMock()
-        mock_claude.query = AsyncMock(
-            return_value=("Hello from Claude!", "sess123", {"cost": 0.01})
-        )
 
-        monkeypatch.setattr(messages, "get_state_manager", lambda: state_manager)
         monkeypatch.setattr(messages, "get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr(messages, "get_voice_engine", lambda: mock_voice)
-        monkeypatch.setattr(messages, "get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(messages, "get_brain", lambda: mock_brain)
 
         processing_msg = make_processing_message()
         update = make_update(
@@ -961,7 +949,10 @@ class TestMessageHandlersFullFlow:
 
         await messages.handle_text(update, MagicMock())
 
-        mock_claude.query.assert_called_once()
+        mock_brain.process_message.assert_called_once()
+        call_kwargs = mock_brain.process_message.call_args.kwargs
+        assert call_kwargs["content"] == "Hello Claude"
+        assert call_kwargs["content_type"] == MessageType.TEXT
         processing_msg.edit_text.assert_called()
 
     @pytest.mark.asyncio
@@ -970,23 +961,26 @@ class TestMessageHandlersFullFlow:
         make_update,
         make_processing_message,
         allow_all_handlers,
-        state_manager,
+        mock_brain,
         monkeypatch,
     ):
-        """handle_text skips audio when disabled."""
-        await state_manager.update_settings("12345", audio_enabled=False)
-
+        """handle_text skips audio reply when Brain returns no audio."""
         limiter = MagicMock()
         limiter.check.return_value = (True, "")
-        mock_voice = MagicMock()
-        mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
-        mock_claude = MagicMock()
-        mock_claude.query = AsyncMock(return_value=("Response", "sess123", {}))
 
-        monkeypatch.setattr(messages, "get_state_manager", lambda: state_manager)
+        # Settings with audio disabled
+        mock_brain.state_manager.get_settings = AsyncMock(
+            return_value=UserSettings(audio_enabled=False)
+        )
+        # Brain returns no audio when include_audio=False
+        mock_brain.process_message = AsyncMock(
+            return_value=BrainResponse(
+                text="Response", session_id="sess-123", audio=None
+            )
+        )
+
         monkeypatch.setattr(messages, "get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr(messages, "get_voice_engine", lambda: mock_voice)
-        monkeypatch.setattr(messages, "get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(messages, "get_brain", lambda: mock_brain)
 
         processing_msg = make_processing_message()
         update = make_update(user_id=12345, chat_id=12345, text="Hello")
@@ -994,45 +988,73 @@ class TestMessageHandlersFullFlow:
 
         await messages.handle_text(update, MagicMock())
 
-        mock_voice.text_to_speech.assert_not_called()
+        call_kwargs = mock_brain.process_message.call_args.kwargs
+        assert call_kwargs["include_audio"] is False
         update.message.reply_voice.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handle_voice_transcribes_and_calls_claude(
+    async def test_handle_text_sends_audio_when_brain_returns_audio(
+        self,
+        make_update,
+        make_processing_message,
+        allow_all_handlers,
+        mock_brain,
+        monkeypatch,
+    ):
+        """handle_text sends voice reply when Brain returns audio."""
+        limiter = MagicMock()
+        limiter.check.return_value = (True, "")
+
+        mock_brain.process_message = AsyncMock(
+            return_value=BrainResponse(
+                text="Response",
+                session_id="sess-123",
+                audio=b"audio_data",
+            )
+        )
+
+        monkeypatch.setattr(messages, "get_rate_limiter", lambda: limiter)
+        monkeypatch.setattr(messages, "get_brain", lambda: mock_brain)
+
+        processing_msg = make_processing_message()
+        update = make_update(user_id=12345, chat_id=12345, text="Hello")
+        update.message.reply_text = AsyncMock(return_value=processing_msg)
+
+        await messages.handle_text(update, MagicMock())
+
+        update.message.reply_voice.assert_called_once_with(voice=b"audio_data")
+
+    @pytest.mark.asyncio
+    async def test_handle_voice_routes_through_brain(
         self,
         make_update,
         make_processing_message,
         make_voice_message,
         allow_all_handlers,
-        state_manager,
+        mock_brain,
         monkeypatch,
     ):
-        """handle_voice transcribes voice and calls Claude."""
+        """handle_voice sends voice bytes to Brain."""
         limiter = MagicMock()
         limiter.check.return_value = (True, "")
-        mock_voice = MagicMock()
-        mock_voice.transcribe = AsyncMock(return_value="Hello from voice")
-        mock_voice.text_to_speech = AsyncMock(return_value=b"audio_bytes")
-        mock_claude = MagicMock()
-        mock_claude.query = AsyncMock(return_value=("Hello back!", "sess123", {}))
 
-        monkeypatch.setattr(messages, "get_state_manager", lambda: state_manager)
         monkeypatch.setattr(messages, "get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr(messages, "get_voice_engine", lambda: mock_voice)
-        monkeypatch.setattr(messages, "get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(messages, "get_brain", lambda: mock_brain)
 
         processing_msg = make_processing_message()
         update = make_update(
             user_id=12345,
             chat_id=12345,
-            voice=make_voice_message(),
+            voice=make_voice_message(audio_bytes=b"voice_data"),
         )
         update.message.reply_text = AsyncMock(return_value=processing_msg)
 
         await messages.handle_voice(update, MagicMock())
 
-        mock_voice.transcribe.assert_called_once()
-        mock_claude.query.assert_called_once()
+        mock_brain.process_message.assert_called_once()
+        call_kwargs = mock_brain.process_message.call_args.kwargs
+        assert call_kwargs["content_type"] == MessageType.VOICE
+        assert isinstance(call_kwargs["content"], bytes)
 
     @pytest.mark.asyncio
     async def test_handle_voice_error_on_transcription_failure(
@@ -1041,20 +1063,19 @@ class TestMessageHandlersFullFlow:
         make_processing_message,
         make_voice_message,
         allow_all_handlers,
-        state_manager,
+        mock_brain,
         monkeypatch,
     ):
-        """handle_voice shows error on transcription failure."""
+        """handle_voice shows safe error when Brain raises RuntimeError."""
         limiter = MagicMock()
         limiter.check.return_value = (True, "")
-        mock_voice = MagicMock()
-        mock_voice.transcribe = AsyncMock(
-            side_effect=VoiceTranscriptionError("API failed")
+
+        mock_brain.process_message = AsyncMock(
+            side_effect=RuntimeError("Transcription failed")
         )
 
-        monkeypatch.setattr(messages, "get_state_manager", lambda: state_manager)
         monkeypatch.setattr(messages, "get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr(messages, "get_voice_engine", lambda: mock_voice)
+        monkeypatch.setattr(messages, "get_brain", lambda: mock_brain)
 
         processing_msg = make_processing_message()
         update = make_update(
@@ -1067,7 +1088,7 @@ class TestMessageHandlersFullFlow:
         await messages.handle_voice(update, MagicMock())
 
         call_text = processing_msg.edit_text.call_args.args[0]
-        assert "error" in call_text.lower()
+        assert call_text == messages._USER_ERROR
 
     @pytest.mark.asyncio
     async def test_handle_text_handles_exception(
@@ -1075,18 +1096,19 @@ class TestMessageHandlersFullFlow:
         make_update,
         make_processing_message,
         allow_all_handlers,
-        state_manager,
+        mock_brain,
         monkeypatch,
     ):
-        """handle_text handles exceptions gracefully."""
+        """handle_text handles exceptions gracefully with safe error."""
         limiter = MagicMock()
         limiter.check.return_value = (True, "")
-        mock_claude = MagicMock()
-        mock_claude.query = AsyncMock(side_effect=Exception("Connection failed"))
 
-        monkeypatch.setattr(messages, "get_state_manager", lambda: state_manager)
+        mock_brain.process_message = AsyncMock(
+            side_effect=Exception("Connection failed")
+        )
+
         monkeypatch.setattr(messages, "get_rate_limiter", lambda: limiter)
-        monkeypatch.setattr(messages, "get_claude_client", lambda: mock_claude)
+        monkeypatch.setattr(messages, "get_brain", lambda: mock_brain)
 
         processing_msg = make_processing_message()
         update = make_update(user_id=12345, chat_id=12345, text="Hello")
@@ -1095,7 +1117,7 @@ class TestMessageHandlersFullFlow:
         await messages.handle_text(update, MagicMock())
 
         call_text = processing_msg.edit_text.call_args.args[0]
-        assert "Error" in call_text
+        assert call_text == messages._USER_ERROR
 
 
 class TestPendingApprovalsCleanup:
@@ -1106,11 +1128,12 @@ class TestPendingApprovalsCleanup:
         messages.pending_approvals.clear()
 
         approval_id = "test123"
-        messages.pending_approvals[approval_id] = {
-            "created_at": time.time() - 600,
-            "user_id": "12345",
-            "tool_name": "Bash",
-        }
+        messages.pending_approvals[approval_id] = messages.PendingApproval(
+            user_id="12345",
+            tool_name="Bash",
+            event=asyncio.Event(),
+            created_at=time.time() - 600,
+        )
 
         messages.cleanup_stale_approvals(max_age_seconds=300)
 
@@ -1122,7 +1145,12 @@ class TestPendingApprovalsCleanup:
 
         for i in range(messages.MAX_PENDING_APPROVALS + 10):
             messages.add_pending_approval(
-                f"id_{i}", {"user_id": str(i), "created_at": time.time()}
+                f"id_{i}",
+                messages.PendingApproval(
+                    user_id=str(i),
+                    tool_name="test",
+                    event=asyncio.Event(),
+                ),
             )
 
         assert len(messages.pending_approvals) <= messages.MAX_PENDING_APPROVALS
@@ -1133,7 +1161,7 @@ class TestExceptionLogging:
 
     @pytest.mark.asyncio
     async def test_message_delete_failure_logged(
-        self, capsys, make_update, allow_all_handlers
+        self, caplog, make_update, allow_all_handlers
     ):
         """Failed message deletion should be logged."""
         update = make_update(chat_id=12345)
@@ -1141,7 +1169,7 @@ class TestExceptionLogging:
         context = MagicMock()
         context.args = []
 
-        await commands.cmd_claude_token(update, context)
+        with caplog.at_level("DEBUG"):
+            await commands.cmd_claude_token(update, context)
 
-        captured = capsys.readouterr()
-        assert "delete" in captured.out.lower()
+        assert "delete" in caplog.text.lower()

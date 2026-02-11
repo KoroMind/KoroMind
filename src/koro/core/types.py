@@ -209,33 +209,14 @@ class BrainResponse:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class Session:
+class Session(BaseModel, frozen=True):
     """User session record."""
 
     id: str
     user_id: str
     created_at: datetime
     last_active: datetime
-
-    def to_dict(self) -> dict[str, str]:
-        """Convert to dictionary for serialization."""
-        return {
-            "id": self.id,
-            "user_id": self.user_id,
-            "created_at": self.created_at.isoformat(),
-            "last_active": self.last_active.isoformat(),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, str]) -> "Session":
-        """Create from dictionary."""
-        return cls(
-            id=data["id"],
-            user_id=data["user_id"],
-            created_at=datetime.fromisoformat(data["created_at"]),
-            last_active=datetime.fromisoformat(data["last_active"]),
-        )
+    name: str | None = None
 
 
 class SessionStateItem(BaseModel, frozen=True):

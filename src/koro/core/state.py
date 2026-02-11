@@ -55,7 +55,8 @@ class StateManager:
                     user_id TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     last_active TEXT NOT NULL,
-                    is_current INTEGER DEFAULT 0
+                    is_current INTEGER DEFAULT 0,
+                    name TEXT
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_id
@@ -222,7 +223,7 @@ class StateManager:
         with self._get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT id, user_id, created_at, last_active
+                SELECT id, user_id, created_at, last_active, name
                 FROM sessions
                 WHERE user_id = ?
                 ORDER BY last_active DESC
@@ -235,6 +236,7 @@ class StateManager:
                     user_id=row["user_id"],
                     created_at=datetime.fromisoformat(row["created_at"]),
                     last_active=datetime.fromisoformat(row["last_active"]),
+                    name=row["name"],
                 )
                 for row in rows
             ]
@@ -304,7 +306,7 @@ class StateManager:
                 pending_session_name=pending_session_name,
             )
 
-    async def create_session(self, user_id: str) -> Session:
+    async def create_session(self, user_id: str, name: str | None = None) -> Session:
         """Create a new session for a user."""
         now = datetime.now()
         session_id = str(uuid4())
@@ -322,7 +324,7 @@ class StateManager:
                 INSERT INTO sessions (id, user_id, created_at, last_active, is_current, name)
                 VALUES (?, ?, ?, ?, 1, ?)
                 """,
-                (session_id, user_id, now.isoformat(), now.isoformat(), None),
+                (session_id, user_id, now.isoformat(), now.isoformat(), name),
             )
 
             # FIFO eviction: remove oldest sessions if exceeding limit
@@ -344,6 +346,7 @@ class StateManager:
             user_id=user_id,
             created_at=now,
             last_active=now,
+            name=name,
         )
 
     async def get_current_session(self, user_id: str) -> Session | None:
@@ -351,7 +354,7 @@ class StateManager:
         with self._get_connection() as conn:
             row = conn.execute(
                 """
-                SELECT id, user_id, created_at, last_active
+                SELECT id, user_id, created_at, last_active, name
                 FROM sessions
                 WHERE user_id = ? AND is_current = 1
                 """,
@@ -363,6 +366,29 @@ class StateManager:
                     user_id=row["user_id"],
                     created_at=datetime.fromisoformat(row["created_at"]),
                     last_active=datetime.fromisoformat(row["last_active"]),
+                    name=row["name"],
+                )
+            return None
+
+    async def get_session_by_name(self, user_id: str, name: str) -> Session | None:
+        """Get a session by name for a user."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id, user_id, created_at, last_active, name
+                FROM sessions
+                WHERE user_id = ? AND name = ?
+                ORDER BY last_active DESC LIMIT 1
+                """,
+                (user_id, name),
+            ).fetchone()
+            if row:
+                return Session(
+                    id=row["id"],
+                    user_id=row["user_id"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    last_active=datetime.fromisoformat(row["last_active"]),
+                    name=row["name"],
                 )
             return None
 

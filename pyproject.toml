@@ -52,6 +52,7 @@ pythonpath = ["src"]
 markers = [
     "live: marks tests as requiring live API keys (deselect with '-m \"not live\"')",
     "eval: marks tests as agent-evaluated (non-deterministic quality checks)",
+    "e2e: marks tests as end-to-end integration tests (deselect with '-m \"not e2e\"')",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

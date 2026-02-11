@@ -40,9 +40,15 @@ docker compose logs -f koro
 pytest -v                        # Run all tests
 pytest src/tests/unit -v         # Unit tests only
 pytest src/tests/integration -v  # Integration tests (need API keys)
+pytest src/tests/e2e -v          # E2E tests (need test bot setup)
 pytest -m "not live" -v          # Skip tests requiring live APIs
+pytest -m "not e2e" -v           # Skip E2E tests
 pytest src/tests/unit/test_voice.py::test_name -v  # Single test
 pytest --cov=koro --cov-report=term-missing    # Coverage
+
+# E2E Testing (Telegram bot)
+# See docs/e2e-testing.md for setup
+./scripts/run-e2e-tests.sh      # Run E2E tests with helper script
 ```
 
 ### Linting (via pre-commit)

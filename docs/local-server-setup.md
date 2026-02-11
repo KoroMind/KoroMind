@@ -29,7 +29,58 @@ GCP: Use the SSH button in console, or:
 gcloud compute ssh YOUR_VM_NAME --zone=YOUR_ZONE
 ```
 
-## 3. Run Setup Script
+## 3A. Docker Compose Path (Recommended)
+
+For production-style deployment on a fresh VM, install Docker and run KoroMind in containers.
+
+Install Docker Engine + Compose plugin:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo ${UBUNTU_CODENAME:-$VERSION_CODENAME}) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker "$USER"
+newgrp docker
+```
+
+Clone repo:
+
+```bash
+git clone -b local-setup-docs https://github.com/KoroMind/KoroMind.git
+cd KoroMind
+cp .env.example .env
+```
+
+Edit `.env` and add required keys:
+
+```bash
+nano .env
+```
+
+Start:
+
+```bash
+docker compose up -d --build
+docker compose logs -f koro
+```
+
+Update later:
+
+```bash
+cd ~/KoroMind
+git pull
+docker compose up -d --build
+```
+
+## 3B. Systemd + Python Path
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/scripts/setup.sh | bash
@@ -89,6 +140,7 @@ sudo journalctl -u koromind-telegram -f
 | Issue | Fix |
 |-------|-----|
 | `uv: command not found` | Run `source ~/.profile` or reconnect SSH |
+| `Cannot connect to the Docker daemon` | Run `sudo systemctl enable --now docker` and re-login so docker group changes apply |
 | Bot not responding | Check logs: `sudo journalctl -u koromind-telegram -f` |
 | Service fails to start | Verify all required keys in `.env` are set |
 | Python version error | Ensure Python 3.11+ is installed |

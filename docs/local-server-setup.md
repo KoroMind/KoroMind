@@ -29,12 +29,12 @@ GCP: Use the SSH button in console, or:
 gcloud compute ssh YOUR_VM_NAME --zone=YOUR_ZONE
 ```
 
-## 3A. Docker Compose Path (Recommended)
+## 3. Run Setup Script (Docker Compose)
 
-For production-style deployment on a fresh VM, install Docker via setup script:
+For production deployment on a fresh VM, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/scripts/setup.sh | bash -s -- --with-docker
+curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/scripts/setup.sh | bash
 ```
 
 Then use Docker Compose:
@@ -51,24 +51,6 @@ Update later:
 cd ~/KoroMind
 git pull
 docker compose up -d --build
-```
-
-## 3B. Systemd + Python Path
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/scripts/setup.sh | bash
-```
-
-If you also want Docker installed as part of this script run:
-```bash
-curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/scripts/setup.sh | bash -s -- --with-docker
-```
-
-Or clone and run manually:
-```bash
-git clone -b local-setup-docs https://github.com/KoroMind/KoroMind.git
-cd KoroMind
-./scripts/setup.sh
 ```
 
 ## 4. Configure
@@ -101,14 +83,14 @@ mkdir -p ~/claude-sandbox
 ## 5. Start
 
 ```bash
-sudo systemctl enable --now koromind-telegram
+docker compose -f ~/KoroMind/docker-compose.yml up -d --build
 ```
 
 ## 6. Verify
 
 Send a message to your bot on Telegram. Check logs if issues:
 ```bash
-sudo journalctl -u koromind-telegram -f
+docker compose -f ~/KoroMind/docker-compose.yml logs -f koro
 ```
 
 ---
@@ -117,74 +99,42 @@ sudo journalctl -u koromind-telegram -f
 
 | Issue | Fix |
 |-------|-----|
-| `uv: command not found` | Run `source ~/.profile` or reconnect SSH |
 | `Cannot connect to the Docker daemon` | Run `sudo systemctl enable --now docker` and re-login so docker group changes apply |
-| Bot not responding | Check logs: `sudo journalctl -u koromind-telegram -f` |
-| Service fails to start | Verify all required keys in `.env` are set |
-| Python version error | Ensure Python 3.11+ is installed |
+| Bot not responding | Check logs: `docker compose -f ~/KoroMind/docker-compose.yml logs -f koro` |
+| Container exits repeatedly | Verify all required keys in `.env` are set |
 
 ## Common Operations
 
-**Restart service:**
+**Restart bot:**
 ```bash
-sudo systemctl restart koromind-telegram
+docker compose -f ~/KoroMind/docker-compose.yml restart koro
 ```
 
 **Update code:**
 ```bash
 cd ~/KoroMind
 git pull
-source .venv/bin/activate
-uv sync --frozen
-sudo systemctl restart koromind-telegram
+docker compose up -d --build
 ```
 
 **Stop service:**
 ```bash
-sudo systemctl stop koromind-telegram
+docker compose -f ~/KoroMind/docker-compose.yml down
 ```
 
 ---
 
-## Optional: REST API
-
-To run the REST API instead of (or alongside) Telegram:
+## Optional: REST API (Docker Profile)
 
 1. Set in `.env`:
    ```
    KOROMIND_API_KEY=your_secret_key
    ```
-
-2. Create API service:
+2. Start API profile:
    ```bash
-   sudo tee /etc/systemd/system/koromind-api.service > /dev/null <<EOF
-   [Unit]
-   Description=KoroMind API
-   After=network.target
-
-   [Service]
-   Type=simple
-   User=$USER
-   WorkingDirectory=$HOME/KoroMind
-   EnvironmentFile=$HOME/KoroMind/.env
-   ExecStart=$HOME/KoroMind/.venv/bin/python -m koro api --host 127.0.0.1 --port 8420
-   Restart=on-failure
-   RestartSec=3
-
-   [Install]
-   WantedBy=multi-user.target
-   EOF
+   docker compose -f ~/KoroMind/docker-compose.yml --profile api up -d --build koro-api
    ```
-
-3. Start:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now koromind-api
-   ```
-
-4. Test:
+3. Test:
    ```bash
    curl -sS http://127.0.0.1:8420/api/v1/health
    ```
-
-**External access:** Change `--host 0.0.0.0` and add a firewall rule for port 8420.

@@ -105,6 +105,7 @@ docker-compose logs -f koro
 | `Cannot connect to the Docker daemon` | Run `sudo systemctl enable --now docker` and re-login so docker group changes apply |
 | Bot not responding | Check logs: `cd ~/KoroMind && docker-compose logs -f koro` |
 | Container exits repeatedly | Verify all required keys in `.env` are set |
+| Docker build fails with `/.claude-settings: not found` | Run `cd ~/KoroMind && git submodule update --init --recursive` then rebuild |
 
 ## Common Operations
 

@@ -55,10 +55,13 @@ install_docker
 # 3. Clone repo if not already in it
 echo -e "${YELLOW}[3/4] Setting up repository...${NC}"
 if [ ! -f "pyproject.toml" ]; then
-    git clone https://github.com/KoroMind/KoroMind.git
+    git clone -b local-setup-docs --recurse-submodules https://github.com/KoroMind/KoroMind.git
     cd KoroMind
 fi
 REPO_DIR=$(pwd)
+
+# Ensure required submodules are present for Docker build context.
+git submodule update --init --recursive
 
 # 4. Create .env if it doesn't exist
 echo -e "${YELLOW}[4/4] Setting up configuration...${NC}"

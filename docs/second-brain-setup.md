@@ -229,7 +229,24 @@ Recommended mode:
 - ask Koro to create/update notes, maintain `_INDEX.md`, and manage tasks
 - keep write operations deterministic by using full paths
 
-## 7. First Notes to Fill In
+## 7. Optional: Track the Vault with Git
+
+You can make the whole vault a Git repository for version history, rollback, and backup sync.
+
+```bash
+cd "$VAULT"
+git init
+git add .
+git commit -m "Initial second-brain structure"
+```
+
+Recommended:
+
+- add a private remote repository for backup
+- commit frequently after meaningful note updates
+- avoid committing highly sensitive files from `private/` unless the remote is trusted and encrypted
+
+## 8. First Notes to Fill In
 
 - `README.md` (how your vault works)
 - `notes/_INDEX.md` (main map of notes)

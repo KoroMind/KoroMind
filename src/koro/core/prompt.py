@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 
 from koro.core.config import (
     BASE_DIR,
@@ -142,13 +143,16 @@ class PromptManager:
 
 # Default instance
 _prompt_manager: PromptManager | None = None
+_prompt_manager_lock = Lock()
 
 
 def get_prompt_manager() -> PromptManager:
     """Get or create the default prompt manager instance."""
     global _prompt_manager
     if _prompt_manager is None:
-        _prompt_manager = PromptManager()
+        with _prompt_manager_lock:
+            if _prompt_manager is None:
+                _prompt_manager = PromptManager()
     return _prompt_manager
 
 

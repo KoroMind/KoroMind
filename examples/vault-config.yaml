@@ -1,0 +1,109 @@
+# KoroMind Vault Configuration
+# =============================
+#
+# This file configures user-specific settings for KoroMind.
+# Core settings (model, cwd, etc.) are provided via environment variables.
+#
+# Place this file at: {KOROMIND_DATA_DIR}/vault-config.yaml
+# Default location: ~/.koromind/vault-config.yaml
+#
+# Path Resolution:
+# - Relative paths (starting with ./ or no /) are relative to vault root
+# - Absolute paths are used as-is
+# - ~ is expanded to home directory
+
+# =============================================================================
+# MCP Servers
+# =============================================================================
+# Model Context Protocol servers to enable.
+# Each server provides additional tools to the agent.
+#
+# Point to a JSON file (standard Claude Code mcp.json format):
+# mcp_servers: "./mcp.json"
+#
+# The JSON file should contain a "mcpServers" key:
+# {
+#   "mcpServers": {
+#     "sqlite": {
+#       "command": "uvx",
+#       "args": ["mcp-server-sqlite", "--db-path", "./data.db"]
+#     }
+#   }
+# }
+#
+# Or define servers inline:
+# mcp_servers:
+#   sqlite:
+#     command: "uvx"
+#     args: ["mcp-server-sqlite", "--db-path", "./data.db"]
+
+# =============================================================================
+# Subagents
+# =============================================================================
+# Custom agents that can be invoked during conversations.
+# Model accepts: "sonnet", "opus", "haiku", "inherit" (from parent).
+# Use prompt for inline text, or prompt_file for a markdown file path.
+agents:
+  # Example: Research assistant
+  # researcher:
+  #   model: "haiku"
+  #   description: "Research assistant for complex questions"
+  #   prompt: "You are a research assistant. Focus on gathering accurate information."
+  #   tools: ["WebSearch", "WebFetch", "Read"]
+
+  # Example: Research assistant with prompt from file
+  # researcher:
+  #   model: "sonnet"
+  #   description: "Deep research agent"
+  #   prompt_file: "./agents/researcher.md"
+  #   tools: ["WebSearch", "WebFetch", "Read"]
+
+  # Example: Code reviewer
+  # reviewer:
+  #   model: "sonnet"
+  #   description: "Code reviewer for bugs and security"
+  #   prompt: "You are a code reviewer. Look for bugs, security issues, and improvements."
+  #   tools: ["Read", "Grep", "Glob"]
+
+# =============================================================================
+# Hooks
+# =============================================================================
+# Commands that run before or after tool executions.
+#
+# Events: PreToolUse, PostToolUse, SessionStart, SessionEnd
+hooks:
+  # Example: Validate bash commands before execution
+  # PreToolUse:
+  #   - matcher: "Bash"
+  #     hooks:
+  #       - type: command
+  #         command: "./hooks/validate-bash.sh"
+
+  # Example: Format code after editing
+  # PostToolUse:
+  #   - matcher: "Write|Edit"
+  #     hooks:
+  #       - type: command
+  #         command: "./hooks/format-code.sh"
+
+# =============================================================================
+# Sandbox Settings
+# =============================================================================
+# Controls bash command isolation for security.
+sandbox:
+  # Enable sandboxing (macOS/Linux only)
+  enabled: false
+
+  # Auto-approve bash when sandboxed
+  auto_allow_bash_if_sandboxed: true
+
+  # Commands that are allowed to bypass sandbox restrictions
+  white_listed_commands:
+    - "git"
+    - "docker"
+
+# =============================================================================
+# Plugins
+# =============================================================================
+# SDK plugins to load.
+# plugins: []

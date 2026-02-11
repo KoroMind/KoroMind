@@ -13,13 +13,17 @@ Full lessons with examples, explanations, and checklists:
 
 | Lesson | Focus |
 |--------|-------|
-| [typed-boundaries](lessons/typed-boundaries.md) | Parse into Pydantic at boundary |
-| [singleton-safety](lessons/singleton-safety.md) | Prefer DI over singletons; lock if unavoidable |
+| [boundaries](lessons/boundaries.md) | Parse into Pydantic + normalize types at entry |
+| [pydantic-discipline](lessons/pydantic-discipline.md) | extra="forbid", default_factory, safe validators |
 | [explicit-over-implicit](lessons/explicit-over-implicit.md) | Exceptions > strings, isinstance > hasattr |
+| [domain-error-boundaries](lessons/domain-error-boundaries.md) | Wrap raw exceptions into domain error types |
 | [parameter-objects](lessons/parameter-objects.md) | >5 params → config object |
-| [sql-safety](lessons/sql-safety.md) | Parameterized queries always |
-| [normalize-at-boundaries](lessons/normalize-at-boundaries.md) | Pick canonical type, convert at entry |
+| [callback-isolation](lessons/callback-isolation.md) | Isolate interface callbacks: try/except + sync/async parity |
+| [load-at-init-not-per-request](lessons/load-at-init-not-per-request.md) | Pre-load static resources at startup |
+| [singleton-safety](lessons/singleton-safety.md) | Prefer DI over singletons; lock if unavoidable |
 | [refactoring-chain](lessons/refactoring-chain.md) | Update all consumers when changing types |
+| [model-dump-over-getattr](lessons/model-dump-over-getattr.md) | Use model_dump() not getattr loops |
+| [sql-safety](lessons/sql-safety.md) | Parameterized queries always |
 
 ## Quick Reference
 
@@ -40,6 +44,8 @@ One-liner smells that don't need full lessons:
 | Ad-hoc Callable aliases | Unclear signatures | Use `Protocol` for callback types |
 | Duplicated logic | Drift, maintenance burden | Extract shared logic to helpers |
 | Blocking I/O in async | Event loop stalls | Use `aiofiles`, `httpx.AsyncClient`, `asyncio.sleep` |
+| Unguarded `json.dumps()` on unknown data | TypeError crash on non-serializable SDK objects | `json.dumps(..., default=str)` + try/except |
+| Subprocess without timeout | Hung child blocks event loop forever | `asyncio.wait_for()` + `proc.kill()` on timeout |
 | Bare `except Exception` | Swallows unexpected errors | Catch specific exceptions only |
 | Large try blocks | Unclear what failed | Keep try blocks small, isolate risky ops |
 | Defensive programming in core | Unnecessary checks, noise | Validate at boundaries only, trust internals |
@@ -57,11 +63,11 @@ One-liner smells that don't need full lessons:
 ```markdown
 ## Coding Lessons Review
 
-### ✅ Passed
-- **typed-boundaries**: All external data parsed into Pydantic models
+### Passed
+- **boundaries**: All external data parsed into Pydantic models
 - **sql-safety**: All queries parameterized
 
-### ⚠️ Issues Found
+### Issues Found
 
 #### singleton-safety
 - `src/foo.py:42` - Global `_client` lacks lock protection
@@ -71,7 +77,7 @@ One-liner smells that don't need full lessons:
 - `src/api/routes.py:89` - `BrainError` bubbles as 500
 - **Fix**: Add exception handler mapping to 4xx/5xx
 
-### 📊 Summary
+### Summary
 - Lessons checked: 6
 - Quick refs checked: 9
 - Passed: 12
@@ -81,13 +87,17 @@ One-liner smells that don't need full lessons:
 ## Full Checklist
 
 ### Detailed Lessons
-- [ ] **typed-boundaries**: External data → Pydantic immediately? No `dict[str, Any]`?
-- [ ] **singleton-safety**: Can use DI instead? If singleton unavoidable, has lock?
+- [ ] **boundaries**: External data → Pydantic immediately? IDs normalized at entry? No `dict[str, Any]`?
+- [ ] **pydantic-discipline**: extra="forbid"? default_factory for mutables? Validators copy data? info typed as ValidationInfo?
 - [ ] **explicit-over-implicit**: No string errors? isinstance not hasattr?
+- [ ] **domain-error-boundaries**: Each layer has domain error type? Raw exceptions wrapped with `from e`?
 - [ ] **parameter-objects**: Functions >5 params use config objects?
-- [ ] **sql-safety**: All SQL parameterized? No f-strings with user data?
-- [ ] **normalize-at-boundaries**: IDs normalized at entry? One canonical type?
+- [ ] **callback-isolation**: Callbacks wrapped in try/except? `_maybe_await` for sync/async? Same pattern in all paths?
+- [ ] **load-at-init-not-per-request**: No sync file I/O in request paths? Static content pre-loaded at init?
+- [ ] **singleton-safety**: Can use DI instead? If singleton unavoidable, has lock?
 - [ ] **refactoring-chain**: All consumers updated? Tests use production types? Re-fetch after mutations?
+- [ ] **model-dump-over-getattr**: Using model_dump() not getattr loops? include/exclude for field selection?
+- [ ] **sql-safety**: All SQL parameterized? No f-strings with user data?
 
 ### Quick Reference
 - [ ] Event types narrowed before field access?
@@ -103,6 +113,8 @@ One-liner smells that don't need full lessons:
 - [ ] Callbacks use Protocol, not raw Callable?
 - [ ] Shared logic extracted to helpers?
 - [ ] Async code uses async I/O (aiofiles, httpx)?
+- [ ] `json.dumps()` on external/SDK data uses `default=str` fallback?
+- [ ] All subprocesses have timeouts with kill cleanup?
 - [ ] Specific exceptions caught, not bare except?
 - [ ] Try blocks small and focused?
 - [ ] Validation at boundaries, not deep in core?

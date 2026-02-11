@@ -55,6 +55,31 @@ class OnToolCall(Protocol):
         pass
 
 
+class OnProgress(Protocol):
+    """Callback signature for progress notifications."""
+
+    def __call__(self, message: str) -> None:
+        pass
+
+
+@dataclass(frozen=True)
+class BrainCallbacks:
+    """Callbacks for Brain operations (Decision 4 from architecture).
+
+    Structured callbacks for interface integration. None = feature disabled.
+    Legacy on_tool_call/can_use_tool params still work but prefer this.
+    """
+
+    on_tool_use: OnToolCall | None = None
+    """Called when a tool is used (watch mode). Async."""
+
+    on_tool_approval: CanUseTool | None = None
+    """Called to approve tool use (approve mode). SDK-compatible signature."""
+
+    on_progress: OnProgress | None = None
+    """Called with progress updates during processing. Sync."""
+
+
 class ClaudeTools(StrEnum):
     """Claude tool names for allowed tool lists."""
 
@@ -86,6 +111,7 @@ DEFAULT_CLAUDE_TOOLS = [
 # Re-export SDK types for convenience
 __all__ = [
     "AgentDefinition",
+    "BrainCallbacks",
     "BrainResponse",
     "CanUseTool",
     "ClaudeTools",
@@ -97,10 +123,12 @@ __all__ = [
     "McpServerConfig",
     "MessageType",
     "Mode",
+    "OnProgress",
     "OnToolCall",
     "OutputFormat",
     "PermissionResult",
     "PermissionResultAllow",
+    "ProcessRequest",
     "PermissionResultDeny",
     "ProjectConfig",
     "SandboxSettings",
@@ -130,6 +158,26 @@ class Mode(Enum):
 
     GO_ALL = "go_all"
     APPROVE = "approve"
+
+
+@dataclass(frozen=True)
+class ProcessRequest:
+    """Request configuration for Brain message processing.
+
+    Bundles common parameters shared by process_message() and
+    process_message_stream(). Pass this instead of individual keyword
+    arguments to keep call sites stable as the API grows.
+    """
+
+    user_id: str
+    content: str | bytes
+    content_type: MessageType
+    session_id: str | None = None
+    mode: Mode = Mode.GO_ALL
+    include_audio: bool = True
+    voice_speed: float = 1.1
+    watch_enabled: bool = False
+    callbacks: BrainCallbacks | None = None
 
 
 class UserSettings(BaseModel, frozen=True):

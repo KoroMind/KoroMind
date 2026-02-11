@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import koro.voice as voice_module
-from koro.voice import VoiceEngine
+from koro.voice import VoiceEngine, VoiceNotConfiguredError, VoiceTranscriptionError
 
 
 class TestVoiceEngine:
@@ -43,8 +43,9 @@ class TestVoiceEngine:
         """Methods fail gracefully without a configured client."""
         engine = VoiceEngine.__new__(VoiceEngine)
         engine.client = None
+        engine.voice_id = None
         if method == "transcribe":
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(VoiceNotConfiguredError) as exc_info:
                 await getattr(engine, method)(*args)
             assert expected in str(exc_info.value).lower()
         else:
@@ -78,11 +79,11 @@ class TestVoiceEngine:
         engine = VoiceEngine(api_key="test_key")
         engine.client = MagicMock()
         if method == "transcribe":
-            engine.client.speech_to_text.convert.side_effect = Exception("API error")
+            engine.client.speech_to_text.convert.side_effect = RuntimeError("API error")
         else:
-            engine.client.text_to_speech.convert.side_effect = Exception("API error")
+            engine.client.text_to_speech.convert.side_effect = RuntimeError("API error")
         if method == "transcribe":
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(VoiceTranscriptionError) as exc_info:
                 await getattr(engine, method)(*args)
             assert "api error" in str(exc_info.value).lower()
         else:
@@ -101,6 +102,17 @@ class TestVoiceEngine:
         assert len(result.getvalue()) > 0
 
     @pytest.mark.asyncio
+    async def test_text_to_speech_returns_none_for_non_iterable_audio(self):
+        """text_to_speech returns None when SDK output is not chunk-iterable."""
+        engine = VoiceEngine(api_key="test_key")
+        engine.client = MagicMock()
+        engine.client.text_to_speech.convert.return_value = object()
+
+        result = await engine.text_to_speech("Hello test")
+
+        assert result is None
+
+    @pytest.mark.asyncio
     async def test_text_to_speech_with_custom_speed(self, mock_elevenlabs_client):
         """text_to_speech uses custom speed."""
         engine = VoiceEngine(api_key="test_key")
@@ -115,6 +127,7 @@ class TestVoiceEngine:
         """health_check fails without client."""
         engine = VoiceEngine.__new__(VoiceEngine)
         engine.client = None
+        engine.voice_id = None
 
         success, message = engine.health_check()
 

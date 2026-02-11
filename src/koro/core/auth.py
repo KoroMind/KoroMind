@@ -62,14 +62,18 @@ def load_credentials() -> dict[str, str]:
 
 def save_credentials(creds: dict[str, Any]) -> None:
     """Save credentials to file with secure permissions from creation."""
-    # Use os.open to create file with correct permissions atomically
+    # Use os.open to create file with correct permissions atomically.
+    # os.fdopen() takes ownership of the fd, so we must NOT close it manually
+    # after os.fdopen() succeeds (the `with` block handles that).
+    # We only need a manual close if os.fdopen() itself fails.
     fd = os.open(CREDENTIALS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(creds, f, indent=2)
+        f = os.fdopen(fd, "w")
     except Exception:
         os.close(fd)
         raise
+    with f:
+        json.dump(creds, f, indent=2)
 
 
 def apply_saved_credentials() -> tuple[str | None, str | None]:

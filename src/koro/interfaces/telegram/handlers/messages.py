@@ -3,25 +3,17 @@
 import asyncio
 import time
 import uuid
-from typing import Any
+from typing import Any, TypedDict
 
-from telegram import (
-    Chat,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-    Update,
-    User,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from koro.claude import format_tool_call, get_claude_client
-from koro.config import ALLOWED_CHAT_ID
 from koro.core.types import Mode, QueryConfig, UserSessionState, UserSettings
 from koro.interfaces.telegram.handlers.utils import (
+    authorized_handler,
     debug,
     send_long_message,
-    should_handle_message,
     start_chat_action,
     stop_chat_action,
 )
@@ -29,24 +21,26 @@ from koro.rate_limit import get_rate_limiter
 from koro.state import get_state_manager
 from koro.voice import VoiceError, get_voice_engine
 
+
+class PendingApproval(TypedDict):
+    """Runtime state for an approve/reject tool request."""
+
+    created_at: float
+    user_id: str
+    event: asyncio.Event
+    approved: bool | None
+    tool_name: str
+    input: dict[str, Any]
+
+
 # Pending tool approvals for approve mode
-pending_approvals: dict[str, dict[str, Any]] = {}
+pending_approvals: dict[str, PendingApproval] = {}
 
 # Maximum number of pending approvals to prevent memory leaks
 MAX_PENDING_APPROVALS = 100
 
 
-def _extract_update_context(update: Update) -> tuple[Message, Chat, User] | None:
-    """Return required Telegram entities for message handlers."""
-    message = update.message
-    chat = update.effective_chat
-    user = update.effective_user
-    if message is None or chat is None or user is None:
-        return None
-    return message, chat, user
-
-
-def add_pending_approval(approval_id: str, data: dict[str, Any]) -> None:
+def add_pending_approval(approval_id: str, data: PendingApproval) -> None:
     """
     Add a pending approval with automatic cleanup of old entries.
 
@@ -89,23 +83,15 @@ def cleanup_stale_approvals(max_age_seconds: int = 300) -> None:
         del pending_approvals[approval_id]
 
 
+@authorized_handler
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle incoming voice messages."""
-    update_ctx = _extract_update_context(update)
-    if update_ctx is None:
-        return
-    message, chat, user = update_ctx
-
-    if user.is_bot is True:
+    user = update.effective_user
+    message = update.message
+    if user is None or message is None or user.is_bot is True:
         return
 
     debug(f"VOICE received from user {user.id}")
-
-    if not should_handle_message(message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and chat.id != ALLOWED_CHAT_ID:
-        return
 
     user_id = str(user.id)
 
@@ -126,9 +112,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         # Download voice
         if message.voice is None:
-            await processing_msg.edit_text("Error: No voice payload found.")
+            await processing_msg.edit_text("No voice attachment found.")
             return
-
         voice = await message.voice.get_file()
         voice_bytes = await voice.download_as_bytearray()
 
@@ -147,7 +132,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         # Call Claude
         response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, user_id, message, context
+            text, state, settings, user_id, update, context
         )
 
         # Update session
@@ -173,24 +158,18 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await stop_chat_action(typing_task)
 
 
+@authorized_handler
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle text messages."""
-    update_ctx = _extract_update_context(update)
-    if update_ctx is None:
-        return
-    message, chat, user = update_ctx
-
-    if user.is_bot is True:
+    user = update.effective_user
+    message = update.message
+    if user is None or message is None or user.is_bot is True:
         return
 
-    text = message.text or ""
+    text = message.text
+    if not text:
+        return
     debug(f"TEXT received: '{text[:50]}'")
-
-    if not should_handle_message(message.message_thread_id):
-        return
-
-    if ALLOWED_CHAT_ID != 0 and chat.id != ALLOWED_CHAT_ID:
-        return
 
     user_id = str(user.id)
 
@@ -209,7 +188,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     try:
         response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, user_id, message, context
+            text, state, settings, user_id, update, context
         )
 
         # Update session
@@ -241,7 +220,7 @@ async def _call_claude_with_settings(
     state: UserSessionState,
     settings: UserSettings,
     user_id: str,
-    message: Message,
+    update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> tuple[str, str, dict[str, Any]]:
     """
@@ -251,7 +230,7 @@ async def _call_claude_with_settings(
         text: User message
         state: User session state
         settings: User settings
-        message: Telegram message
+        update: Telegram update
         context: Telegram context
 
     Returns:
@@ -267,7 +246,9 @@ async def _call_claude_with_settings(
         if watch_enabled:
             tool_msg = f"{tool_name}: {detail}" if detail else f"Using: {tool_name}"
             try:
-                await message.reply_text(tool_msg)
+                message = update.message
+                if message is not None:
+                    await message.reply_text(tool_msg)
             except Exception as exc:
                 debug(f"Failed to send tool call update: {exc}")
 
@@ -277,6 +258,10 @@ async def _call_claude_with_settings(
 
         if mode != Mode.APPROVE:
             return PermissionResultAllow()
+
+        message = update.message
+        if message is None:
+            return PermissionResultDeny(message="Missing message context")
 
         approval_id = str(uuid.uuid4())[:8]
         approval_event = asyncio.Event()
@@ -315,8 +300,8 @@ async def _call_claude_with_settings(
             pending_approvals.pop(approval_id, None)
             raise
 
-        approval_data = pending_approvals.pop(approval_id, {})
-        if approval_data.get("approved"):
+        approval_data: PendingApproval | None = pending_approvals.pop(approval_id, None)
+        if approval_data is not None and approval_data["approved"]:
             return PermissionResultAllow()
         return PermissionResultDeny(message="User rejected tool")
 

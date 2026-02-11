@@ -1,11 +1,13 @@
 """Claude SDK wrapper for agent interactions."""
 
+import inspect
 import json
 import logging
 import os
 import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from claude_agent_sdk import (
@@ -360,9 +362,19 @@ class ClaudeClient:
                                     isinstance(block, ToolUseBlock)
                                     and stream_config.on_tool_call
                                 ):
-                                    tool_input = block.input or {}
-                                    detail = get_tool_detail(block.name, tool_input)
-                                    await stream_config.on_tool_call(block.name, detail)
+                                    try:
+                                        tool_input = block.input or {}
+                                        detail = get_tool_detail(block.name, tool_input)
+                                        result = stream_config.on_tool_call(
+                                            block.name, detail
+                                        )
+                                        if inspect.isawaitable(result):
+                                            await result
+                                    except Exception:
+                                        logger.warning(
+                                            "on_tool_call callback failed",
+                                            exc_info=True,
+                                        )
                         yield message
                 finally:
                     self._active_client = None
@@ -411,13 +423,16 @@ class ClaudeClient:
 
 # Default instance
 _claude_client: ClaudeClient | None = None
+_claude_client_lock = Lock()
 
 
 def get_claude_client() -> ClaudeClient:
     """Get or create the default Claude client instance."""
     global _claude_client
     if _claude_client is None:
-        _claude_client = ClaudeClient()
+        with _claude_client_lock:
+            if _claude_client is None:
+                _claude_client = ClaudeClient()
     return _claude_client
 
 

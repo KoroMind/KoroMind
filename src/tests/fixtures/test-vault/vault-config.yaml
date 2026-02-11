@@ -1,0 +1,34 @@
+# KoroMind Vault Configuration
+# Your second brain, configured.
+
+# MCP servers loaded from JSON file
+mcp_servers: "./mcp.json"
+
+# Subagents with tools
+agents:
+  researcher:
+    model: "haiku"
+    description: "Deep research assistant for complex questions"
+    prompt_file: "./agents/researcher.md"
+    tools:
+      - WebSearch
+      - WebFetch
+      - Read
+      - Grep
+      - Glob
+
+# Safety rails
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "./hooks/safety.sh"
+
+# Sandbox settings
+sandbox:
+  enabled: false
+  auto_allow_bash_if_sandboxed: true
+  white_listed_commands:
+    - git
+    - docker

@@ -8,6 +8,7 @@ dependencies = [
     "elevenlabs>=1.0.0,<2.0.0",
     "python-dotenv>=1.0.0,<2.0.0",
     "claude-agent-sdk>=0.1.0",
+    "pyyaml>=6.0.0",  # For vault config loading
     # API dependencies
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
@@ -32,6 +33,7 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "mypy>=1.11.0",
+    "types-PyYAML>=6.0.12",
     "pre-commit>=4.5.1",
     "httpx>=0.27.0",  # For API testing
     "watchfiles>=0.21.0",
@@ -49,6 +51,7 @@ testpaths = ["src/tests"]
 pythonpath = ["src"]
 markers = [
     "live: marks tests as requiring live API keys (deselect with '-m \"not live\"')",
+    "eval: marks tests as agent-evaluated (non-deterministic quality checks)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

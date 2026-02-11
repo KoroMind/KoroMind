@@ -2,11 +2,13 @@
 
 import asyncio
 from io import BytesIO
-from typing import Any
+from threading import Lock
+from typing import Any, Iterable
 
+from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
 from elevenlabs.core import ApiError
-from elevenlabs.types import SpeechToTextChunkResponseModel, VoiceSettings
+from elevenlabs.types import SpeechToTextChunkResponseModel
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
 
@@ -53,9 +55,9 @@ class VoiceEngine:
         Returns:
             Transcribed text or error message
         """
-        if not self.client:
-            raise VoiceNotConfiguredError("ElevenLabs not configured")
         client = self.client
+        if not client:
+            raise VoiceNotConfiguredError("ElevenLabs not configured")
 
         def _transcribe_sync() -> SpeechToTextChunkResponseModel:
             return client.speech_to_text.convert(
@@ -66,11 +68,12 @@ class VoiceEngine:
 
         try:
             transcription = await asyncio.to_thread(_transcribe_sync)
-            return transcription.text
         except ApiError as exc:
-            return f"Error: {exc}"
+            raise VoiceTranscriptionError(f"ElevenLabs API error: {exc}") from exc
         except (RuntimeError, ValueError, TypeError) as exc:
             raise VoiceTranscriptionError(str(exc)) from exc
+
+        return transcription.text
 
     async def text_to_speech(
         self, text: str, speed: float | None = None
@@ -85,16 +88,17 @@ class VoiceEngine:
         Returns:
             Audio buffer or None on error
         """
-        if not self.client:
-            return None
         client = self.client
+        voice_id = self.voice_id
+        if not client or voice_id is None:
+            return None
 
         actual_speed = speed if speed is not None else VOICE_SETTINGS["speed"]
 
         def _tts_sync() -> Any:
             return client.text_to_speech.convert(
                 text=text,
-                voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
+                voice_id=voice_id,
                 model_id="eleven_turbo_v2_5",
                 output_format="mp3_44100_128",
                 voice_settings=VoiceSettings(
@@ -108,6 +112,8 @@ class VoiceEngine:
 
         try:
             audio = await asyncio.to_thread(_tts_sync)
+            if not isinstance(audio, Iterable):
+                return None
 
             audio_buffer = BytesIO()
             for chunk in audio:
@@ -125,13 +131,13 @@ class VoiceEngine:
         Returns:
             (success, message)
         """
-        if not self.client:
+        if not self.client or self.voice_id is None:
             return False, "ElevenLabs not configured"
 
         try:
             audio = self.client.text_to_speech.convert(
                 text="test",
-                voice_id=self.voice_id or ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb",
+                voice_id=self.voice_id,
                 model_id="eleven_turbo_v2_5",
             )
             size = sum(len(c) for c in audio if isinstance(c, bytes))
@@ -142,13 +148,16 @@ class VoiceEngine:
 
 # Default instance
 _voice_engine: VoiceEngine | None = None
+_voice_engine_lock = Lock()
 
 
 def get_voice_engine() -> VoiceEngine:
     """Get or create the default voice engine instance."""
     global _voice_engine
     if _voice_engine is None:
-        _voice_engine = VoiceEngine(api_key=ELEVENLABS_API_KEY)
+        with _voice_engine_lock:
+            if _voice_engine is None:
+                _voice_engine = VoiceEngine(api_key=ELEVENLABS_API_KEY)
     return _voice_engine
 
 

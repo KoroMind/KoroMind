@@ -3,8 +3,8 @@ id: SVC-004
 type: service
 status: active
 severity: critical
-issue: null
-validated: 2026-01-29
+issue: 38
+validated: 2026-02-08
 ---
 
 # Brain Service
@@ -33,17 +33,29 @@ Input → Brain.process_message() → [STT if voice] → Claude → [Tools] → 
 |--------|---------|
 | `process_message()` | Main entry: handles voice/text, returns BrainResponse |
 | `process_message_stream()` | Async generator: yields partial events (`StreamEvent`) |
-| `interrupt()` | Stop current running execution |
 | `process_text()` | Text-only shorthand |
 | `process_voice()` | Voice-only shorthand |
+| `interrupt()` | Stop current running execution |
+| `get_sessions()` | List all sessions for a user |
+| `create_session()` | Create new session |
+| `get_current_session()` | Get active session |
+| `switch_session()` | Switch active session |
+| `get_settings()` | Get user settings |
+| `update_settings()` | Update user settings |
+| `check_rate_limit()` | Per-user rate limiting |
+| `health_check()` | Check claude + voice health |
 
 ### Modes
 - **GO_ALL**: Auto-execute all tool calls
 - **APPROVE**: Call `can_use_tool` callback for each tool (interface shows UI)
 
-### Watch Mode
-- `on_tool_call` callback streams tool executions to interface
-- Enables real-time visibility into Claude's actions
+### Callbacks Pattern (Decision 4)
+Structured callbacks via `BrainCallbacks` dataclass:
+- `on_tool_use: OnToolCall` - Called when tools execute (watch mode)
+- `on_tool_approval: CanUseTool` - Called to approve tool use (approve mode)
+- `on_progress: OnProgress` - Called with status updates during processing
+- None callback = feature disabled gracefully
+- Legacy `on_tool_call` and `can_use_tool` params still work
 
 ### Claude Integration
 - **Full SDK Parity**: Supports all `ClaudeAgentOptions` including hooks, MCP servers, subagents, plugins, and sandbox settings
@@ -76,7 +88,21 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - `StreamEvent`: Detailed events (tool use, content block deltas)
 - `ResultMessage`: Final completion data
 
+### Vault Integration
+```python
+Brain(vault_path="~/.koromind")  # Load user's vault
+```
+
+**Config flow:**
+1. `_resolve_request_context()` calls `Vault.load()` → frozen `VaultConfig`
+2. `_build_query_config()` calls `vault_config.model_dump()` → dict
+3. Dict merged with explicit kwargs (kwargs win)
+4. Merged `QueryConfig` passed to `ClaudeClient`
+
+**Supported vault options:** hooks, mcp_servers, agents, plugins, sandbox
+
 ### Dependencies
+- `Vault` - configuration loading (optional)
 - `StateManager` - session/settings persistence
 - `VoiceEngine` - STT/TTS (optional)
 - `RateLimiter` - per-user throttling
@@ -94,6 +120,18 @@ The Brain now exposes the full power of the Claude Agent SDK:
 - Structured output returned when requested
 
 ## Changelog
+
+### 2026-02-08 (Issue #38)
+- Added `BrainCallbacks` frozen dataclass for structured event handling
+- Callbacks: on_tool_use, on_tool_approval, on_progress
+- Extracted `_resolve_request_context()` shared setup helper
+- Added session/settings/rate-limit/health methods to Brain API
+- Backward compatible with legacy params
+
+### 2026-02-01
+- Added vault integration for stateless configuration
+- Config merging: vault config + explicit kwargs
+- Added debug logging throughout
 
 ### 2026-01-31
 - Added full Claude SDK support (Hooks, MCP, Agents, Plugins)

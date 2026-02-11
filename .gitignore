@@ -34,8 +34,10 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+.claude/settings.local.json
+
+# Secrets
 credentials.json
 
-# Claude
-.claude/
-credentials.json
+# Sandbox (Claude working directory)
+sandbox/

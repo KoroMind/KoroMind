@@ -1,3 +1,0 @@
-[submodule ".claude-settings"]
-	path = .claude-settings
-	url = https://github.com/ToruAI/toru-claude-settings.git

@@ -9,30 +9,68 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 
 def get_env(key: str, default: str | None = None) -> str | None:
     """Get environment variable with optional default."""
-    return os.getenv(key, default)
+    value = os.getenv(key)
+    if value is None and default is not None:
+        logger.warning(
+            "Environment variable %s is not set; falling back to default value %r",
+            key,
+            default,
+        )
+        return default
+    return value
 
 
 def get_env_int(key: str, default: int) -> int:
     """Get environment variable as integer."""
     value = os.getenv(key)
     if value is None:
+        logger.warning(
+            "Environment variable %s is not set; falling back to default value %r",
+            key,
+            default,
+        )
         return default
     try:
         return int(value)
     except ValueError:
+        logger.warning(
+            "Environment variable %s value %r is not a valid integer; "
+            "falling back to default value %r",
+            key,
+            value,
+            default,
+        )
         return default
 
 
 def get_env_bool(key: str, default: bool = False) -> bool:
     """Get environment variable as boolean."""
-    value = os.getenv(key, "").lower()
-    if value in ("true", "1", "yes"):
+    value = os.getenv(key)
+    if value is None:
+        logger.warning(
+            "Environment variable %s is not set; falling back to default value %r",
+            key,
+            default,
+        )
+        return default
+
+    normalized = value.lower()
+    if normalized in ("true", "1", "yes"):
         return True
-    if value in ("false", "0", "no"):
+    if normalized in ("false", "0", "no"):
         return False
+    logger.warning(
+        "Environment variable %s value %r is not a valid boolean; "
+        "falling back to default value %r",
+        key,
+        value,
+        default,
+    )
     return default
 
 

@@ -25,21 +25,21 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 if [ "${INSTALL_DOCKER}" -eq 1 ]; then
-    SYS_STEP="1/7"
-    UV_STEP="3/7"
-    REPO_STEP="4/7"
-    VENV_STEP="5/7"
-    ENV_STEP="6/7"
-    SYSTEMD_STEP="7/7"
-    DOCKER_STEP="2/7"
+    SYS_STEP="1/6"
+    DOCKER_STEP="2/6"
+    UV_STEP="3/6"
+    REPO_STEP="4/6"
+    VENV_STEP="5/6"
+    ENV_STEP="6/6"
+    SYSTEMD_STEP=""
 else
     SYS_STEP="1/6"
+    DOCKER_STEP=""
     UV_STEP="2/6"
     REPO_STEP="3/6"
     VENV_STEP="4/6"
     ENV_STEP="5/6"
     SYSTEMD_STEP="6/6"
-    DOCKER_STEP=""
 fi
 
 install_docker() {
@@ -112,6 +112,7 @@ else
 fi
 
 # 6. Create systemd service for Telegram bot
+if [ "${INSTALL_DOCKER}" -ne 1 ]; then
 echo -e "${YELLOW}[${SYSTEMD_STEP}] Creating systemd service...${NC}"
 sudo tee /etc/systemd/system/koromind-telegram.service > /dev/null <<EOF
 [Unit]
@@ -132,6 +133,7 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
+fi
 
 echo ""
 echo -e "${GREEN}=== Setup Complete ===${NC}"
@@ -152,14 +154,21 @@ echo "   - KOROMIND_DATA_DIR"
 echo "   - CLAUDE_WORKING_DIR"
 echo "   - CLAUDE_SANDBOX_DIR"
 echo ""
-echo "2. Start the service:"
-echo "   sudo systemctl enable --now koromind-telegram"
-echo ""
-echo "3. Check logs:"
-echo "   sudo journalctl -u koromind-telegram -f"
 if [ "${INSTALL_DOCKER}" -eq 1 ]; then
     echo ""
-    echo "Docker was installed."
+    echo "2. Start with Docker Compose:"
+    echo "   docker compose -f $REPO_DIR/docker-compose.yml up -d --build"
+    echo ""
+    echo "3. Check logs:"
+    echo "   docker compose -f $REPO_DIR/docker-compose.yml logs -f koro"
+    echo ""
+    echo "Docker was installed and enabled."
     echo "If 'docker' is still denied for your user, reconnect SSH or run: newgrp docker"
+else
+    echo "2. Start the service:"
+    echo "   sudo systemctl enable --now koromind-telegram"
+    echo ""
+    echo "3. Check logs:"
+    echo "   sudo journalctl -u koromind-telegram -f"
 fi
 echo ""

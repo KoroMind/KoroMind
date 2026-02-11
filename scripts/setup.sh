@@ -66,6 +66,15 @@ install_docker() {
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     sudo systemctl enable --now docker
     sudo usermod -aG docker "$USER"
+
+    # Provide legacy `docker-compose` command for compatibility.
+    if ! command -v docker-compose >/dev/null 2>&1; then
+        sudo tee /usr/local/bin/docker-compose > /dev/null <<'EOF'
+#!/bin/sh
+exec docker compose "$@"
+EOF
+        sudo chmod +x /usr/local/bin/docker-compose
+    fi
 }
 
 # 1. Install system packages

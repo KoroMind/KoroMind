@@ -1,6 +1,6 @@
 #!/bin/bash
 # KoroMind Setup Script
-# Automates setup on a fresh Ubuntu 24.04 VM (GCP, AWS, or any Linux box)
+# Automates setup on a fresh Debian/Ubuntu VM (GCP, AWS, or any Linux box)
 set -e
 
 echo "=== KoroMind Setup ==="
@@ -13,11 +13,12 @@ NC='\033[0m' # No Color
 # 1. Install system packages
 echo -e "${YELLOW}[1/6] Installing system packages...${NC}"
 sudo apt-get update
-sudo apt-get install -y git python3.11 python3.11-venv python3-pip build-essential
+sudo apt-get install -y git python3 python3-venv curl build-essential
 
 # 2. Install uv
 echo -e "${YELLOW}[2/6] Installing uv...${NC}"
-python3.11 -m pip install --user uv --quiet
+# Use Astral's installer to avoid pip PEP 668 issues on Debian/Ubuntu.
+curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
 # Add to PATH permanently if not already there
@@ -35,7 +36,7 @@ REPO_DIR=$(pwd)
 
 # 4. Create venv and install dependencies
 echo -e "${YELLOW}[4/6] Creating virtual environment and installing dependencies...${NC}"
-uv venv -p python3.11
+uv venv -p python3
 source .venv/bin/activate
 uv sync --frozen
 

@@ -20,7 +20,7 @@ Have these ready before starting:
    - Firewall: No inbound rules needed for Telegram bot
 3. Create
 
-**Other clouds:** Any Ubuntu 24.04 VM with 2+ vCPU, 4GB+ RAM works.
+**Other clouds:** Any Debian/Ubuntu VM with 2+ vCPU, 4GB+ RAM works.
 
 ## 2. SSH In
 
@@ -32,12 +32,12 @@ gcloud compute ssh YOUR_VM_NAME --zone=YOUR_ZONE
 ## 3. Run Setup Script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/main/scripts/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/scripts/setup.sh | bash
 ```
 
 Or clone and run manually:
 ```bash
-git clone https://github.com/KoroMind/KoroMind.git
+git clone -b local-setup-docs https://github.com/KoroMind/KoroMind.git
 cd KoroMind
 ./scripts/setup.sh
 ```

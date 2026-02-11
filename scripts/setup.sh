@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 install_docker() {
-    echo -e "${YELLOW}[2/4] Installing Docker Engine + Compose plugin...${NC}"
+    echo -e "${YELLOW}[2/5] Installing Docker Engine + Compose plugin...${NC}"
     sudo apt-get install -y ca-certificates gnupg
     sudo install -m 0755 -d /etc/apt/keyrings
 
@@ -45,15 +45,46 @@ EOF
     fi
 }
 
+install_obsidian() {
+    echo -e "${YELLOW}[3/5] Installing Obsidian desktop app...${NC}"
+
+    if command -v obsidian >/dev/null 2>&1; then
+        echo "Obsidian CLI already available."
+        return
+    fi
+
+    ARCH=$(dpkg --print-architecture)
+    if [ "$ARCH" != "amd64" ] && [ "$ARCH" != "arm64" ]; then
+        echo "Warning: unsupported architecture for Obsidian package ($ARCH). Skipping install."
+        return
+    fi
+
+    OBSIDIAN_VERSION="1.11.7"
+    PKG_PATH="/tmp/obsidian_${OBSIDIAN_VERSION}_${ARCH}.deb"
+    PKG_URL="https://github.com/obsidianmd/obsidian-releases/releases/download/v${OBSIDIAN_VERSION}/obsidian_${OBSIDIAN_VERSION}_${ARCH}.deb"
+
+    if curl -fL "$PKG_URL" -o "$PKG_PATH"; then
+        if sudo apt-get install -y "$PKG_PATH"; then
+            echo "Installed Obsidian ${OBSIDIAN_VERSION} (${ARCH})."
+        else
+            echo "Warning: failed to install Obsidian package. You can install manually later."
+        fi
+        rm -f "$PKG_PATH"
+    else
+        echo "Warning: failed to download Obsidian package. You can install manually later."
+    fi
+}
+
 # 1. Install system packages
-echo -e "${YELLOW}[1/4] Installing system packages...${NC}"
+echo -e "${YELLOW}[1/5] Installing system packages...${NC}"
 sudo apt-get update
 sudo apt-get install -y git curl
 
 install_docker
+install_obsidian
 
-# 3. Clone repo if not already in it
-echo -e "${YELLOW}[3/4] Setting up repository...${NC}"
+# 4. Clone repo if not already in it
+echo -e "${YELLOW}[4/5] Setting up repository...${NC}"
 if [ ! -f "pyproject.toml" ]; then
     git clone -b local-setup-docs https://github.com/KoroMind/KoroMind.git
     cd KoroMind
@@ -75,8 +106,8 @@ git submodule update --init --recursive
 EOF
 fi
 
-# 4. Create .env if it doesn't exist
-echo -e "${YELLOW}[4/4] Setting up configuration...${NC}"
+# 5. Create .env if it doesn't exist
+echo -e "${YELLOW}[5/5] Setting up configuration...${NC}"
 if [ ! -f .env ]; then
     cp .env.example .env
     echo "Created .env from .env.example"
@@ -112,4 +143,6 @@ echo "   cd $REPO_DIR && docker-compose logs -f koro"
 echo ""
 echo "Docker was installed and enabled."
 echo "If 'docker' is still denied for your user, reconnect SSH or run: newgrp docker"
+echo "Obsidian was installed if a compatible package was available."
+echo "In Obsidian: Settings -> General -> Command line interface (enable it)."
 echo ""

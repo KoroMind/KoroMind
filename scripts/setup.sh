@@ -61,7 +61,7 @@ fi
 REPO_DIR=$(pwd)
 
 # Ensure required submodules are present for Docker build context.
-git config submodule..claude-settings.url https://github.com/ToruAI/toru-claude-settings.git || true
+git config submodule.\".claude-settings\".url https://github.com/ToruAI/toru-claude-settings.git || true
 git submodule sync --recursive
 if ! git submodule update --init --recursive; then
     echo "Warning: failed to fetch .claude-settings submodule; creating local fallback directory."

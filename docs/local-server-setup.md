@@ -86,6 +86,11 @@ docker compose up -d --build
 curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/scripts/setup.sh | bash
 ```
 
+If you also want Docker installed as part of this script run:
+```bash
+curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/scripts/setup.sh | bash -s -- --with-docker
+```
+
 Or clone and run manually:
 ```bash
 git clone -b local-setup-docs https://github.com/KoroMind/KoroMind.git

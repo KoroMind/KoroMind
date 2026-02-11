@@ -11,70 +11,7 @@ VAULT="$HOME/second-brain"
 mkdir -p "$VAULT"
 ```
 
-## 2. Scaffold the Full Structure
-
-Paste this command to create the proposed folders and starter files:
-
-```bash
-VAULT="$HOME/second-brain"   # change if needed
-mkdir -p "$VAULT"/{
-inbox/{voice-notes,web-clips,attachments},
-notes/{daily,lectures,meetings,videos,research,topics,people},
-knowledge/{howtos,snippets,concepts},
-tasks/projects,
-projects/{koromind/docs,actmate/docs,other-project},
-templates,
-ops/agent/playbooks,
-ops/{logs,backups,exports},
-private
-}
-
-touch \
-"$VAULT/AGENTS.md" \
-"$VAULT/README.md" \
-"$VAULT/inbox/quick-notes.md" \
-"$VAULT/knowledge/glossary.md" \
-"$VAULT/tasks/TODO.md" \
-"$VAULT/tasks/waiting-for.md" \
-"$VAULT/tasks/someday-maybe.md" \
-"$VAULT/projects/_manifest.yml" \
-"$VAULT/templates/note-template.md" \
-"$VAULT/templates/lecture-template.md" \
-"$VAULT/templates/meeting-template.md" \
-"$VAULT/templates/research-template.md" \
-"$VAULT/templates/video-template.md" \
-"$VAULT/templates/project-template.md" \
-"$VAULT/templates/decision-template.md" \
-"$VAULT/ops/agent/routing.md" \
-"$VAULT/ops/agent/conventions.md" \
-"$VAULT/ops/agent/memory-policy.md" \
-"$VAULT/ops/agent/playbooks/triage-inbox.md" \
-"$VAULT/ops/agent/playbooks/add-repo.md" \
-"$VAULT/ops/agent/playbooks/create-note.md" \
-"$VAULT/private/sensitive-notes.md" \
-"$VAULT/projects/koromind/AGENT.md" \
-"$VAULT/projects/actmate/AGENT.md" \
-"$VAULT/projects/other-project/AGENT.md"
-
-touch \
-"$VAULT/notes/_INDEX.md" \
-"$VAULT/notes/lectures/_INDEX.md" \
-"$VAULT/notes/meetings/_INDEX.md" \
-"$VAULT/notes/videos/_INDEX.md" \
-"$VAULT/notes/research/_INDEX.md" \
-"$VAULT/notes/topics/_INDEX.md" \
-"$VAULT/notes/people/_INDEX.md" \
-"$VAULT/knowledge/_INDEX.md" \
-"$VAULT/knowledge/howtos/_INDEX.md" \
-"$VAULT/knowledge/snippets/_INDEX.md" \
-"$VAULT/knowledge/concepts/_INDEX.md" \
-"$VAULT/tasks/_INDEX.md" \
-"$VAULT/tasks/projects/_INDEX.md" \
-"$VAULT/projects/_INDEX.md" \
-"$VAULT/private/_INDEX.md"
-```
-
-## 3. Folder Structure (Reference)
+## 2. Folder Structure (Reference)
 
 ```text
 vault/
@@ -189,6 +126,69 @@ vault/
 `-- private/
     |-- _INDEX.md
     `-- sensitive-notes.md
+```
+
+## 3. Scaffold the Full Structure
+
+Paste this command to create the proposed folders and starter files:
+
+```bash
+VAULT="$HOME/second-brain"   # change if needed
+mkdir -p "$VAULT"/{
+inbox/{voice-notes,web-clips,attachments},
+notes/{daily,lectures,meetings,videos,research,topics,people},
+knowledge/{howtos,snippets,concepts},
+tasks/projects,
+projects/{koromind/docs,actmate/docs,other-project},
+templates,
+ops/agent/playbooks,
+ops/{logs,backups,exports},
+private
+}
+
+touch \
+"$VAULT/AGENTS.md" \
+"$VAULT/README.md" \
+"$VAULT/inbox/quick-notes.md" \
+"$VAULT/knowledge/glossary.md" \
+"$VAULT/tasks/TODO.md" \
+"$VAULT/tasks/waiting-for.md" \
+"$VAULT/tasks/someday-maybe.md" \
+"$VAULT/projects/_manifest.yml" \
+"$VAULT/templates/note-template.md" \
+"$VAULT/templates/lecture-template.md" \
+"$VAULT/templates/meeting-template.md" \
+"$VAULT/templates/research-template.md" \
+"$VAULT/templates/video-template.md" \
+"$VAULT/templates/project-template.md" \
+"$VAULT/templates/decision-template.md" \
+"$VAULT/ops/agent/routing.md" \
+"$VAULT/ops/agent/conventions.md" \
+"$VAULT/ops/agent/memory-policy.md" \
+"$VAULT/ops/agent/playbooks/triage-inbox.md" \
+"$VAULT/ops/agent/playbooks/add-repo.md" \
+"$VAULT/ops/agent/playbooks/create-note.md" \
+"$VAULT/private/sensitive-notes.md" \
+"$VAULT/projects/koromind/AGENT.md" \
+"$VAULT/projects/actmate/AGENT.md" \
+"$VAULT/projects/other-project/AGENT.md"
+
+touch \
+"$VAULT/notes/_INDEX.md" \
+"$VAULT/notes/lectures/_INDEX.md" \
+"$VAULT/notes/meetings/_INDEX.md" \
+"$VAULT/notes/videos/_INDEX.md" \
+"$VAULT/notes/research/_INDEX.md" \
+"$VAULT/notes/topics/_INDEX.md" \
+"$VAULT/notes/people/_INDEX.md" \
+"$VAULT/knowledge/_INDEX.md" \
+"$VAULT/knowledge/howtos/_INDEX.md" \
+"$VAULT/knowledge/snippets/_INDEX.md" \
+"$VAULT/knowledge/concepts/_INDEX.md" \
+"$VAULT/tasks/_INDEX.md" \
+"$VAULT/tasks/projects/_INDEX.md" \
+"$VAULT/projects/_INDEX.md" \
+"$VAULT/private/_INDEX.md"
 ```
 
 ## 4. How Indexing Works (`_INDEX.md`)

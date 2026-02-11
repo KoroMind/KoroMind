@@ -40,9 +40,10 @@ curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/local-setup-docs/
 Then use Docker Compose:
 
 ```bash
+cd ~/KoroMind
 nano ~/KoroMind/.env
-docker compose -f ~/KoroMind/docker-compose.yml up -d --build
-docker compose -f ~/KoroMind/docker-compose.yml logs -f koro
+docker-compose --profile telegram up -d --build
+docker-compose logs -f koro
 ```
 
 Update later:
@@ -50,7 +51,7 @@ Update later:
 ```bash
 cd ~/KoroMind
 git pull
-docker compose up -d --build
+docker-compose --profile telegram up -d --build
 ```
 
 ## 4. Configure
@@ -83,14 +84,16 @@ mkdir -p ~/claude-sandbox
 ## 5. Start
 
 ```bash
-docker compose -f ~/KoroMind/docker-compose.yml up -d --build
+cd ~/KoroMind
+docker-compose --profile telegram up -d --build
 ```
 
 ## 6. Verify
 
 Send a message to your bot on Telegram. Check logs if issues:
 ```bash
-docker compose -f ~/KoroMind/docker-compose.yml logs -f koro
+cd ~/KoroMind
+docker-compose logs -f koro
 ```
 
 ---
@@ -100,26 +103,28 @@ docker compose -f ~/KoroMind/docker-compose.yml logs -f koro
 | Issue | Fix |
 |-------|-----|
 | `Cannot connect to the Docker daemon` | Run `sudo systemctl enable --now docker` and re-login so docker group changes apply |
-| Bot not responding | Check logs: `docker compose -f ~/KoroMind/docker-compose.yml logs -f koro` |
+| Bot not responding | Check logs: `cd ~/KoroMind && docker-compose logs -f koro` |
 | Container exits repeatedly | Verify all required keys in `.env` are set |
 
 ## Common Operations
 
 **Restart bot:**
 ```bash
-docker compose -f ~/KoroMind/docker-compose.yml restart koro
+cd ~/KoroMind
+docker-compose restart koro
 ```
 
 **Update code:**
 ```bash
 cd ~/KoroMind
 git pull
-docker compose up -d --build
+docker-compose --profile telegram up -d --build
 ```
 
 **Stop service:**
 ```bash
-docker compose -f ~/KoroMind/docker-compose.yml down
+cd ~/KoroMind
+docker-compose down
 ```
 
 ---
@@ -132,7 +137,8 @@ docker compose -f ~/KoroMind/docker-compose.yml down
    ```
 2. Start API profile:
    ```bash
-   docker compose -f ~/KoroMind/docker-compose.yml --profile api up -d --build koro-api
+   cd ~/KoroMind
+   docker-compose --profile api up -d --build koro-api
    ```
 3. Test:
    ```bash

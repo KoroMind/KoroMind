@@ -181,7 +181,7 @@ def run_telegram_bot() -> None:
     app.add_error_handler(error_handler)
 
     # Ensure sandbox exists
-    sandbox_dir = SANDBOX_DIR or str(Path.home() / "claude-voice-sandbox")
+    sandbox_dir = SANDBOX_DIR or str(Path.home() / "koromind-sandbox")
     Path(sandbox_dir).mkdir(parents=True, exist_ok=True)
 
     # Startup info

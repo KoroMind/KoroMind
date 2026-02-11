@@ -84,7 +84,7 @@ else
     echo ".env already exists, skipping"
 fi
 
-mkdir -p "$HOME/claude-work-dir" "$HOME/claude-voice-sandbox"
+mkdir -p "$HOME/koromind-work-dir" "$HOME/koromind-sandbox"
 
 echo ""
 echo -e "${GREEN}=== Setup Complete ===${NC}"

@@ -4,10 +4,11 @@ This guide explains a simple, editor-agnostic second-brain setup for Koro.
 
 ## 1. Create the Vault Directory
 
-Choose a base path for your notes (example: `$HOME/second-brain`).
+Use the same workspace root created by setup: `$HOME/koromind-work-dir`.
 
 ```bash
-VAULT="$HOME/second-brain"
+mkdir -p "$HOME/koromind-work-dir"   # already created by scripts/setup.sh
+VAULT="$HOME/koromind-work-dir/second-brain"
 mkdir -p "$VAULT"
 ```
 
@@ -133,7 +134,7 @@ vault/
 Paste this command to create the proposed folders and starter files:
 
 ```bash
-VAULT="$HOME/second-brain"   # change if needed
+VAULT="$HOME/koromind-work-dir/second-brain"
 mkdir -p "$VAULT"/{
 inbox/{voice-notes,web-clips,attachments},
 notes/{daily,lectures,meetings,videos,research,topics,people},
@@ -225,7 +226,7 @@ Koro can work directly with this structure by reading and writing Markdown files
 
 Recommended mode:
 
-- set your vault path in environment: `KOROMIND_VAULT=/path/to/vault`
+- set your vault path in environment: `KOROMIND_VAULT=$HOME/koromind-work-dir/second-brain`
 - ask Koro to create/update notes, maintain `_INDEX.md`, and manage tasks
 - keep write operations deterministic by using full paths
 

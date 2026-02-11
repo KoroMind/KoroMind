@@ -93,7 +93,7 @@ DATABASE_PATH = KOROMIND_DATA_DIR / "koromind.db"
 # Directories for Claude operations
 CLAUDE_WORKING_DIR = get_env("CLAUDE_WORKING_DIR", os.path.expanduser("~"))
 SANDBOX_DIR = get_env(
-    "CLAUDE_SANDBOX_DIR", os.path.join(os.path.expanduser("~"), "claude-voice-sandbox")
+    "CLAUDE_SANDBOX_DIR", os.path.join(os.path.expanduser("~"), "koromind-sandbox")
 )
 
 # Voice settings

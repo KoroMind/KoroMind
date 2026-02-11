@@ -285,7 +285,7 @@ curl -X POST http://localhost:8420/api/v1/messages/text \
 | `SYSTEM_PROMPT_FILE` | - | Custom persona prompt |
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | Voice ID |
 | `CLAUDE_WORKING_DIR` | `~` | Read access directory |
-| `CLAUDE_SANDBOX_DIR` | `~/claude-voice-sandbox` | Write/execute directory |
+| `CLAUDE_SANDBOX_DIR` | `~/koromind-sandbox` | Write/execute directory |
 
 ---
 

@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from koro.core.types import BrainResponse
+
 
 @pytest.fixture
 def temp_dir(tmp_path):
@@ -130,6 +132,7 @@ def make_update():
         update.effective_user.is_bot = is_bot
         update.effective_chat.id = chat_id
         update.effective_chat.send_message = AsyncMock()
+        update.effective_chat.send_chat_action = AsyncMock()
 
         update.message.message_thread_id = thread_id
         update.message.text = text
@@ -207,3 +210,29 @@ def mock_claude_response():
         "num_turns": 1,
         "duration_ms": 500,
     }
+
+
+@pytest.fixture
+def mock_brain():
+    """Create a mock Brain that returns a default BrainResponse."""
+    brain = MagicMock()
+    brain.process_message = AsyncMock(
+        return_value=BrainResponse(
+            text="Test response",
+            session_id="sess-123",
+            audio=None,
+            tool_calls=[],
+            metadata={},
+        )
+    )
+    brain.state_manager = MagicMock()
+    brain.state_manager.get_settings = AsyncMock(
+        return_value=MagicMock(
+            mode=MagicMock(value="go_all"),
+            audio_enabled=True,
+            voice_speed=1.1,
+            watch_enabled=False,
+            model="",
+        )
+    )
+    return brain

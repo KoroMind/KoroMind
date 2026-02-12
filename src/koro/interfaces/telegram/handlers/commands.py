@@ -1,7 +1,10 @@
 """Telegram command handlers."""
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from telegram import (
     Chat,
@@ -18,10 +21,7 @@ from koro.claude import get_claude_client
 from koro.config import SANDBOX_DIR
 from koro.core.model_validation import MODEL_IDENTIFIER_PATTERN
 from koro.core.types import SessionStateItem, UserSessionState
-from koro.interfaces.telegram.handlers.utils import (
-    authorized_handler,
-    debug,
-)
+from koro.interfaces.telegram.handlers.utils import authorized_handler
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
 
@@ -490,7 +490,7 @@ async def cmd_claude_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     try:
         await message.delete()
     except Exception as e:
-        debug(f"Failed to delete message in cmd_claude_token: {e}")
+        logger.debug("Failed to delete message in cmd_claude_token: %s", e)
 
     if not context.args:
         await chat.send_message(
@@ -535,7 +535,7 @@ async def cmd_elevenlabs_key(
     try:
         await message.delete()
     except Exception as e:
-        debug(f"Failed to delete message in cmd_elevenlabs_key: {e}")
+        logger.debug("Failed to delete message in cmd_elevenlabs_key: %s", e)
 
     if not context.args:
         await chat.send_message(

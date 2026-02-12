@@ -395,6 +395,9 @@ class Brain:
             )
             if audio_buffer:
                 audio_bytes = audio_buffer.read()
+            logger.debug(
+                f"TTS complete: {len(audio_bytes) if audio_bytes else 0} bytes"
+            )
 
         return BrainResponse(
             text=response_text,
@@ -638,9 +641,9 @@ class Brain:
         """Get all sessions for a user."""
         return await self.state_manager.get_sessions(user_id)
 
-    async def create_session(self, user_id: str) -> Session:
+    async def create_session(self, user_id: str, name: str | None = None) -> Session:
         """Create a new session for a user."""
-        return await self.state_manager.create_session(user_id)
+        return await self.state_manager.create_session(user_id, name)
 
     async def get_current_session(self, user_id: str) -> Session | None:
         """Get the current session for a user."""

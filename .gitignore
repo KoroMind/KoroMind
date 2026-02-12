@@ -1,6 +1,7 @@
 # Environment and secrets
 .env
 *.env
+.env.test
 
 # Python
 *.pyc
@@ -35,6 +36,10 @@ htmlcov/
 *.swp
 *.swo
 .claude/settings.local.json
+
+# Claude
+.claude/
+.mcp.json
 
 # Secrets
 credentials.json

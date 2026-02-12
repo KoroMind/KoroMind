@@ -9,14 +9,12 @@ from koro.config import TOPIC_ID  # noqa: F401
 
 # Re-export everything from the new location
 from koro.interfaces.telegram.handlers.utils import (
-    debug,
     send_long_message,
     should_handle_message,
 )
 
 __all__ = [
     "TOPIC_ID",
-    "debug",
     "send_long_message",
     "should_handle_message",
 ]

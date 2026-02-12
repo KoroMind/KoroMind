@@ -344,11 +344,13 @@ One-liner setup on a fresh Ubuntu 24.04 VM:
 curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/main/scripts/setup.sh | bash
 ```
 
-This installs dependencies, creates the venv, and sets up a systemd service. Then edit `.env` and start:
+This installs Docker + Compose, clones the repo, and prepares `.env`. Then edit `.env` and start:
 
 ```bash
-nano ~/KoroMind/.env          # Add your API keys
-sudo systemctl enable --now koromind-telegram
+cd ~/KoroMind
+nano .env
+docker-compose --profile telegram up -d --build
+docker-compose logs -f koro
 ```
 
 See [docs/local-server-setup.md](docs/local-server-setup.md) for the full guide.

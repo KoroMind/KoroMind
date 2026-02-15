@@ -344,7 +344,7 @@ One-liner setup on a fresh Ubuntu 24.04 VM:
 curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/main/scripts/setup.sh | bash
 ```
 
-This installs Docker + Compose, clones the repo, and prepares `.env`. Then edit `.env` and start:
+This installs Docker + Compose, clones the repo, prepares `.env`, and scaffolds a ready-to-use second-brain vault at `$HOME/koromind-work-dir/second-brain`. Then edit `.env` and start:
 
 ```bash
 cd ~/KoroMind

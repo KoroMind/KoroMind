@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 install_docker() {
-    echo -e "${YELLOW}[2/4] Installing Docker Engine + Compose plugin...${NC}"
+    echo -e "${YELLOW}[2/5] Installing Docker Engine + Compose plugin...${NC}"
     sudo apt-get install -y ca-certificates gnupg
     sudo install -m 0755 -d /etc/apt/keyrings
 
@@ -45,17 +45,46 @@ EOF
     fi
 }
 
+scaffold_second_brain() {
+    echo -e "${YELLOW}[5/5] Scaffolding second-brain vault...${NC}"
+    VAULT_TEMPLATE_DIR="$REPO_DIR/scripts/second-brain-template"
+    VAULT_DIR="$HOME/koromind-work-dir/second-brain"
+
+    mkdir -p "$HOME/koromind-work-dir" "$HOME/koromind-sandbox" "$VAULT_DIR"
+    mkdir -p \
+        "$VAULT_DIR/inbox/quick-notes" \
+        "$VAULT_DIR/notes/daily" \
+        "$VAULT_DIR/notes/lectures" \
+        "$VAULT_DIR/notes/meetings" \
+        "$VAULT_DIR/notes/articles" \
+        "$VAULT_DIR/notes/topics" \
+        "$VAULT_DIR/notes/people" \
+        "$VAULT_DIR/knowledge/howtos" \
+        "$VAULT_DIR/knowledge/snippets" \
+        "$VAULT_DIR/knowledge/books" \
+        "$VAULT_DIR/projects/git-repo1" \
+        "$VAULT_DIR/projects/git-repo2" \
+        "$VAULT_DIR/projects/other-project"
+
+    if [ -d "$VAULT_TEMPLATE_DIR" ]; then
+        cp -a -n "$VAULT_TEMPLATE_DIR/." "$VAULT_DIR/"
+        echo "Second-brain template synced to $VAULT_DIR (existing files preserved)."
+    else
+        echo "Warning: second-brain template not found at $VAULT_TEMPLATE_DIR; skipping scaffold."
+    fi
+}
+
 # 1. Install system packages
-echo -e "${YELLOW}[1/4] Installing system packages...${NC}"
+echo -e "${YELLOW}[1/5] Installing system packages...${NC}"
 sudo apt-get update
 sudo apt-get install -y git curl
 
 install_docker
 
 # 3. Clone repo if not already in it
-echo -e "${YELLOW}[3/4] Setting up repository...${NC}"
+echo -e "${YELLOW}[3/5] Setting up repository...${NC}"
 if [ ! -f "pyproject.toml" ]; then
-    git clone -b local-setup-docs https://github.com/KoroMind/KoroMind.git
+    git clone https://github.com/KoroMind/KoroMind.git
     cd KoroMind
 fi
 REPO_DIR=$(pwd)
@@ -76,7 +105,7 @@ EOF
 fi
 
 # 4. Create .env if it doesn't exist
-echo -e "${YELLOW}[4/4] Setting up configuration...${NC}"
+echo -e "${YELLOW}[4/5] Setting up configuration...${NC}"
 if [ ! -f .env ]; then
     cp .env.example .env
     echo "Created .env from .env.example"
@@ -84,7 +113,7 @@ else
     echo ".env already exists, skipping"
 fi
 
-mkdir -p "$HOME/koromind-work-dir" "$HOME/koromind-sandbox"
+scaffold_second_brain
 
 echo ""
 echo -e "${GREEN}=== Setup Complete ===${NC}"
@@ -109,6 +138,9 @@ echo "   cd $REPO_DIR && docker-compose --profile telegram up -d --build"
 echo ""
 echo "3. Check logs:"
 echo "   cd $REPO_DIR && docker-compose logs -f koro"
+echo ""
+echo "4. Open your ready-to-use second brain vault:"
+echo "   $HOME/koromind-work-dir/second-brain"
 echo ""
 echo "Docker was installed and enabled."
 echo "If 'docker' is still denied for your user, reconnect SSH or run: newgrp docker"

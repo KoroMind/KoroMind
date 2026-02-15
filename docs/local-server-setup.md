@@ -34,8 +34,10 @@ gcloud compute ssh YOUR_VM_NAME --zone=YOUR_ZONE
 For production deployment on a fresh VM, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/master/scripts/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/main/scripts/setup.sh | bash
 ```
+
+This also scaffolds the second-brain vault at `$HOME/koromind-work-dir/second-brain`.
 
 Then use Docker Compose:
 

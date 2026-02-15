@@ -10,8 +10,26 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+VAULT_ONLY=0
+for arg in "$@"; do
+    case "$arg" in
+        --vault-only)
+            VAULT_ONLY=1
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--vault-only]"
+            echo "  --vault-only  Only scaffold the second-brain vault; skip package/docker/.env setup"
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $arg"
+            echo "Usage: $0 [--vault-only]"
+            exit 1
+            ;;
+    esac
+done
+
 install_docker() {
-    echo -e "${YELLOW}[2/5] Installing Docker Engine + Compose plugin...${NC}"
     sudo apt-get install -y ca-certificates gnupg
     sudo install -m 0755 -d /etc/apt/keyrings
 
@@ -37,11 +55,123 @@ install_docker() {
 
     # Provide legacy `docker-compose` command for compatibility.
     if ! command -v docker-compose >/dev/null 2>&1; then
-        sudo tee /usr/local/bin/docker-compose > /dev/null <<'EOF'
+        sudo tee /usr/local/bin/docker-compose > /dev/null <<'EOL'
 #!/bin/sh
 exec docker compose "$@"
-EOF
+EOL
         sudo chmod +x /usr/local/bin/docker-compose
+    fi
+}
+
+setup_system_packages() {
+    echo -e "${YELLOW}[1/5] Installing system packages...${NC}"
+
+    if [ "$VAULT_ONLY" -eq 1 ]; then
+        echo "Vault-only mode: skipping system package installation."
+        return
+    fi
+
+    if command -v git >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+        echo "git and curl already installed, skipping."
+        return
+    fi
+
+    if ! command -v apt-get >/dev/null 2>&1; then
+        echo "Warning: apt-get not found; cannot auto-install git/curl."
+        return
+    fi
+
+    sudo apt-get update
+    sudo apt-get install -y git curl
+}
+
+setup_docker() {
+    echo -e "${YELLOW}[2/5] Installing Docker Engine + Compose plugin...${NC}"
+
+    if [ "$VAULT_ONLY" -eq 1 ]; then
+        echo "Vault-only mode: skipping Docker installation."
+        return
+    fi
+
+    if command -v docker >/dev/null 2>&1 && \
+       (docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1); then
+        echo "Docker and Compose already installed, skipping."
+        return
+    fi
+
+    if ! command -v apt-get >/dev/null 2>&1; then
+        echo "Warning: apt-get not found; cannot auto-install Docker."
+        return
+    fi
+
+    install_docker
+}
+
+setup_repository() {
+    echo -e "${YELLOW}[3/5] Setting up repository...${NC}"
+
+    if [ ! -x "$(command -v git)" ]; then
+        echo "Error: git is required but not installed."
+        exit 1
+    fi
+
+    if [ -f "pyproject.toml" ] && [ -d "scripts/second-brain-template" ]; then
+        REPO_DIR="$(pwd)"
+    elif [ -n "${KOROMIND_REPO_DIR:-}" ] && [ -f "${KOROMIND_REPO_DIR}/pyproject.toml" ]; then
+        REPO_DIR="$(cd "${KOROMIND_REPO_DIR}" && pwd)"
+    elif [ -f "$HOME/KoroMind/pyproject.toml" ]; then
+        REPO_DIR="$HOME/KoroMind"
+    elif [ -f "./KoroMind/pyproject.toml" ]; then
+        REPO_DIR="$(cd ./KoroMind && pwd)"
+    else
+        if [ -d "$HOME/KoroMind" ] && [ ! -f "$HOME/KoroMind/pyproject.toml" ]; then
+            echo "Error: $HOME/KoroMind exists but does not look like a KoroMind repo."
+            echo "Set KOROMIND_REPO_DIR to your repo path or remove $HOME/KoroMind and rerun."
+            exit 1
+        fi
+
+        git clone https://github.com/KoroMind/KoroMind.git "$HOME/KoroMind"
+        REPO_DIR="$HOME/KoroMind"
+    fi
+
+    cd "$REPO_DIR"
+    echo "Using repository: $REPO_DIR"
+}
+
+setup_submodule() {
+    if [ "$VAULT_ONLY" -eq 1 ]; then
+        return
+    fi
+
+    # Ensure required submodules are present for Docker build context.
+    git config submodule.".claude-settings".url https://github.com/ToruAI/toru-claude-settings.git || true
+    git submodule sync --recursive
+    if ! git submodule update --init --recursive; then
+        echo "Warning: failed to fetch .claude-settings submodule; creating local fallback directory."
+    fi
+    if [ ! -d ".claude-settings" ] || [ -z "$(ls -A .claude-settings 2>/dev/null)" ]; then
+        mkdir -p .claude-settings
+        cat > .claude-settings/README.md <<'EOL'
+Fallback Claude settings directory created by setup script.
+If you have access to the settings submodule, run:
+git submodule update --init --recursive
+EOL
+    fi
+}
+
+setup_env_file() {
+    echo -e "${YELLOW}[4/5] Setting up configuration...${NC}"
+
+    if [ "$VAULT_ONLY" -eq 1 ]; then
+        echo "Vault-only mode: skipping .env setup."
+        return
+    fi
+
+    if [ ! -f .env ]; then
+        cp .env.example .env
+        echo "Created .env from .env.example"
+    else
+        echo ".env already exists, skipping"
     fi
 }
 
@@ -60,50 +190,27 @@ scaffold_second_brain() {
     fi
 }
 
-# 1. Install system packages
-echo -e "${YELLOW}[1/5] Installing system packages...${NC}"
-sudo apt-get update
-sudo apt-get install -y git curl
-
-install_docker
-
-# 3. Clone repo if not already in it
-echo -e "${YELLOW}[3/5] Setting up repository...${NC}"
-if [ ! -f "pyproject.toml" ]; then
-    git clone https://github.com/KoroMind/KoroMind.git
-    cd KoroMind
-fi
-REPO_DIR=$(pwd)
-
-# Ensure required submodules are present for Docker build context.
-git config submodule.\".claude-settings\".url https://github.com/ToruAI/toru-claude-settings.git || true
-git submodule sync --recursive
-if ! git submodule update --init --recursive; then
-    echo "Warning: failed to fetch .claude-settings submodule; creating local fallback directory."
-fi
-if [ ! -d ".claude-settings" ] || [ -z "$(ls -A .claude-settings 2>/dev/null)" ]; then
-    mkdir -p .claude-settings
-    cat > .claude-settings/README.md <<'EOF'
-Fallback Claude settings directory created by setup script.
-If you have access to the settings submodule, run:
-git submodule update --init --recursive
-EOF
-fi
-
-# 4. Create .env if it doesn't exist
-echo -e "${YELLOW}[4/5] Setting up configuration...${NC}"
-if [ ! -f .env ]; then
-    cp .env.example .env
-    echo "Created .env from .env.example"
-else
-    echo ".env already exists, skipping"
-fi
-
+setup_system_packages
+setup_docker
+setup_repository
+setup_submodule
+setup_env_file
 scaffold_second_brain
 
 echo ""
 echo -e "${GREEN}=== Setup Complete ===${NC}"
 echo ""
+
+if [ "$VAULT_ONLY" -eq 1 ]; then
+    echo "Vault-only mode completed."
+    echo "Second brain vault is ready at: $HOME/koromind-work-dir/second-brain"
+    echo ""
+    echo "To run full server setup later:"
+    echo "  cd $REPO_DIR && bash scripts/setup.sh"
+    echo ""
+    exit 0
+fi
+
 echo "Next steps:"
 echo ""
 echo "1. Edit .env and add your API keys:"

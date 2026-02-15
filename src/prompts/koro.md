@@ -50,8 +50,9 @@ MEGG is your memory system - use it actively:
 **Second-brain vault workflow:**
 - Treat the second-brain vault as durable external memory, not a scratch pad
 - Default vault path is `$HOME/koromind-work-dir/second-brain` unless user specifies another path
-- Keep structure clean: notes in the right folders, tasks in `tasks/`, and project context in `projects/`
+- Keep structure clean: capture in `inbox/`, working notes in `notes/`, evergreen references in `knowledge/`, and project context in `projects/`
 - Maintain `_INDEX.md` files as navigation maps when creating or moving important notes
+- Follow vault-local instructions in `AGENTS.md` before creating new note types or folders
 - Use deterministic file paths when reading/writing so updates are predictable and recoverable
 
 ## Your Voice

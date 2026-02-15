@@ -15,7 +15,7 @@ from koro.core.types import UserSettings
 
 def load_system_prompt(prompt_file: str | None = None) -> str:
     """
-    Load system prompt from file or use default.
+    Load system prompt from file.
 
     Args:
         prompt_file: Path to prompt file (defaults to env)
@@ -24,54 +24,36 @@ def load_system_prompt(prompt_file: str | None = None) -> str:
         System prompt content
     """
     file_path = prompt_file or SYSTEM_PROMPT_FILE
+    if not file_path:
+        raise ValueError(
+            "SYSTEM_PROMPT_FILE is empty. Set it to a valid prompt file path."
+        )
 
-    if file_path:
-        prompt_path = Path(file_path)
-        was_relative = not prompt_path.is_absolute()
+    prompt_path = Path(file_path)
+    was_relative = not prompt_path.is_absolute()
 
-        # If relative, look relative to BASE_DIR
-        if was_relative:
-            prompt_path = BASE_DIR / prompt_path
+    # If relative, look relative to BASE_DIR
+    if was_relative:
+        prompt_path = BASE_DIR / prompt_path
 
-        try:
-            resolved_path = prompt_path.resolve()
+    resolved_path = prompt_path.resolve()
 
-            # For relative paths, validate they stay within BASE_DIR
-            # This prevents path traversal attacks like "../../../etc/passwd"
-            if was_relative:
-                base_resolved = BASE_DIR.resolve()
-                if not str(resolved_path).startswith(str(base_resolved)):
-                    # Path traversal attempt - fall through to default prompt
-                    pass
-                elif resolved_path.exists():
-                    content = resolved_path.read_text()
-                    content = content.replace("{sandbox_dir}", SANDBOX_DIR or "")
-                    content = content.replace("{read_dir}", CLAUDE_WORKING_DIR or "")
-                    return content
-            elif resolved_path.exists():
-                # Absolute paths are trusted (admin-configured)
-                content = resolved_path.read_text()
-                content = content.replace("{sandbox_dir}", SANDBOX_DIR or "")
-                content = content.replace("{read_dir}", CLAUDE_WORKING_DIR or "")
-                return content
-        except (OSError, ValueError):
-            # Invalid path - fall through to default prompt
-            pass
+    # For relative paths, validate they stay within BASE_DIR
+    # This prevents path traversal attacks like "../../../etc/passwd"
+    if was_relative:
+        base_resolved = BASE_DIR.resolve()
+        if not str(resolved_path).startswith(str(base_resolved)):
+            raise ValueError(
+                f"Prompt path escapes BASE_DIR: {file_path!r} -> {resolved_path}"
+            )
 
-    # Fallback default prompt
-    return f"""You are a voice assistant. You're talking to the user.
+    if not resolved_path.exists():
+        raise FileNotFoundError(f"System prompt file not found: {resolved_path}")
 
-## CRITICAL - Voice output rules:
-- NO markdown formatting (no **, no ##, no ```)
-- NO bullet points or numbered lists in speech
-- Speak in natural flowing sentences
-
-## Your capabilities:
-- You can READ files from anywhere in {CLAUDE_WORKING_DIR}
-- You can WRITE and EXECUTE only in {SANDBOX_DIR}
-- You have WebSearch for current information
-
-Remember: You're being heard, not read. Speak naturally."""
+    content = resolved_path.read_text()
+    content = content.replace("{sandbox_dir}", SANDBOX_DIR or "")
+    content = content.replace("{read_dir}", CLAUDE_WORKING_DIR or "")
+    return content
 
 
 def build_dynamic_prompt(

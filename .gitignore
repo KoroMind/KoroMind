@@ -46,3 +46,7 @@ credentials.json
 
 # Sandbox (Claude working directory)
 sandbox/
+
+
+# Mac
+.DS_Store

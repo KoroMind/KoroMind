@@ -9,30 +9,68 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 
 def get_env(key: str, default: str | None = None) -> str | None:
     """Get environment variable with optional default."""
-    return os.getenv(key, default)
+    value = os.getenv(key)
+    if value is None and default is not None:
+        logger.warning(
+            "Environment variable %s is not set; falling back to default value %r",
+            key,
+            default,
+        )
+        return default
+    return value
 
 
 def get_env_int(key: str, default: int) -> int:
     """Get environment variable as integer."""
     value = os.getenv(key)
     if value is None:
+        logger.warning(
+            "Environment variable %s is not set; falling back to default value %r",
+            key,
+            default,
+        )
         return default
     try:
         return int(value)
     except ValueError:
+        logger.warning(
+            "Environment variable %s value %r is not a valid integer; "
+            "falling back to default value %r",
+            key,
+            value,
+            default,
+        )
         return default
 
 
 def get_env_bool(key: str, default: bool = False) -> bool:
     """Get environment variable as boolean."""
-    value = os.getenv(key, "").lower()
-    if value in ("true", "1", "yes"):
+    value = os.getenv(key)
+    if value is None:
+        logger.warning(
+            "Environment variable %s is not set; falling back to default value %r",
+            key,
+            default,
+        )
+        return default
+
+    normalized = value.lower()
+    if normalized in ("true", "1", "yes"):
         return True
-    if value in ("false", "0", "no"):
+    if normalized in ("false", "0", "no"):
         return False
+    logger.warning(
+        "Environment variable %s value %r is not a valid boolean; "
+        "falling back to default value %r",
+        key,
+        value,
+        default,
+    )
     return default
 
 
@@ -55,7 +93,7 @@ DATABASE_PATH = KOROMIND_DATA_DIR / "koromind.db"
 # Directories for Claude operations
 CLAUDE_WORKING_DIR = get_env("CLAUDE_WORKING_DIR", os.path.expanduser("~"))
 SANDBOX_DIR = get_env(
-    "CLAUDE_SANDBOX_DIR", os.path.join(os.path.expanduser("~"), "claude-voice-sandbox")
+    "CLAUDE_SANDBOX_DIR", os.path.join(os.path.expanduser("~"), "koromind-sandbox")
 )
 
 # Voice settings
@@ -64,7 +102,7 @@ ELEVENLABS_VOICE_ID = get_env("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 
 # Persona settings
 PERSONA_NAME = get_env("PERSONA_NAME", "Assistant")
-SYSTEM_PROMPT_FILE = get_env("SYSTEM_PROMPT_FILE", "")
+SYSTEM_PROMPT_FILE = get_env("SYSTEM_PROMPT_FILE", "src/prompts/koro.md")
 CLAUDE_SETTINGS_FILE = get_env("CLAUDE_SETTINGS_FILE", "")
 
 # Logging

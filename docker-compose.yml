@@ -1,4 +1,4 @@
-# KoroMind Claude Voice Assistant - Docker Compose
+# KoroMind Assistant - Docker Compose
 #
 # Quick start:
 #   cp docker/koro.env.example docker/koro.env
@@ -15,16 +15,16 @@
 services:
   koro:
     build: .
-    container_name: claude-voice-koro
+    container_name: koromind-koro
     profiles: ["telegram"]
     env_file:
       - .env
     volumes:
       # Dirs from .env
       # work dir
-      - ${HOME}/claude-work-dir:/claude-work-dir
+      - ${HOME}/koromind-work-dir:/koromind-work-dir
       # sandbox dir
-      - ${HOME}/claude-voice-sandbox:/claude-voice-sandbox
+      - ${HOME}/koromind-sandbox:/koromind-sandbox
       # Persistent state (session history, user settings)
       - koro-state:/home/claude/state
       # Sandbox for Claude file operations
@@ -48,7 +48,7 @@ services:
 
   koro-api:
     build: .
-    container_name: claude-voice-koro-api
+    container_name: koromind-koro-api
     profiles: ["api"]
     env_file:
       - .env

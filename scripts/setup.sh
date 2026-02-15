@@ -51,20 +51,6 @@ scaffold_second_brain() {
     VAULT_DIR="$HOME/koromind-work-dir/second-brain"
 
     mkdir -p "$HOME/koromind-work-dir" "$HOME/koromind-sandbox" "$VAULT_DIR"
-    mkdir -p \
-        "$VAULT_DIR/inbox/quick-notes" \
-        "$VAULT_DIR/notes/daily" \
-        "$VAULT_DIR/notes/lectures" \
-        "$VAULT_DIR/notes/meetings" \
-        "$VAULT_DIR/notes/articles" \
-        "$VAULT_DIR/notes/topics" \
-        "$VAULT_DIR/notes/people" \
-        "$VAULT_DIR/knowledge/howtos" \
-        "$VAULT_DIR/knowledge/snippets" \
-        "$VAULT_DIR/knowledge/books" \
-        "$VAULT_DIR/projects/git-repo1" \
-        "$VAULT_DIR/projects/git-repo2" \
-        "$VAULT_DIR/projects/other-project"
 
     if [ -d "$VAULT_TEMPLATE_DIR" ]; then
         cp -a -n "$VAULT_TEMPLATE_DIR/." "$VAULT_DIR/"

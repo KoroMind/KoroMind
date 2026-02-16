@@ -636,11 +636,13 @@ class StateManager:
         if "model" in kwargs:
             updates["model"] = kwargs["model"]
         if "stt_language" in kwargs:
-            updates["stt_language"] = normalize_stt_language_code(
-                kwargs["stt_language"]
-                if isinstance(kwargs["stt_language"], str)
-                else None
-            )
+            raw_stt_language = kwargs["stt_language"]
+            if not isinstance(raw_stt_language, str):
+                raise ValueError(
+                    "stt_language must be a string, "
+                    f"got {type(raw_stt_language).__name__}"
+                )
+            updates["stt_language"] = normalize_stt_language_code(raw_stt_language)
 
         if updates:
             current = current.model_copy(update=updates)

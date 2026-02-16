@@ -264,6 +264,12 @@ class TestStateManagerAsync:
         with pytest.raises(ValueError):
             await state_manager.update_settings("12345", stt_language="bad/code")
 
+    @pytest.mark.asyncio
+    async def test_update_settings_rejects_non_string_stt_language(self, state_manager):
+        """Non-string STT language values are rejected explicitly."""
+        with pytest.raises(ValueError, match="stt_language must be a string"):
+            await state_manager.update_settings("12345", stt_language=123)
+
 
 class TestStateManagerConcurrency:
     """Tests for StateManager thread safety."""

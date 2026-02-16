@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from koro.core.brain import Brain
+from koro.core.types import UserSettings
 
 
 @pytest.fixture
@@ -12,6 +13,7 @@ def mock_state_manager():
     """Mock state manager."""
     mgr = MagicMock()
     mgr.get_current_session = AsyncMock(return_value=None)
+    mgr.get_settings = AsyncMock(return_value=UserSettings())
     mgr.update_session = AsyncMock()
     return mgr
 
@@ -99,6 +101,25 @@ class TestBrainErrorHandling:
             )
 
         assert "Transcription" in str(exc_info.value) or exc_info.value is not None
+
+    @pytest.mark.asyncio
+    async def test_process_voice_uses_stored_stt_language(
+        self, brain, mock_state_manager, mock_voice_engine
+    ):
+        """Voice transcription uses per-user configured STT language."""
+        mock_state_manager.get_settings = AsyncMock(
+            return_value=UserSettings(stt_language="pl")
+        )
+
+        await brain.process_voice(
+            user_id="user1",
+            voice_bytes=b"audio bytes",
+            include_audio=False,
+        )
+
+        mock_voice_engine.transcribe.assert_awaited_once_with(
+            b"audio bytes", language_code="pl"
+        )
 
     @pytest.mark.asyncio
     async def test_tts_failure_still_returns_text(

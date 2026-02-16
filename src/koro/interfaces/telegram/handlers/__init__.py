@@ -11,6 +11,7 @@ from koro.interfaces.telegram.handlers.commands import (
     cmd_elevenlabs_key,
     cmd_health,
     cmd_help,
+    cmd_language,
     cmd_model,
     cmd_new,
     cmd_sessions,
@@ -27,6 +28,7 @@ from koro.interfaces.telegram.handlers.messages import (
 __all__ = [
     "cmd_help",
     "cmd_new",
+    "cmd_language",
     "cmd_model",
     "cmd_continue",
     "cmd_sessions",

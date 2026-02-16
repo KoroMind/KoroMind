@@ -33,6 +33,7 @@ from koro.interfaces.telegram.handlers import (
     cmd_elevenlabs_key,
     cmd_health,
     cmd_help,
+    cmd_language,
     cmd_model,
     cmd_new,
     cmd_sessions,
@@ -127,7 +128,8 @@ def run_telegram_bot() -> None:
             BotCommand("model", "Show or set model"),
             BotCommand("status", "Show current session info"),
             BotCommand("health", "Run health checks"),
-            BotCommand("settings", "Configure audio and mode"),
+            BotCommand("settings", "Configure mode, audio, speed, STT"),
+            BotCommand("language", "Set STT language (auto|en|pl)"),
             BotCommand("setup", "Show credential status"),
             BotCommand("claude_token", "Set Claude token"),
             BotCommand("elevenlabs_key", "Set ElevenLabs key"),
@@ -161,6 +163,7 @@ def run_telegram_bot() -> None:
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("settings", cmd_settings))
+    app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("setup", cmd_setup))
     app.add_handler(CommandHandler("claude_token", cmd_claude_token))
     app.add_handler(CommandHandler("elevenlabs_key", cmd_elevenlabs_key))

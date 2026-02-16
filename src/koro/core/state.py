@@ -10,19 +10,38 @@ from threading import Lock
 from typing import Generator
 from uuid import uuid4
 
-from koro.core.config import DATABASE_PATH, SETTINGS_FILE, STATE_FILE, VOICE_SETTINGS
+from koro.core.config import (
+    DATABASE_PATH,
+    SETTINGS_FILE,
+    STATE_FILE,
+    VOICE_SETTINGS,
+    VOICE_STT_LANGUAGE_DEFAULT,
+)
 from koro.core.types import (
     Mode,
     Session,
     SessionStateItem,
     UserSessionState,
     UserSettings,
+    normalize_stt_language_code,
 )
 
 # Maximum number of sessions to keep per user (FIFO eviction)
 MAX_SESSIONS = 100
 
 logger = logging.getLogger(__name__)
+
+
+def _default_stt_language() -> str:
+    """Resolve safe default STT language from config."""
+    try:
+        return normalize_stt_language_code(VOICE_STT_LANGUAGE_DEFAULT)
+    except ValueError:
+        logger.warning(
+            "Invalid VOICE_STT_LANGUAGE_DEFAULT=%r. Falling back to 'auto'.",
+            VOICE_STT_LANGUAGE_DEFAULT,
+        )
+        return "auto"
 
 
 class StateManager:
@@ -72,6 +91,7 @@ class StateManager:
                     voice_speed REAL DEFAULT 1.1,
                     watch_enabled INTEGER DEFAULT 0,
                     model TEXT DEFAULT '',
+                    stt_language TEXT DEFAULT 'auto',
                     pending_session_name TEXT DEFAULT NULL
                 );
 
@@ -99,6 +119,10 @@ class StateManager:
             if "pending_session_name" not in columns:
                 conn.execute(
                     "ALTER TABLE settings ADD COLUMN pending_session_name TEXT DEFAULT NULL"
+                )
+            if "stt_language" not in columns:
+                conn.execute(
+                    "ALTER TABLE settings ADD COLUMN stt_language TEXT DEFAULT 'auto'"
                 )
 
             session_columns = {
@@ -178,11 +202,26 @@ class StateManager:
                     with open(SETTINGS_FILE) as f:
                         settings_data = json.load(f)
                     for user_id, user_settings in settings_data.items():
+                        raw_language = user_settings.get(
+                            "stt_language", VOICE_STT_LANGUAGE_DEFAULT
+                        )
+                        try:
+                            stt_language = normalize_stt_language_code(raw_language)
+                        except ValueError:
+                            stt_language = normalize_stt_language_code(
+                                _default_stt_language()
+                            )
+                            logger.warning(
+                                "Invalid legacy stt_language for user %s: %r. Falling back to %s.",
+                                user_id,
+                                raw_language,
+                                stt_language,
+                            )
                         conn.execute(
                             """
                             INSERT OR IGNORE INTO settings
-                            (user_id, mode, audio_enabled, voice_speed, watch_enabled, model)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                            (user_id, mode, audio_enabled, voice_speed, watch_enabled, model, stt_language)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 user_id,
@@ -193,6 +232,7 @@ class StateManager:
                                 ),
                                 1 if user_settings.get("watch_enabled", False) else 0,
                                 user_settings.get("model", ""),
+                                stt_language,
                             ),
                         )
                 except (json.JSONDecodeError, OSError) as exc:
@@ -535,25 +575,36 @@ class StateManager:
         """Get settings for a user, creating defaults if not exists."""
         with self._get_connection() as conn:
             row = conn.execute(
-                "SELECT mode, audio_enabled, voice_speed, watch_enabled, model FROM settings WHERE user_id = ?",
+                "SELECT mode, audio_enabled, voice_speed, watch_enabled, model, stt_language FROM settings WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
 
             if row:
+                try:
+                    stt_language = normalize_stt_language_code(row["stt_language"])
+                except ValueError:
+                    stt_language = normalize_stt_language_code(_default_stt_language())
+                    logger.warning(
+                        "Invalid stt_language in DB for user %s: %r. Falling back to %s.",
+                        user_id,
+                        row["stt_language"],
+                        stt_language,
+                    )
                 return UserSettings(
                     mode=Mode(row["mode"]),
                     audio_enabled=bool(row["audio_enabled"]),
                     voice_speed=row["voice_speed"],
                     watch_enabled=bool(row["watch_enabled"]),
                     model=row["model"] or "",
+                    stt_language=stt_language,
                 )
 
             # Create default settings
-            default_settings = UserSettings()
+            default_settings = UserSettings(stt_language=_default_stt_language())
             conn.execute(
                 """
-                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model, stt_language)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -562,6 +613,7 @@ class StateManager:
                     default_settings.voice_speed,
                     1 if default_settings.watch_enabled else 0,
                     default_settings.model,
+                    default_settings.stt_language,
                 ),
             )
             return default_settings
@@ -583,6 +635,12 @@ class StateManager:
             updates["watch_enabled"] = kwargs["watch_enabled"]
         if "model" in kwargs:
             updates["model"] = kwargs["model"]
+        if "stt_language" in kwargs:
+            updates["stt_language"] = normalize_stt_language_code(
+                kwargs["stt_language"]
+                if isinstance(kwargs["stt_language"], str)
+                else None
+            )
 
         if updates:
             current = current.model_copy(update=updates)
@@ -592,7 +650,7 @@ class StateManager:
             conn.execute(
                 """
                 UPDATE settings
-                SET mode = ?, audio_enabled = ?, voice_speed = ?, watch_enabled = ?, model = ?
+                SET mode = ?, audio_enabled = ?, voice_speed = ?, watch_enabled = ?, model = ?, stt_language = ?
                 WHERE user_id = ?
                 """,
                 (
@@ -601,6 +659,7 @@ class StateManager:
                     current.voice_speed,
                     1 if current.watch_enabled else 0,
                     current.model,
+                    current.stt_language,
                     user_id,
                 ),
             )

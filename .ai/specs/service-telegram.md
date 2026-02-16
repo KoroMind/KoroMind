@@ -4,7 +4,7 @@ type: service
 status: active
 severity: high
 issue: 39
-validated: 2026-02-11
+validated: 2026-02-16
 ---
 
 # Telegram Interface
@@ -29,7 +29,7 @@ validated: 2026-02-11
 - **Text**: rate limit → `brain.process_message(content=text, content_type=TEXT)` → send `response.text` + optional `response.audio`
 - **Voice**: rate limit → download bytes → `brain.process_message(content=bytes, content_type=VOICE)` → same response handling
 - Brain handles all orchestration internally (STT, Claude SDK, session update, TTS)
-- Handlers read settings from `brain.state_manager.get_settings()` to pass mode/audio/speed params
+- Handlers read settings from `brain.state_manager.get_settings()` to pass mode/audio/speed params and STT language
 - Errors show generic "Something went wrong" to user; full error logged server-side via `_send_safe_error()`
 
 ### Brain Callbacks
@@ -48,6 +48,7 @@ validated: 2026-02-11
 | `/switch <name|id>` | Switch session by name or id prefix |
 | `/model [name]` | Show or set model |
 | `/settings` | Settings menu (inline keyboard) |
+| `/language <code>` | Show or set STT language (`auto`, `en`, `pl`) |
 | `/status` | Current session info |
 | `/health` | System health check |
 | `/setup` | Configure credentials |
@@ -80,6 +81,11 @@ validated: 2026-02-11
 - Commands work in correct topic only
 
 ## Changelog
+
+### 2026-02-16 (Issue #10)
+- Added STT language controls to Telegram settings menu (Auto/English/Polish)
+- Added `/language` command to view/set per-user STT language
+- Settings callbacks now persist `stt_language` via `StateManager.update_settings()`
 
 ### 2026-02-11 (Review fixes)
 - Callback isolation: `on_tool_approval` wrapped in try/except

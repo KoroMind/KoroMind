@@ -20,3 +20,16 @@ def test_update_settings_model_rejects_invalid_identifier() -> None:
     """Model override rejects unsupported characters and formatting."""
     with pytest.raises(ValidationError):
         UpdateSettingsRequest(model="bad model\nname")
+
+
+def test_update_settings_stt_language_accepts_auto_and_codes() -> None:
+    """STT language accepts auto and normalized language codes."""
+    assert UpdateSettingsRequest(stt_language="auto").stt_language == "auto"
+    assert UpdateSettingsRequest(stt_language="PL").stt_language == "pl"
+    assert UpdateSettingsRequest(stt_language="pt-BR").stt_language == "pt-br"
+
+
+def test_update_settings_stt_language_rejects_invalid_code() -> None:
+    """STT language rejects invalid code formats."""
+    with pytest.raises(ValidationError):
+        UpdateSettingsRequest(stt_language="bad/code")

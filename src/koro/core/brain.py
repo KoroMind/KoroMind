@@ -222,6 +222,11 @@ class Brain:
 
         Note: Pops 'model' from kwargs if present (consumed for model_override).
         """
+        # Fetch stored settings first (used for STT language, model defaults)
+        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
+        if not isinstance(stored_settings, UserSettings):
+            stored_settings = UserSettings()
+
         # Transcribe voice if needed
         if content_type == MessageType.VOICE:
             if not isinstance(content, bytes):
@@ -232,7 +237,9 @@ class Brain:
                 except Exception:
                     logger.warning("progress callback failed", exc_info=True)
             try:
-                text = await self.voice_engine.transcribe(content)
+                text = await self.voice_engine.transcribe(
+                    content, language_code=stored_settings.stt_language
+                )
             except VoiceError as exc:
                 raise RuntimeError(str(exc)) from exc
         else:
@@ -242,11 +249,6 @@ class Brain:
         if session_id is None:
             current_session = await self.state_manager.get_current_session(user_id)
             session_id = current_session.id if current_session else None
-
-        # Fetch stored settings
-        stored_settings = await _maybe_await(self.state_manager.get_settings(user_id))
-        if not isinstance(stored_settings, UserSettings):
-            stored_settings = UserSettings()
 
         # Resolve model override (pops from kwargs)
         if "model" in kwargs:
@@ -348,6 +350,7 @@ class Brain:
             voice_speed=voice_speed,
             watch_enabled=watch_enabled,
             model=ctx.stored_settings.model,
+            stt_language=ctx.stored_settings.stt_language,
         )
 
         # Tool call tracking wrapper
@@ -554,6 +557,7 @@ class Brain:
             mode=mode,
             watch_enabled=watch_enabled,
             model=ctx.stored_settings.model,
+            stt_language=ctx.stored_settings.stt_language,
         )
 
         # Wrap callback in async to match SDK expectations (like process_message does)

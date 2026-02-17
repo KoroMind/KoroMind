@@ -4,8 +4,6 @@ import logging
 import os
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from telegram import (
     Chat,
     InlineKeyboardButton,
@@ -20,10 +18,23 @@ from koro.auth import check_claude_auth, load_credentials, save_credentials
 from koro.claude import get_claude_client
 from koro.config import SANDBOX_DIR
 from koro.core.model_validation import MODEL_IDENTIFIER_PATTERN
-from koro.core.types import SessionStateItem, UserSessionState
+from koro.core.types import (
+    SessionStateItem,
+    UserSessionState,
+    UserSettings,
+    normalize_stt_language_code,
+)
 from koro.interfaces.telegram.handlers.utils import authorized_handler
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
+
+logger = logging.getLogger(__name__)
+
+STT_LANGUAGE_OPTIONS: dict[str, str] = {
+    "auto": "Auto",
+    "en": "English",
+    "pl": "Polish",
+}
 
 
 def _message_user_chat(update: Update) -> tuple[Message, User, Chat] | None:
@@ -57,7 +68,8 @@ def _format_command_help() -> str:
         (
             "Settings",
             [
-                ("/settings", "Configure mode, audio, and voice speed"),
+                ("/settings", "Configure mode, audio, speed, and STT language"),
+                ("/language <code>", "Set STT language (auto|en|pl)"),
                 ("/model [name]", "Show or set Claude model"),
             ],
         ),
@@ -98,6 +110,72 @@ def _session_button_label(session: SessionStateItem) -> str:
     if session.name:
         return f"{session.name} ({short_id})"
     return short_id
+
+
+def _stt_language_label(language_code: str) -> str:
+    """Map STT language code to user-facing label."""
+    normalized = normalize_stt_language_code(language_code)
+    return STT_LANGUAGE_OPTIONS.get(normalized, normalized)
+
+
+def _settings_text(settings: UserSettings) -> str:
+    """Render settings menu text."""
+    audio_status = "ON" if settings.audio_enabled else "OFF"
+    mode_display = "Go All" if settings.mode.value == "go_all" else "Approve"
+    watch_status = "ON" if settings.watch_enabled else "OFF"
+    model_display = settings.model or "default"
+    stt_language = _stt_language_label(settings.stt_language)
+    return (
+        "Settings:\n\n"
+        f"Mode: {mode_display}\n"
+        f"Watch: {watch_status}\n"
+        f"Audio: {audio_status}\n"
+        f"Voice Speed: {settings.voice_speed}x\n"
+        f"STT Language: {stt_language}\n"
+        f"Model: {model_display}"
+    )
+
+
+def _settings_markup(settings: UserSettings) -> InlineKeyboardMarkup:
+    """Build settings keyboard markup."""
+    mode_display = "Go All" if settings.mode.value == "go_all" else "Approve"
+    watch_status = "ON" if settings.watch_enabled else "OFF"
+    audio_status = "ON" if settings.audio_enabled else "OFF"
+    selected_lang = normalize_stt_language_code(settings.stt_language)
+
+    language_buttons = []
+    for code, label in STT_LANGUAGE_OPTIONS.items():
+        prefix = "✓ " if code == selected_lang else ""
+        language_buttons.append(
+            InlineKeyboardButton(
+                f"{prefix}{label}", callback_data=f"setting_lang_{code}"
+            )
+        )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"Mode: {mode_display}", callback_data="setting_mode_toggle"
+            ),
+            InlineKeyboardButton(
+                f"Watch: {watch_status}", callback_data="setting_watch_toggle"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                f"Audio: {audio_status}", callback_data="setting_audio_toggle"
+            )
+        ],
+        [
+            InlineKeyboardButton("0.8x", callback_data="setting_speed_0.8"),
+            InlineKeyboardButton("0.9x", callback_data="setting_speed_0.9"),
+            InlineKeyboardButton("1.0x", callback_data="setting_speed_1.0"),
+            InlineKeyboardButton("1.1x", callback_data="setting_speed_1.1"),
+            InlineKeyboardButton("1.2x", callback_data="setting_speed_1.2"),
+        ],
+        language_buttons,
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 
 def _switch_picker_markup(
@@ -340,48 +418,51 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_id = str(user.id)
     state_manager = get_state_manager()
     settings = await state_manager.get_settings(user_id)
-
-    audio_status = "ON" if settings.audio_enabled else "OFF"
-    speed = settings.voice_speed
-    mode = settings.mode.value
-    mode_display = "Go All" if mode == "go_all" else "Approve"
-    watch_status = "ON" if settings.watch_enabled else "OFF"
-    model_display = settings.model or "default"
-
-    settings_text = (
-        f"Settings:\n\n"
-        f"Mode: {mode_display}\n"
-        f"Watch: {watch_status}\n"
-        f"Audio: {audio_status}\n"
-        f"Voice Speed: {speed}x\n"
-        f"Model: {model_display}"
+    await message.reply_text(
+        _settings_text(settings), reply_markup=_settings_markup(settings)
     )
 
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                f"Mode: {mode_display}", callback_data="setting_mode_toggle"
-            ),
-            InlineKeyboardButton(
-                f"Watch: {watch_status}", callback_data="setting_watch_toggle"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                f"Audio: {audio_status}", callback_data="setting_audio_toggle"
-            )
-        ],
-        [
-            InlineKeyboardButton("0.8x", callback_data="setting_speed_0.8"),
-            InlineKeyboardButton("0.9x", callback_data="setting_speed_0.9"),
-            InlineKeyboardButton("1.0x", callback_data="setting_speed_1.0"),
-            InlineKeyboardButton("1.1x", callback_data="setting_speed_1.1"),
-            InlineKeyboardButton("1.2x", callback_data="setting_speed_1.2"),
-        ],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await message.reply_text(settings_text, reply_markup=reply_markup)
+@authorized_handler
+async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /language command - show or set STT language."""
+    ctx = _message_user_chat(update)
+    if ctx is None:
+        return
+    message, user, _ = ctx
+    user_id = str(user.id)
+    state_manager = get_state_manager()
+
+    if not context.args:
+        settings = await state_manager.get_settings(user_id)
+        current = _stt_language_label(settings.stt_language)
+        await message.reply_text(
+            "Current STT language: "
+            f"{current} ({settings.stt_language})\n\n"
+            "Usage:\n"
+            "/language auto\n"
+            "/language en\n"
+            "/language pl"
+        )
+        return
+
+    raw_code = context.args[0]
+    try:
+        code = normalize_stt_language_code(raw_code)
+    except ValueError:
+        await message.reply_text("Invalid language code. Use: auto, en, or pl.")
+        return
+
+    if code not in STT_LANGUAGE_OPTIONS:
+        await message.reply_text(
+            "Unsupported language for Telegram settings UI. " "Use: auto, en, or pl."
+        )
+        return
+
+    await state_manager.update_settings(user_id, stt_language=code)
+    await message.reply_text(
+        f"STT language set to: {_stt_language_label(code)} ({code})"
+    )
 
 
 @authorized_handler

@@ -65,6 +65,23 @@ class TestVoiceEngine:
         # THEN transcription text is returned
         assert result == "This is a test transcription"
         mock_elevenlabs_client.speech_to_text.convert.assert_called_once()
+        assert (
+            mock_elevenlabs_client.speech_to_text.convert.call_args.kwargs[
+                "language_code"
+            ]
+            == "auto"
+        )
+
+    @pytest.mark.asyncio
+    async def test_transcribe_passes_language_code(self, mock_elevenlabs_client):
+        """transcribe forwards selected language code to ElevenLabs."""
+        engine = VoiceEngine(api_key="test_key")
+        engine.client = mock_elevenlabs_client
+
+        await engine.transcribe(b"audio_data", language_code="pl")
+
+        call_args = mock_elevenlabs_client.speech_to_text.convert.call_args
+        assert call_args.kwargs["language_code"] == "pl"
 
     @pytest.mark.parametrize(
         "method,args",

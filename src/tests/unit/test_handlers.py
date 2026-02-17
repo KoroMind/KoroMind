@@ -463,6 +463,54 @@ class TestCommandHandlers:
 
         call_text = update.message.reply_text.call_args.args[0]
         assert "Settings" in call_text
+        assert "STT Language" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_language_shows_current(
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
+    ):
+        """cmd_language shows current STT language."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = []
+
+        await commands.cmd_language(update, context)
+
+        call_text = update.message.reply_text.call_args.args[0]
+        assert "Current STT language" in call_text
+        assert "auto" in call_text
+
+    @pytest.mark.asyncio
+    async def test_cmd_language_sets_value(
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
+    ):
+        """cmd_language updates STT language setting."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["pl"]
+
+        await commands.cmd_language(update, context)
+
+        settings = await state_manager.get_settings("12345")
+        assert settings.stt_language == "pl"
+
+    @pytest.mark.asyncio
+    async def test_cmd_language_rejects_invalid(
+        self, make_update, allow_all_handlers, state_manager, monkeypatch
+    ):
+        """cmd_language rejects malformed language codes."""
+        monkeypatch.setattr(commands, "get_state_manager", lambda: state_manager)
+        update = make_update(user_id=12345, chat_id=12345)
+        context = MagicMock()
+        context.args = ["bad/code"]
+
+        await commands.cmd_language(update, context)
+
+        settings = await state_manager.get_settings("12345")
+        assert settings.stt_language == "auto"
+        assert "Invalid language code" in update.message.reply_text.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_cmd_model_shows_current(
@@ -899,6 +947,43 @@ class TestCallbackHandlers:
 
         settings = await state_manager.get_settings("12345")
         assert settings.voice_speed == 0.9
+
+    @pytest.mark.asyncio
+    async def test_settings_set_language(
+        self, make_callback_query, state_manager, monkeypatch, allow_all_handlers
+    ):
+        """Settings callback sets STT language."""
+        await state_manager.update_settings("12345", stt_language="auto")
+        monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
+
+        query = make_callback_query("setting_lang_pl")
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_user.id = 12345
+
+        await callbacks.handle_settings_callback(update, MagicMock())
+
+        settings = await state_manager.get_settings("12345")
+        assert settings.stt_language == "pl"
+
+    @pytest.mark.asyncio
+    async def test_settings_rejects_unsupported_language(
+        self, make_callback_query, state_manager, monkeypatch, allow_all_handlers
+    ):
+        """Settings callback rejects unsupported STT language."""
+        await state_manager.update_settings("12345", stt_language="auto")
+        monkeypatch.setattr(callbacks, "get_state_manager", lambda: state_manager)
+
+        query = make_callback_query("setting_lang_zz")
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_user.id = 12345
+
+        await callbacks.handle_settings_callback(update, MagicMock())
+
+        settings = await state_manager.get_settings("12345")
+        assert settings.stt_language == "auto"
+        query.answer.assert_called_with("Unsupported language")
 
     @pytest.mark.asyncio
     async def test_settings_rejects_invalid_speed(

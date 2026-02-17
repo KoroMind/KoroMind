@@ -61,6 +61,7 @@ SANDBOX_DIR = get_env(
 # Voice settings
 MAX_VOICE_CHARS = get_env_int("MAX_VOICE_RESPONSE_CHARS", 500)
 ELEVENLABS_VOICE_ID = get_env("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
+VOICE_STT_LANGUAGE_DEFAULT = get_env("VOICE_STT_LANGUAGE_DEFAULT", "auto") or "auto"
 
 # Persona settings
 PERSONA_NAME = get_env("PERSONA_NAME", "Assistant")

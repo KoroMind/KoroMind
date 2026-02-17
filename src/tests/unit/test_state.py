@@ -42,6 +42,7 @@ class TestStateManager:
         assert settings.watch_enabled is False
         assert settings.voice_speed is not None
         assert settings.model == ""
+        assert settings.stt_language == "auto"
 
     @pytest.mark.parametrize(
         "key,value,expected_attr,expected_value",
@@ -51,6 +52,7 @@ class TestStateManager:
             ("voice_speed", 0.9, "voice_speed", 0.9),
             ("watch_enabled", True, "watch_enabled", True),
             ("model", "claude-test", "model", "claude-test"),
+            ("stt_language", "pl", "stt_language", "pl"),
         ],
     )
     @pytest.mark.asyncio
@@ -75,6 +77,7 @@ class TestStateManager:
         manager1 = StateManager(db_path=db_file)
         await manager1.update_settings("12345", audio_enabled=False)
         await manager1.update_settings("12345", mode="approve")
+        await manager1.update_settings("12345", stt_language="pl")
 
         # Create new instance with same db
         manager2 = StateManager(db_path=db_file)
@@ -82,6 +85,7 @@ class TestStateManager:
 
         assert settings.audio_enabled is False
         assert settings.mode.value == "approve"
+        assert settings.stt_language == "pl"
 
 
 class TestStateManagerAsync:
@@ -227,6 +231,18 @@ class TestStateManagerAsync:
         assert state.pending_session_name == "newer-name"
 
     @pytest.mark.asyncio
+    async def test_set_pending_session_name_initializes_stt_language_from_default(
+        self, state_manager, monkeypatch
+    ):
+        """Creating settings via pending session should preserve configured STT default."""
+        monkeypatch.setattr("koro.core.state.VOICE_STT_LANGUAGE_DEFAULT", "pl")
+
+        await state_manager.set_pending_session_name("12345", "project-x")
+        settings = await state_manager.get_settings("12345")
+
+        assert settings.stt_language == "pl"
+
+    @pytest.mark.asyncio
     async def test_get_sessions(self, state_manager):
         """get_sessions returns all sessions for user."""
         await state_manager.create_session("12345")
@@ -245,6 +261,7 @@ class TestStateManagerAsync:
         assert settings.audio_enabled is True
         assert settings.mode.value == "go_all"
         assert settings.model == ""
+        assert settings.stt_language == "auto"
 
     @pytest.mark.asyncio
     async def test_update_settings_async(self, state_manager):
@@ -252,6 +269,18 @@ class TestStateManagerAsync:
         settings = await state_manager.update_settings("12345", audio_enabled=False)
 
         assert settings.audio_enabled is False
+
+    @pytest.mark.asyncio
+    async def test_update_settings_rejects_invalid_stt_language(self, state_manager):
+        """Invalid STT language code is rejected."""
+        with pytest.raises(ValueError):
+            await state_manager.update_settings("12345", stt_language="bad/code")
+
+    @pytest.mark.asyncio
+    async def test_update_settings_rejects_non_string_stt_language(self, state_manager):
+        """Non-string STT language values are rejected explicitly."""
+        with pytest.raises(ValueError, match="stt_language must be a string"):
+            await state_manager.update_settings("12345", stt_language=123)
 
 
 class TestStateManagerConcurrency:

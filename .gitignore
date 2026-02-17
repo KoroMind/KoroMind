@@ -46,3 +46,6 @@ credentials.json
 
 # Sandbox (Claude working directory)
 sandbox/
+
+# Local runtime data accidentally created in repo
+~/.koromind/

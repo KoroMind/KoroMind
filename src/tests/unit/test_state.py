@@ -231,6 +231,18 @@ class TestStateManagerAsync:
         assert state.pending_session_name == "newer-name"
 
     @pytest.mark.asyncio
+    async def test_set_pending_session_name_initializes_stt_language_from_default(
+        self, state_manager, monkeypatch
+    ):
+        """Creating settings via pending session should preserve configured STT default."""
+        monkeypatch.setattr("koro.core.state.VOICE_STT_LANGUAGE_DEFAULT", "pl")
+
+        await state_manager.set_pending_session_name("12345", "project-x")
+        settings = await state_manager.get_settings("12345")
+
+        assert settings.stt_language == "pl"
+
+    @pytest.mark.asyncio
     async def test_get_sessions(self, state_manager):
         """get_sessions returns all sessions for user."""
         await state_manager.create_session("12345")

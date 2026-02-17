@@ -468,12 +468,12 @@ class StateManager:
                 """
                 INSERT INTO settings (
                     user_id, mode, audio_enabled, voice_speed, watch_enabled, model,
-                    pending_session_name
+                    stt_language, pending_session_name
                 )
-                VALUES (?, 'go_all', 1, 1.1, 0, '', ?)
+                VALUES (?, 'go_all', 1, 1.1, 0, '', ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET pending_session_name = excluded.pending_session_name
                 """,
-                (user_id, name),
+                (user_id, _default_stt_language(), name),
             )
 
     async def update_session(

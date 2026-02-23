@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from koro.api.middleware import api_key_middleware, rate_limit_middleware
-from koro.api.routes import health, messages, sessions, settings
+from koro.api.routes import health, messages, sessions, settings, stream
 from koro.core.config import (
     KOROMIND_CORS_ORIGINS,
     KOROMIND_HOST,
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(messages.router, prefix="/api/v1", tags=["Messages"])
     app.include_router(sessions.router, prefix="/api/v1", tags=["Sessions"])
     app.include_router(settings.router, prefix="/api/v1", tags=["Settings"])
+    app.include_router(stream.router, prefix="/api/v1", tags=["Stream"])
 
     return app
 

@@ -481,6 +481,7 @@ class Brain:
             "cwd",
             "add_dirs",
             "system_prompt_file",
+            "system_prompt_append",
             "include_partial_messages",
             "enable_file_checkpointing",
             "output_format",

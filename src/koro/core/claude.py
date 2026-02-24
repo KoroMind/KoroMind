@@ -155,6 +155,8 @@ class ClaudeClient:
         """Build SDK options from config."""
         # Get dynamic system prompt
         system_prompt = self.prompt_manager.get_prompt(config.user_settings)
+        if config.system_prompt_append:
+            system_prompt = system_prompt + "\n\n" + config.system_prompt_append
 
         # Base options
         options = ClaudeAgentOptions(

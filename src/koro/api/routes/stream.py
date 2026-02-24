@@ -24,6 +24,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# System prompt suffix for the chat UI interface
+_CHAT_UI_SYSTEM_PROMPT = (
+    "## Chat UI context\n"
+    "You are responding in a rich web chat UI that renders markdown with full support "
+    "for code blocks, mermaid diagrams, tables, and other formatting.\n"
+    "- Use markdown freely: headings, bold, lists, code blocks, tables\n"
+    "- Output diagrams (mermaid, etc.) as inline fenced code blocks — the UI renders them automatically\n"
+    "- Do NOT write diagrams or content to files when the user wants to see them — output them inline\n"
+    "- Speak naturally but use rich formatting when it helps clarity"
+)
+
 
 class StreamMessageRequest(BaseModel):
     """Request body for streaming message processing."""
@@ -72,6 +83,7 @@ async def _stream_events(
             content_type=MessageType(request.content_type),
             session_id=request.session_id,
             mode=Mode(request.mode),
+            system_prompt_append=_CHAT_UI_SYSTEM_PROMPT,
         ):
             if isinstance(event, AssistantMessage):
                 # Reconstruct full text from all TextBlocks

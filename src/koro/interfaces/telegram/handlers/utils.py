@@ -39,7 +39,9 @@ def should_handle_message(message_thread_id: int | None) -> bool:
         return True
 
     if message_thread_id is None:
-        logger.debug(f"Message not in a topic, but we're filtering for topic {allowed_topic}")
+        logger.debug(
+            f"Message not in a topic, but we're filtering for topic {allowed_topic}"
+        )
         return False
 
     return message_thread_id == allowed_topic

@@ -297,6 +297,7 @@ class QueryConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):
     fallback_model: str | None = None
     include_partial_messages: bool = False
     enable_file_checkpointing: bool = False
+    system_prompt_append: str = ""
 
     @field_validator("max_turns")
     @classmethod

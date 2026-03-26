@@ -47,5 +47,9 @@ credentials.json
 # Sandbox (Claude working directory)
 sandbox/
 
+# Mac
+.DS_Store
+
 # Local runtime data accidentally created in repo
 ~/.koromind/
+

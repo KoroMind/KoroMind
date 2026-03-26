@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+import pytest
+
 import koro.core.prompt as prompt
 from koro.core.types import UserSettings
 from koro.prompt import PromptManager, build_dynamic_prompt
@@ -33,16 +35,11 @@ class TestLoadSystemPrompt:
         assert "/test/sandbox" in content
         assert "/test/working" in content
 
-    def test_fallback_default_when_missing(self, tmp_path, monkeypatch):
-        """load_system_prompt returns default when file missing."""
+    def test_raises_when_prompt_file_missing(self, tmp_path, monkeypatch):
+        """load_system_prompt raises when prompt file path is missing."""
         monkeypatch.setattr(prompt, "SYSTEM_PROMPT_FILE", "")
-        monkeypatch.setattr(prompt, "SANDBOX_DIR", "/sandbox")
-        monkeypatch.setattr(prompt, "CLAUDE_WORKING_DIR", "/working")
-
-        content = prompt.load_system_prompt()
-        assert "voice assistant" in content.lower()
-        assert "/sandbox" in content
-        assert "/working" in content
+        with pytest.raises(ValueError, match="SYSTEM_PROMPT_FILE is empty"):
+            prompt.load_system_prompt()
 
     def test_relative_path_resolved(self, tmp_path, monkeypatch):
         """load_system_prompt resolves relative paths."""
@@ -69,16 +66,9 @@ class TestLoadSystemPrompt:
         base_dir.mkdir()
 
         monkeypatch.setattr(prompt, "BASE_DIR", base_dir)
-        monkeypatch.setattr(prompt, "SYSTEM_PROMPT_FILE", "")
-        monkeypatch.setattr(prompt, "SANDBOX_DIR", "/sandbox")
-        monkeypatch.setattr(prompt, "CLAUDE_WORKING_DIR", "/working")
-
         # Try to access file outside BASE_DIR via path traversal
-        content = prompt.load_system_prompt("../outside/secret.txt")
-
-        # Should return default prompt, not the secret file
-        assert "SECRET DATA" not in content
-        assert "voice assistant" in content.lower()
+        with pytest.raises(ValueError, match="Prompt path escapes BASE_DIR"):
+            prompt.load_system_prompt("../outside/secret.txt")
 
 
 class TestBuildDynamicPrompt:

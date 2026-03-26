@@ -1,5 +1,7 @@
 """Tests for koro.config module."""
 
+import logging
+
 import pytest
 
 import koro.config as config
@@ -19,6 +21,17 @@ class TestEnvHelpers:
         monkeypatch.delenv("NONEXISTENT_VAR", raising=False)
 
         assert config.get_env("NONEXISTENT_VAR", "default") == "default"
+
+    def test_get_env_warns_when_using_default(self, monkeypatch, caplog):
+        """get_env warns when falling back to default."""
+        monkeypatch.delenv("MISSING_WITH_DEFAULT", raising=False)
+        caplog.set_level(logging.WARNING, logger="koro.core.config")
+
+        value = config.get_env("MISSING_WITH_DEFAULT", "fallback")
+
+        assert value == "fallback"
+        assert "MISSING_WITH_DEFAULT" in caplog.text
+        assert "falling back to default value" in caplog.text
 
     @pytest.mark.parametrize(
         "value,expected",
@@ -62,6 +75,28 @@ class TestEnvHelpers:
         monkeypatch.setenv("BOOL_VAR", "maybe")
 
         assert config.get_env_bool("BOOL_VAR", default) is default
+
+    def test_get_env_int_warns_for_invalid_value(self, monkeypatch, caplog):
+        """get_env_int warns when value cannot be parsed."""
+        monkeypatch.setenv("INT_VAR", "invalid")
+        caplog.set_level(logging.WARNING, logger="koro.core.config")
+
+        value = config.get_env_int("INT_VAR", 77)
+
+        assert value == 77
+        assert "INT_VAR" in caplog.text
+        assert "not a valid integer" in caplog.text
+
+    def test_get_env_bool_warns_for_invalid_value(self, monkeypatch, caplog):
+        """get_env_bool warns when value cannot be parsed."""
+        monkeypatch.setenv("BOOL_VAR", "invalid")
+        caplog.set_level(logging.WARNING, logger="koro.core.config")
+
+        value = config.get_env_bool("BOOL_VAR", True)
+
+        assert value is True
+        assert "BOOL_VAR" in caplog.text
+        assert "not a valid boolean" in caplog.text
 
 
 class TestValidateEnvironment:

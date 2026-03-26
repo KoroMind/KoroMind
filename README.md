@@ -285,7 +285,7 @@ curl -X POST http://localhost:8420/api/v1/messages/text \
 | `SYSTEM_PROMPT_FILE` | - | Custom persona prompt |
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | Voice ID |
 | `CLAUDE_WORKING_DIR` | `~` | Read access directory |
-| `CLAUDE_SANDBOX_DIR` | `~/claude-voice-sandbox` | Write/execute directory |
+| `CLAUDE_SANDBOX_DIR` | `~/koromind-sandbox` | Write/execute directory |
 
 ---
 
@@ -331,6 +331,29 @@ pre-commit run --all-files
 # Coverage
 pytest --cov=koro --cov-report=term-missing
 ```
+
+---
+
+## Deployment
+
+### Server Setup (GCP/AWS/VPS)
+
+One-liner setup on a fresh Ubuntu 24.04 VM:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KoroMind/KoroMind/main/scripts/setup.sh | bash
+```
+
+This installs Docker + Compose, clones the repo, prepares `.env`, and scaffolds a ready-to-use second-brain vault at `$HOME/koromind-work-dir/second-brain`. Then edit `.env` and start:
+
+```bash
+cd ~/KoroMind
+nano .env
+docker-compose --profile telegram up -d --build
+docker-compose logs -f koro
+```
+
+See [docs/local-server-setup.md](docs/local-server-setup.md) for the full guide.
 
 ---
 

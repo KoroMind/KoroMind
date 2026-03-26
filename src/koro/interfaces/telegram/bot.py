@@ -33,6 +33,7 @@ from koro.interfaces.telegram.handlers import (
     cmd_elevenlabs_key,
     cmd_health,
     cmd_help,
+    cmd_language,
     cmd_model,
     cmd_new,
     cmd_sessions,
@@ -47,7 +48,6 @@ from koro.interfaces.telegram.handlers import (
     handle_voice,
 )
 from koro.interfaces.telegram.handlers.messages import cleanup_stale_approvals
-from koro.interfaces.telegram.handlers.utils import debug
 from koro.state import get_state_manager
 from koro.voice import get_voice_engine
 
@@ -80,11 +80,11 @@ def run_telegram_bot() -> None:
     # Apply any saved credentials first
     claude_token, elevenlabs_key = apply_saved_credentials()
     if claude_token:
-        debug("Applied saved Claude token")
+        logger.debug("Applied saved Claude token")
     if elevenlabs_key:
         voice_engine = get_voice_engine()
         voice_engine.update_api_key(elevenlabs_key)
-        debug("Applied saved ElevenLabs key")
+        logger.debug("Applied saved ElevenLabs key")
 
     # Validate environment
     is_valid, message = validate_environment()
@@ -128,7 +128,8 @@ def run_telegram_bot() -> None:
             BotCommand("model", "Show or set model"),
             BotCommand("status", "Show current session info"),
             BotCommand("health", "Run health checks"),
-            BotCommand("settings", "Configure audio and mode"),
+            BotCommand("settings", "Configure mode, audio, speed, STT"),
+            BotCommand("language", "Set STT language (auto|en|pl)"),
             BotCommand("setup", "Show credential status"),
             BotCommand("claude_token", "Set Claude token"),
             BotCommand("elevenlabs_key", "Set ElevenLabs key"),
@@ -136,7 +137,7 @@ def run_telegram_bot() -> None:
         try:
             await application.bot.set_my_commands(commands)
         except Exception as exc:
-            debug(f"Failed to set bot commands: {exc}")
+            logger.debug(f"Failed to set bot commands: {exc}")
         application.job_queue.run_repeating(
             _periodic_approval_cleanup,
             interval=60,
@@ -162,6 +163,7 @@ def run_telegram_bot() -> None:
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("settings", cmd_settings))
+    app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("setup", cmd_setup))
     app.add_handler(CommandHandler("claude_token", cmd_claude_token))
     app.add_handler(CommandHandler("elevenlabs_key", cmd_elevenlabs_key))
@@ -185,15 +187,15 @@ def run_telegram_bot() -> None:
     Path(sandbox_dir).mkdir(parents=True, exist_ok=True)
 
     # Startup info
-    debug("Bot starting...")
-    debug(f"Persona: {PERSONA_NAME}")
-    debug(f"Voice ID: {ELEVENLABS_VOICE_ID}")
-    debug("TTS: eleven_turbo_v2_5 with expressive settings")
-    debug(f"Sandbox: {sandbox_dir}")
-    debug(f"Read access: {CLAUDE_WORKING_DIR}")
-    debug(f"Chat ID: {ALLOWED_CHAT_ID}")
-    debug(f"Topic ID: {TOPIC_ID or 'ALL (no filter)'}")
-    debug(f"System prompt: {SYSTEM_PROMPT_FILE or 'default'}")
+    logger.debug("Bot starting...")
+    logger.debug(f"Persona: {PERSONA_NAME}")
+    logger.debug(f"Voice ID: {ELEVENLABS_VOICE_ID}")
+    logger.debug("TTS: eleven_turbo_v2_5 with expressive settings")
+    logger.debug(f"Sandbox: {sandbox_dir}")
+    logger.debug(f"Read access: {CLAUDE_WORKING_DIR}")
+    logger.debug(f"Chat ID: {ALLOWED_CHAT_ID}")
+    logger.debug(f"Topic ID: {TOPIC_ID or 'ALL (no filter)'}")
+    logger.debug(f"System prompt: {SYSTEM_PROMPT_FILE or 'default'}")
     print(f"{PERSONA_NAME} is ready. Waiting for messages...")
 
     # Run bot

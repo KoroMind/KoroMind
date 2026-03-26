@@ -4,7 +4,7 @@ type: service
 status: active
 severity: medium
 issue: null
-validated: 2026-01-29
+validated: 2026-02-16
 ---
 
 # Voice Processing Service
@@ -25,12 +25,13 @@ validated: 2026-01-29
 ### Key Methods
 | Method | Input | Output |
 |--------|-------|--------|
-| `transcribe(audio_bytes)` | Voice audio (ogg/wav) | Text string |
+| `transcribe(audio_bytes, language_code)` | Voice audio (ogg/wav) + STT language (`auto`/code) | Text string |
 | `text_to_speech(text, speed)` | Text + speed (0.7-1.2) | Audio bytes |
 
 ### Config
 - `ELEVENLABS_API_KEY` - Required for voice features
 - `ELEVENLABS_VOICE_ID` - Voice model (default: George)
+- `VOICE_STT_LANGUAGE_DEFAULT` - Default STT language (`auto` by default)
 - Voice settings: stability, similarity_boost, style, speed
 
 ### Async Design
@@ -49,6 +50,10 @@ validated: 2026-01-29
 - Speed parameter respected (0.7-1.2 range)
 
 ## Changelog
+
+### 2026-02-16
+- Added `language_code` support to `VoiceEngine.transcribe()` and pass-through to ElevenLabs Scribe
+- Added STT language normalization/validation (`auto`, `en`, `pl`, etc.)
 
 ### 2026-01-29
 - Initial spec from codebase exploration

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -27,6 +28,25 @@ from claude_agent_sdk.types import (
 )
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import TypedDict
+
+STT_LANGUAGE_CODE_PATTERN = re.compile(r"^[a-z]{2}(?:-[a-z]{2})?$")
+
+
+def normalize_stt_language_code(language_code: str | None) -> str:
+    """Normalize and validate STT language code.
+
+    Accepts "auto" or simple locale tags like "en", "pl", "pt-br".
+    """
+    if language_code is None:
+        return "auto"
+    normalized = language_code.strip().lower()
+    if not normalized:
+        return "auto"
+    if normalized == "auto" or STT_LANGUAGE_CODE_PATTERN.fullmatch(normalized):
+        return normalized
+    raise ValueError(
+        "Invalid STT language code. Use 'auto' or codes like 'en', 'pl', 'pt-br'."
+    )
 
 
 class OutputFormat(TypedDict):
@@ -140,6 +160,7 @@ __all__ = [
     "ThinkingBlock",
     "ToolCall",
     "ToolPermissionContext",
+    "normalize_stt_language_code",
     "QueryConfig",
     "UserSessionState",
     "UserSettings",
@@ -188,6 +209,13 @@ class UserSettings(BaseModel, frozen=True):
     voice_speed: float = 1.1
     watch_enabled: bool = False
     model: str = ""
+    stt_language: str = "auto"
+
+    @field_validator("stt_language")
+    @classmethod
+    def validate_stt_language(cls, value: str) -> str:
+        """Validate and normalize STT language code."""
+        return normalize_stt_language_code(value)
 
 
 @dataclass(frozen=True)
@@ -209,33 +237,14 @@ class BrainResponse:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class Session:
+class Session(BaseModel, frozen=True):
     """User session record."""
 
     id: str
     user_id: str
     created_at: datetime
     last_active: datetime
-
-    def to_dict(self) -> dict[str, str]:
-        """Convert to dictionary for serialization."""
-        return {
-            "id": self.id,
-            "user_id": self.user_id,
-            "created_at": self.created_at.isoformat(),
-            "last_active": self.last_active.isoformat(),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, str]) -> "Session":
-        """Create from dictionary."""
-        return cls(
-            id=data["id"],
-            user_id=data["user_id"],
-            created_at=datetime.fromisoformat(data["created_at"]),
-            last_active=datetime.fromisoformat(data["last_active"]),
-        )
+    name: str | None = None
 
 
 class SessionStateItem(BaseModel, frozen=True):

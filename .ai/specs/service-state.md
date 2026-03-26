@@ -4,7 +4,7 @@ type: service
 status: active
 severity: high
 issue: 55
-validated: 2026-02-06
+validated: 2026-02-16
 ---
 
 # State Management Service
@@ -26,7 +26,7 @@ validated: 2026-02-06
 ### Schema
 ```sql
 sessions (id, user_id, created_at, last_active, is_current, name)
-settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model, pending_session_name)
+settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model, stt_language, pending_session_name)
 memory   (user_id, key, value, created_at, updated_at)
 ```
 
@@ -59,6 +59,7 @@ memory   (user_id, key, value, created_at, updated_at)
 - `audio_enabled`: TTS on/off
 - `voice_speed`: 0.7-1.2 range
 - `watch_enabled`: Stream tool calls to UI
+- `stt_language`: STT language code (`auto` default, configurable per user)
 
 ## Test
 - New user gets default settings
@@ -67,6 +68,11 @@ memory   (user_id, key, value, created_at, updated_at)
 - Settings persist across restarts
 
 ## Changelog
+
+### 2026-02-16
+- Added `stt_language` column to `settings` table with schema migration
+- Added JSON migration support for `stt_language` with safe fallback to default
+- Added validation/normalization for STT language updates in `update_settings()`
 
 ### 2026-02-06
 - Linked spec to issue #55

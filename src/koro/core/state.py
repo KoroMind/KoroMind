@@ -10,19 +10,38 @@ from threading import Lock
 from typing import Generator
 from uuid import uuid4
 
-from koro.core.config import DATABASE_PATH, SETTINGS_FILE, STATE_FILE, VOICE_SETTINGS
+from koro.core.config import (
+    DATABASE_PATH,
+    SETTINGS_FILE,
+    STATE_FILE,
+    VOICE_SETTINGS,
+    VOICE_STT_LANGUAGE_DEFAULT,
+)
 from koro.core.types import (
     Mode,
     Session,
     SessionStateItem,
     UserSessionState,
     UserSettings,
+    normalize_stt_language_code,
 )
 
 # Maximum number of sessions to keep per user (FIFO eviction)
 MAX_SESSIONS = 100
 
 logger = logging.getLogger(__name__)
+
+
+def _default_stt_language() -> str:
+    """Resolve safe default STT language from config."""
+    try:
+        return normalize_stt_language_code(VOICE_STT_LANGUAGE_DEFAULT)
+    except ValueError:
+        logger.warning(
+            "Invalid VOICE_STT_LANGUAGE_DEFAULT=%r. Falling back to 'auto'.",
+            VOICE_STT_LANGUAGE_DEFAULT,
+        )
+        return "auto"
 
 
 class StateManager:
@@ -55,7 +74,8 @@ class StateManager:
                     user_id TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     last_active TEXT NOT NULL,
-                    is_current INTEGER DEFAULT 0
+                    is_current INTEGER DEFAULT 0,
+                    name TEXT
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_id
@@ -71,6 +91,7 @@ class StateManager:
                     voice_speed REAL DEFAULT 1.1,
                     watch_enabled INTEGER DEFAULT 0,
                     model TEXT DEFAULT '',
+                    stt_language TEXT DEFAULT 'auto',
                     pending_session_name TEXT DEFAULT NULL
                 );
 
@@ -98,6 +119,10 @@ class StateManager:
             if "pending_session_name" not in columns:
                 conn.execute(
                     "ALTER TABLE settings ADD COLUMN pending_session_name TEXT DEFAULT NULL"
+                )
+            if "stt_language" not in columns:
+                conn.execute(
+                    "ALTER TABLE settings ADD COLUMN stt_language TEXT DEFAULT 'auto'"
                 )
 
             session_columns = {
@@ -177,11 +202,26 @@ class StateManager:
                     with open(SETTINGS_FILE) as f:
                         settings_data = json.load(f)
                     for user_id, user_settings in settings_data.items():
+                        raw_language = user_settings.get(
+                            "stt_language", VOICE_STT_LANGUAGE_DEFAULT
+                        )
+                        try:
+                            stt_language = normalize_stt_language_code(raw_language)
+                        except ValueError:
+                            stt_language = normalize_stt_language_code(
+                                _default_stt_language()
+                            )
+                            logger.warning(
+                                "Invalid legacy stt_language for user %s: %r. Falling back to %s.",
+                                user_id,
+                                raw_language,
+                                stt_language,
+                            )
                         conn.execute(
                             """
                             INSERT OR IGNORE INTO settings
-                            (user_id, mode, audio_enabled, voice_speed, watch_enabled, model)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                            (user_id, mode, audio_enabled, voice_speed, watch_enabled, model, stt_language)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 user_id,
@@ -192,6 +232,7 @@ class StateManager:
                                 ),
                                 1 if user_settings.get("watch_enabled", False) else 0,
                                 user_settings.get("model", ""),
+                                stt_language,
                             ),
                         )
                 except (json.JSONDecodeError, OSError) as exc:
@@ -222,7 +263,7 @@ class StateManager:
         with self._get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT id, user_id, created_at, last_active
+                SELECT id, user_id, created_at, last_active, name
                 FROM sessions
                 WHERE user_id = ?
                 ORDER BY last_active DESC
@@ -235,6 +276,7 @@ class StateManager:
                     user_id=row["user_id"],
                     created_at=datetime.fromisoformat(row["created_at"]),
                     last_active=datetime.fromisoformat(row["last_active"]),
+                    name=row["name"],
                 )
                 for row in rows
             ]
@@ -304,7 +346,7 @@ class StateManager:
                 pending_session_name=pending_session_name,
             )
 
-    async def create_session(self, user_id: str) -> Session:
+    async def create_session(self, user_id: str, name: str | None = None) -> Session:
         """Create a new session for a user."""
         now = datetime.now()
         session_id = str(uuid4())
@@ -322,7 +364,7 @@ class StateManager:
                 INSERT INTO sessions (id, user_id, created_at, last_active, is_current, name)
                 VALUES (?, ?, ?, ?, 1, ?)
                 """,
-                (session_id, user_id, now.isoformat(), now.isoformat(), None),
+                (session_id, user_id, now.isoformat(), now.isoformat(), name),
             )
 
             # FIFO eviction: remove oldest sessions if exceeding limit
@@ -344,6 +386,7 @@ class StateManager:
             user_id=user_id,
             created_at=now,
             last_active=now,
+            name=name,
         )
 
     async def get_current_session(self, user_id: str) -> Session | None:
@@ -351,7 +394,7 @@ class StateManager:
         with self._get_connection() as conn:
             row = conn.execute(
                 """
-                SELECT id, user_id, created_at, last_active
+                SELECT id, user_id, created_at, last_active, name
                 FROM sessions
                 WHERE user_id = ? AND is_current = 1
                 """,
@@ -363,6 +406,29 @@ class StateManager:
                     user_id=row["user_id"],
                     created_at=datetime.fromisoformat(row["created_at"]),
                     last_active=datetime.fromisoformat(row["last_active"]),
+                    name=row["name"],
+                )
+            return None
+
+    async def get_session_by_name(self, user_id: str, name: str) -> Session | None:
+        """Get a session by name for a user."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id, user_id, created_at, last_active, name
+                FROM sessions
+                WHERE user_id = ? AND name = ?
+                ORDER BY last_active DESC LIMIT 1
+                """,
+                (user_id, name),
+            ).fetchone()
+            if row:
+                return Session(
+                    id=row["id"],
+                    user_id=row["user_id"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    last_active=datetime.fromisoformat(row["last_active"]),
+                    name=row["name"],
                 )
             return None
 
@@ -402,12 +468,12 @@ class StateManager:
                 """
                 INSERT INTO settings (
                     user_id, mode, audio_enabled, voice_speed, watch_enabled, model,
-                    pending_session_name
+                    stt_language, pending_session_name
                 )
-                VALUES (?, 'go_all', 1, 1.1, 0, '', ?)
+                VALUES (?, 'go_all', 1, 1.1, 0, '', ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET pending_session_name = excluded.pending_session_name
                 """,
-                (user_id, name),
+                (user_id, _default_stt_language(), name),
             )
 
     async def update_session(
@@ -509,25 +575,36 @@ class StateManager:
         """Get settings for a user, creating defaults if not exists."""
         with self._get_connection() as conn:
             row = conn.execute(
-                "SELECT mode, audio_enabled, voice_speed, watch_enabled, model FROM settings WHERE user_id = ?",
+                "SELECT mode, audio_enabled, voice_speed, watch_enabled, model, stt_language FROM settings WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
 
             if row:
+                try:
+                    stt_language = normalize_stt_language_code(row["stt_language"])
+                except ValueError:
+                    stt_language = normalize_stt_language_code(_default_stt_language())
+                    logger.warning(
+                        "Invalid stt_language in DB for user %s: %r. Falling back to %s.",
+                        user_id,
+                        row["stt_language"],
+                        stt_language,
+                    )
                 return UserSettings(
                     mode=Mode(row["mode"]),
                     audio_enabled=bool(row["audio_enabled"]),
                     voice_speed=row["voice_speed"],
                     watch_enabled=bool(row["watch_enabled"]),
                     model=row["model"] or "",
+                    stt_language=stt_language,
                 )
 
             # Create default settings
-            default_settings = UserSettings()
+            default_settings = UserSettings(stt_language=_default_stt_language())
             conn.execute(
                 """
-                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO settings (user_id, mode, audio_enabled, voice_speed, watch_enabled, model, stt_language)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -536,6 +613,7 @@ class StateManager:
                     default_settings.voice_speed,
                     1 if default_settings.watch_enabled else 0,
                     default_settings.model,
+                    default_settings.stt_language,
                 ),
             )
             return default_settings
@@ -557,6 +635,14 @@ class StateManager:
             updates["watch_enabled"] = kwargs["watch_enabled"]
         if "model" in kwargs:
             updates["model"] = kwargs["model"]
+        if "stt_language" in kwargs:
+            raw_stt_language = kwargs["stt_language"]
+            if not isinstance(raw_stt_language, str):
+                raise ValueError(
+                    "stt_language must be a string, "
+                    f"got {type(raw_stt_language).__name__}"
+                )
+            updates["stt_language"] = normalize_stt_language_code(raw_stt_language)
 
         if updates:
             current = current.model_copy(update=updates)
@@ -566,7 +652,7 @@ class StateManager:
             conn.execute(
                 """
                 UPDATE settings
-                SET mode = ?, audio_enabled = ?, voice_speed = ?, watch_enabled = ?, model = ?
+                SET mode = ?, audio_enabled = ?, voice_speed = ?, watch_enabled = ?, model = ?, stt_language = ?
                 WHERE user_id = ?
                 """,
                 (
@@ -575,6 +661,7 @@ class StateManager:
                     current.voice_speed,
                     1 if current.watch_enabled else 0,
                     current.model,
+                    current.stt_language,
                     user_id,
                 ),
             )

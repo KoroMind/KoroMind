@@ -10,6 +10,7 @@ from koro.interfaces.telegram.handlers.commands import (
     cmd_continue,
     cmd_elevenlabs_key,
     cmd_health,
+    cmd_language,
     cmd_new,
     cmd_sessions,
     cmd_settings,
@@ -20,6 +21,7 @@ from koro.interfaces.telegram.handlers.commands import (
 
 __all__ = [
     "cmd_new",
+    "cmd_language",
     "cmd_continue",
     "cmd_sessions",
     "cmd_switch",

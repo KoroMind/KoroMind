@@ -3,22 +3,20 @@
 import asyncio
 import functools
 import inspect
-from datetime import datetime
+import logging
 from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar
 
 from telegram import Message, Update
 from telegram.constants import ChatAction
+from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 from koro.config import ALLOWED_CHAT_ID, TOPIC_ID
 
+logger = logging.getLogger(__name__)
+
 P = ParamSpec("P")
 R = TypeVar("R")
-
-
-def debug(msg: str) -> None:
-    """Print debug message with timestamp."""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 
 def should_handle_message(message_thread_id: int | None) -> bool:
@@ -37,11 +35,11 @@ def should_handle_message(message_thread_id: int | None) -> bool:
     try:
         allowed_topic = int(TOPIC_ID)
     except (ValueError, TypeError):
-        debug(f"WARNING: Invalid TOPIC_ID '{TOPIC_ID}', handling all messages")
+        logger.debug(f"WARNING: Invalid TOPIC_ID '{TOPIC_ID}', handling all messages")
         return True
 
     if message_thread_id is None:
-        debug(f"Message not in a topic, but we're filtering for topic {allowed_topic}")
+        logger.debug(f"Message not in a topic, but we're filtering for topic {allowed_topic}")
         return False
 
     return message_thread_id == allowed_topic
@@ -109,7 +107,10 @@ async def _chat_action_loop(
         return
     chat_id = chat.id
     while True:
-        await context.bot.send_chat_action(chat_id=chat_id, action=action)
+        try:
+            await context.bot.send_chat_action(chat_id=chat_id, action=action)
+        except TelegramError as exc:
+            logger.debug("Failed to send chat action: %s", exc)
         await asyncio.sleep(interval)
 
 

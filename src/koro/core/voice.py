@@ -11,6 +11,7 @@ from elevenlabs.core import ApiError
 from elevenlabs.types import SpeechToTextChunkResponseModel
 
 from koro.core.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, VOICE_SETTINGS
+from koro.core.types import normalize_stt_language_code
 
 
 class VoiceError(RuntimeError):
@@ -45,12 +46,13 @@ class VoiceEngine:
         self.api_key = api_key
         self.client = ElevenLabs(api_key=api_key)
 
-    async def transcribe(self, voice_bytes: bytes) -> str:
+    async def transcribe(self, voice_bytes: bytes, language_code: str = "auto") -> str:
         """
         Transcribe voice using ElevenLabs Scribe.
 
         Args:
             voice_bytes: Audio data as bytes
+            language_code: STT language code ("auto", "en", "pl", ...)
 
         Returns:
             Transcribed text or error message
@@ -59,11 +61,13 @@ class VoiceEngine:
         if not client:
             raise VoiceNotConfiguredError("ElevenLabs not configured")
 
+        language_code = normalize_stt_language_code(language_code)
+
         def _transcribe_sync() -> SpeechToTextChunkResponseModel:
             return client.speech_to_text.convert(
                 file=BytesIO(voice_bytes),
                 model_id="scribe_v1",
-                language_code="en",
+                language_code=language_code,
             )
 
         try:

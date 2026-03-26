@@ -1,36 +1,48 @@
 """Voice and text message handlers."""
 
 import asyncio
+import logging
 import time
 import uuid
-from typing import Any, TypedDict
+from dataclasses import dataclass, field
+from typing import Any, cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.ext import ContextTypes
 
-from koro.claude import format_tool_call, get_claude_client
-from koro.core.types import Mode, QueryConfig, UserSessionState, UserSettings
+from koro.claude import format_tool_call
+from koro.core.brain import get_brain
+from koro.core.types import (
+    BrainCallbacks,
+    CanUseTool,
+    MessageType,
+    Mode,
+    PermissionResultAllow,
+    PermissionResultDeny,
+    ToolPermissionContext,
+    UserSettings,
+)
 from koro.interfaces.telegram.handlers.utils import (
     authorized_handler,
-    debug,
     send_long_message,
     start_chat_action,
     stop_chat_action,
 )
 from koro.rate_limit import get_rate_limiter
-from koro.state import get_state_manager
-from koro.voice import VoiceError, get_voice_engine
+
+logger = logging.getLogger(__name__)
 
 
-class PendingApproval(TypedDict):
+@dataclass
+class PendingApproval:
     """Runtime state for an approve/reject tool request."""
 
-    created_at: float
     user_id: str
-    event: asyncio.Event
-    approved: bool | None
     tool_name: str
-    input: dict[str, Any]
+    event: asyncio.Event
+    created_at: float = field(default_factory=time.time)
+    approved: bool | None = None
+    input: dict[str, Any] = field(default_factory=dict)
 
 
 # Pending tool approvals for approve mode
@@ -41,17 +53,7 @@ MAX_PENDING_APPROVALS = 100
 
 
 def add_pending_approval(approval_id: str, data: PendingApproval) -> None:
-    """
-    Add a pending approval with automatic cleanup of old entries.
-
-    Args:
-        approval_id: Unique approval ID
-        data: Approval data (should include created_at)
-    """
-    # Ensure created_at is present
-    if "created_at" not in data:
-        data["created_at"] = time.time()
-
+    """Add a pending approval with automatic cleanup of old entries."""
     # Clean up stale approvals before adding new one
     cleanup_stale_approvals()
 
@@ -59,7 +61,7 @@ def add_pending_approval(approval_id: str, data: PendingApproval) -> None:
     while len(pending_approvals) >= MAX_PENDING_APPROVALS:
         oldest_id = min(
             pending_approvals.keys(),
-            key=lambda k: pending_approvals[k].get("created_at", 0),
+            key=lambda k: pending_approvals[k].created_at,
         )
         del pending_approvals[oldest_id]
 
@@ -77,10 +79,104 @@ def cleanup_stale_approvals(max_age_seconds: int = 300) -> None:
     stale_ids = [
         approval_id
         for approval_id, data in pending_approvals.items()
-        if current_time - data.get("created_at", 0) > max_age_seconds
+        if current_time - data.created_at > max_age_seconds
     ]
     for approval_id in stale_ids:
         del pending_approvals[approval_id]
+
+
+_USER_ERROR = "Something went wrong. Please try again."
+
+
+async def _send_safe_error(msg: Message, error: Exception) -> None:
+    """Log the error and show a generic message to the user."""
+    logger.error("Handler error: %s", error, exc_info=True)
+    try:
+        await msg.edit_text(_USER_ERROR)
+    except Exception as exc:
+        logger.debug("Failed to send error message: %s", exc)
+
+
+def _build_brain_callbacks(
+    settings: UserSettings,
+    user_id: str,
+    update: Update,
+) -> BrainCallbacks:
+    """Build BrainCallbacks with Telegram-specific closures."""
+
+    # Watch mode: send tool usage updates as Telegram messages
+    async def on_tool_use(tool_name: str, detail: str | None) -> None:
+        tool_msg = f"{tool_name}: {detail}" if detail else f"Using: {tool_name}"
+        try:
+            message = update.message
+            if message is not None:
+                await message.reply_text(tool_msg)
+        except Exception as exc:
+            logger.debug("Failed to send tool call update: %s", exc)
+
+    # Approve mode: show inline approve/reject buttons, block until user responds
+    async def on_tool_approval(
+        tool_name: str,
+        tool_input: dict[str, Any],
+        ctx: ToolPermissionContext,
+    ) -> PermissionResultAllow | PermissionResultDeny:
+        message = update.message
+        if message is None:
+            return PermissionResultDeny(message="Missing message context")
+
+        approval_id = str(uuid.uuid4())[:8]
+        approval_event = asyncio.Event()
+
+        add_pending_approval(
+            approval_id,
+            PendingApproval(
+                user_id=user_id,
+                tool_name=tool_name,
+                event=approval_event,
+                input=tool_input,
+            ),
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton("Approve", callback_data=f"approve_{approval_id}"),
+                InlineKeyboardButton("Reject", callback_data=f"reject_{approval_id}"),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        message_text = f"Tool Request:\n{format_tool_call(tool_name, tool_input)}"
+        try:
+            await message.reply_text(
+                message_text, reply_markup=reply_markup, parse_mode="Markdown"
+            )
+        except Exception as exc:
+            logger.warning("Failed to send approval prompt: %s", exc)
+            pending_approvals.pop(approval_id, None)
+            return PermissionResultDeny(message="Failed to send approval prompt")
+
+        try:
+            await asyncio.wait_for(approval_event.wait(), timeout=300)
+        except asyncio.TimeoutError:
+            pending_approvals.pop(approval_id, None)
+            return PermissionResultDeny(message="Approval timed out")
+        except asyncio.CancelledError:
+            pending_approvals.pop(approval_id, None)
+            raise
+
+        approval_data: PendingApproval | None = pending_approvals.pop(approval_id, None)
+        if approval_data is not None and approval_data.approved:
+            return PermissionResultAllow()
+        return PermissionResultDeny(message="User rejected tool")
+
+    return BrainCallbacks(
+        on_tool_use=on_tool_use if settings.watch_enabled else None,
+        on_tool_approval=(
+            cast(CanUseTool, on_tool_approval)
+            if settings.mode == Mode.APPROVE
+            else None
+        ),
+    )
 
 
 @authorized_handler
@@ -91,7 +187,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if user is None or message is None or user.is_bot is True:
         return
 
-    debug(f"VOICE received from user {user.id}")
+    logger.debug("VOICE received from user %s", user.id)
 
     user_id = str(user.id)
 
@@ -102,9 +198,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await message.reply_text(rate_msg)
         return
 
-    state_manager = get_state_manager()
-    state = await state_manager.get_session_state(user_id)
-    settings = await state_manager.get_settings(user_id)
+    brain = get_brain()
+    settings = await brain.state_manager.get_settings(user_id)
 
     processing_msg = await message.reply_text("Processing voice message...")
     typing_task = start_chat_action(update, context)
@@ -115,45 +210,29 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await processing_msg.edit_text("No voice attachment found.")
             return
         voice = await message.voice.get_file()
-        voice_bytes = await voice.download_as_bytearray()
+        voice_bytes = bytes(await voice.download_as_bytearray())
 
-        # Transcribe
-        await processing_msg.edit_text("Transcribing...")
-        voice_engine = get_voice_engine()
-        try:
-            text = await voice_engine.transcribe(bytes(voice_bytes))
-        except VoiceError as exc:
-            await processing_msg.edit_text(f"Error: {exc}")
-            return
+        callbacks = _build_brain_callbacks(settings, user_id, update)
 
-        # Show what was heard
-        preview = text[:100] + "..." if len(text) > 100 else text
-        await processing_msg.edit_text(f"Heard: {preview}\n\nAsking Koro...")
-
-        # Call Claude
-        response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, user_id, update, context
+        response = await brain.process_message(
+            user_id=user_id,
+            content=voice_bytes,
+            content_type=MessageType.VOICE,
+            mode=settings.mode,
+            include_audio=settings.audio_enabled,
+            voice_speed=settings.voice_speed,
+            watch_enabled=settings.watch_enabled,
+            callbacks=callbacks,
+            model=settings.model or None,
         )
 
-        # Update session
-        await state_manager.update_session(
-            user_id, new_session_id, session_name=state.pending_session_name
-        )
+        await send_long_message(update, processing_msg, response.text)
 
-        # Send response
-        await send_long_message(update, processing_msg, response)
-
-        # Voice response if enabled
-        if settings.audio_enabled:
-            audio = await voice_engine.text_to_speech(
-                response, speed=settings.voice_speed
-            )
-            if audio:
-                await message.reply_voice(voice=audio)
+        if response.audio:
+            await message.reply_voice(voice=response.audio)
 
     except Exception as e:
-        debug(f"Error in handle_voice: {e}")
-        await processing_msg.edit_text(f"Error: {e}")
+        await _send_safe_error(processing_msg, e)
     finally:
         await stop_chat_action(typing_task)
 
@@ -169,7 +248,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     text = message.text
     if not text:
         return
-    debug(f"TEXT received: '{text[:50]}'")
+    logger.debug("TEXT received: '%s'", text[:50])
 
     user_id = str(user.id)
 
@@ -180,140 +259,33 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await message.reply_text(rate_msg)
         return
 
-    state_manager = get_state_manager()
-    state = await state_manager.get_session_state(user_id)
-    settings = await state_manager.get_settings(user_id)
+    brain = get_brain()
+    settings = await brain.state_manager.get_settings(user_id)
+
     processing_msg = await message.reply_text("Asking Koro...")
     typing_task = start_chat_action(update, context)
 
     try:
-        response, new_session_id, metadata = await _call_claude_with_settings(
-            text, state, settings, user_id, update, context
+        callbacks = _build_brain_callbacks(settings, user_id, update)
+
+        response = await brain.process_message(
+            user_id=user_id,
+            content=text,
+            content_type=MessageType.TEXT,
+            mode=settings.mode,
+            include_audio=settings.audio_enabled,
+            voice_speed=settings.voice_speed,
+            watch_enabled=settings.watch_enabled,
+            callbacks=callbacks,
+            model=settings.model or None,
         )
 
-        # Update session
-        await state_manager.update_session(
-            user_id, new_session_id, session_name=state.pending_session_name
-        )
+        await send_long_message(update, processing_msg, response.text)
 
-        # Send response
-        await send_long_message(update, processing_msg, response)
-
-        # Voice response if enabled
-        if settings.audio_enabled:
-            voice_engine = get_voice_engine()
-            audio = await voice_engine.text_to_speech(
-                response, speed=settings.voice_speed
-            )
-            if audio:
-                await message.reply_voice(voice=audio)
+        if response.audio:
+            await message.reply_voice(voice=response.audio)
 
     except Exception as e:
-        debug(f"Error in handle_text: {e}")
-        await processing_msg.edit_text(f"Error: {e}")
+        await _send_safe_error(processing_msg, e)
     finally:
         await stop_chat_action(typing_task)
-
-
-async def _call_claude_with_settings(
-    text: str,
-    state: UserSessionState,
-    settings: UserSettings,
-    user_id: str,
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> tuple[str, str, dict[str, Any]]:
-    """
-    Call Claude with user settings applied.
-
-    Args:
-        text: User message
-        state: User session state
-        settings: User settings
-        update: Telegram update
-        context: Telegram context
-
-    Returns:
-        (response, session_id, metadata)
-    """
-    mode = settings.mode
-    watch_enabled = settings.watch_enabled
-    model = settings.model or None
-    continue_last = False
-
-    # Watch mode callback
-    async def on_tool_call(tool_name: str, detail: str | None) -> None:
-        if watch_enabled:
-            tool_msg = f"{tool_name}: {detail}" if detail else f"Using: {tool_name}"
-            try:
-                message = update.message
-                if message is not None:
-                    await message.reply_text(tool_msg)
-            except Exception as exc:
-                debug(f"Failed to send tool call update: {exc}")
-
-    # Approve mode callback
-    async def can_use_tool(tool_name: str, tool_input: dict[str, Any], ctx: Any) -> Any:
-        from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
-
-        if mode != Mode.APPROVE:
-            return PermissionResultAllow()
-
-        message = update.message
-        if message is None:
-            return PermissionResultDeny(message="Missing message context")
-
-        approval_id = str(uuid.uuid4())[:8]
-        approval_event = asyncio.Event()
-
-        add_pending_approval(
-            approval_id,
-            {
-                "created_at": time.time(),
-                "user_id": user_id,
-                "event": approval_event,
-                "approved": None,
-                "tool_name": tool_name,
-                "input": tool_input,
-            },
-        )
-
-        keyboard = [
-            [
-                InlineKeyboardButton("Approve", callback_data=f"approve_{approval_id}"),
-                InlineKeyboardButton("Reject", callback_data=f"reject_{approval_id}"),
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        message_text = f"Tool Request:\n{format_tool_call(tool_name, tool_input)}"
-        await message.reply_text(
-            message_text, reply_markup=reply_markup, parse_mode="Markdown"
-        )
-
-        try:
-            await asyncio.wait_for(approval_event.wait(), timeout=300)
-        except asyncio.TimeoutError:
-            pending_approvals.pop(approval_id, None)
-            return PermissionResultDeny(message="Approval timed out")
-        except asyncio.CancelledError:
-            pending_approvals.pop(approval_id, None)
-            raise
-
-        approval_data: PendingApproval | None = pending_approvals.pop(approval_id, None)
-        if approval_data is not None and approval_data["approved"]:
-            return PermissionResultAllow()
-        return PermissionResultDeny(message="User rejected tool")
-
-    claude_client = get_claude_client()
-    config = QueryConfig(
-        prompt=text,
-        session_id=state.current_session_id,
-        continue_last=continue_last,
-        user_settings=settings,
-        mode=mode,
-        model=model,
-        on_tool_call=on_tool_call if watch_enabled else None,
-        can_use_tool=can_use_tool if mode == Mode.APPROVE else None,
-    )
-    return await claude_client.query(config)
